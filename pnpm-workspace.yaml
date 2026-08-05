@@ -1,3 +1,16 @@
 packages:
   - "packages/*"
   - "packages/modules/*"
+
+# Supply-chain hardening (Semgrep pnpm-workspace rules, run by the semgrep
+# CI gate — CLAUDE.md Section 4.9):
+#   - blockExoticSubdeps: reject transitive deps installed from untrusted
+#     sources (git/tarball URLs) rather than a registry.
+#   - minimumReleaseAge: wait 7 days before a newly published version is
+#     eligible for install, so a compromised release has time to be caught
+#     and yanked before it reaches this repo.
+#   - trustPolicy: reject a dependency update that silently downgrades
+#     these settings.
+blockExoticSubdeps: true
+minimumReleaseAge: 10080
+trustPolicy: no-downgrade

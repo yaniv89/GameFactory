@@ -235,20 +235,23 @@ CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 -- Identity and workspaces
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE users (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email           CITEXT NOT NULL UNIQUE,
-    display_name    TEXT NOT NULL,
-    avatar_url      TEXT,
-    stripe_account  TEXT,                 -- for Authors receiving payouts
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    deleted_at      TIMESTAMPTZ
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    identity_subject_id TEXT NOT NULL UNIQUE,  -- subject claim from OpenIddict/ASP.NET Identity; this table is the domain projection, not Identity's own store (Section 23.1)
+    email               CITEXT NOT NULL UNIQUE,
+    email_verified_at   TIMESTAMPTZ,           -- null = unverified. Gates publishing (16.3) and, from Section 23, Pro/Studio checkout
+    display_name        TEXT NOT NULL,
+    avatar_url          TEXT,
+    stripe_account      TEXT,                  -- for Authors receiving marketplace payouts (Stripe Connect) — distinct from stripe_customer_id below
+    stripe_customer_id  TEXT,                   -- for the user's own subscription billing (Stripe Billing) — distinct from stripe_account above
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at          TIMESTAMPTZ
 );
 CREATE TABLE workspaces (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     slug            TEXT NOT NULL UNIQUE,
     name            TEXT NOT NULL,
-    plan            TEXT NOT NULL DEFAULT 'free',   -- free | pro | studio
+    plan            TEXT NOT NULL DEFAULT 'free',   -- free | pro | studio — see Section 23.2 for what each gates
     seat_limit      INT  NOT NULL DEFAULT 1,
     storage_quota_mb INT NOT NULL DEFAULT 500,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -262,6 +265,24 @@ CREATE TABLE workspace_members (
     PRIMARY KEY (workspace_id, user_id)
 );
 CREATE INDEX ix_workspace_members_user ON workspace_members(user_id);
+-- Subscription state for a workspace's plan (Section 23.2). The billing system
+-- of record is Stripe; this table is a synced read model updated only by
+-- verified Stripe webhook events (Section 23.5), never written from a
+-- client-supplied plan value.
+CREATE TABLE subscriptions (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id            UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    stripe_customer_id      TEXT NOT NULL,
+    stripe_subscription_id  TEXT UNIQUE,
+    plan                    TEXT NOT NULL,        -- pro | studio
+    status                  TEXT NOT NULL,        -- trialing | active | past_due | canceled | incomplete
+    current_period_end     TIMESTAMPTZ,
+    cancel_at_period_end    BOOLEAN NOT NULL DEFAULT false,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_subscriptions_workspace ON subscriptions(workspace_id);
+CREATE UNIQUE INDEX ix_subscriptions_active_per_workspace ON subscriptions(workspace_id) WHERE status IN ('trialing', 'active', 'past_due');
 -- ─────────────────────────────────────────────────────────────
 -- Projects
 -- ─────────────────────────────────────────────────────────────
@@ -1124,6 +1145,21 @@ Instant iteration is the primary reason a creator chooses a browser tool over a 
 - Cursor pagination everywhere. Never offset pagination on user-growable collections.
 ### 13.2 Endpoint surface
 ```
+# Accounts and authentication (Section 23)
+POST   /api/v1/auth/signup                      # email + password -> unverified user, sends verification email
+POST   /api/v1/auth/verify-email                # consumes the emailed token, sets users.email_verified_at
+POST   /api/v1/auth/resend-verification
+POST   /connect/authorize                       # OpenIddict authorization endpoint (OIDC/PKCE)
+POST   /connect/token                           # OpenIddict token endpoint (auth code exchange, refresh rotation)
+POST   /connect/logout                          # revokes the refresh token, clears the httpOnly cookie
+POST   /api/v1/auth/password/forgot
+POST   /api/v1/auth/password/reset
+GET    /api/v1/me                               # profile + workspace list + plan
+PATCH  /api/v1/me                               # display name, avatar
+# Billing (Section 23.2/23.5)
+POST   /api/v1/workspaces/{ws}/billing/checkout-session   # Stripe Checkout, mode=subscription
+POST   /api/v1/workspaces/{ws}/billing/portal-session     # Stripe Billing Portal (plan change, cancel, invoices)
+GET    /api/v1/workspaces/{ws}/billing            # current plan, status, renewal date — read-only, server-resolved
 # Projects
 GET    /api/v1/workspaces/{ws}/projects
 POST   /api/v1/workspaces/{ws}/projects
@@ -1146,8 +1182,8 @@ POST   /api/v1/packages/{name}/versions         # publish (author, scoped token)
 POST   /api/v1/packages/{name}/versions/{v}/yank
 POST   /api/v1/registry/resolve                 # dependency resolution -> lockfile
 # Marketplace
-POST   /api/v1/checkout/sessions
-POST   /api/v1/webhooks/stripe                  # signature verified
+POST   /api/v1/checkout/sessions                # module/pack purchase, mode=payment
+POST   /api/v1/webhooks/stripe                  # signature verified; dispatches both marketplace purchase and Section 23 subscription lifecycle events
 GET    /api/v1/workspaces/{ws}/licenses
 GET    /api/v1/authors/me/earnings
 # Assets
@@ -1663,10 +1699,45 @@ No marketplace, no collaboration, no third-party modules yet.
 These need decisions before Phase 1 code is written.
 1. **Should the graph VM be Turing-complete?** Loops and recursion give creators power but also let them hang the game. Leaning toward bounded loops with an iteration cap, no recursion.
 2. **Multiplayer at all in v1?** Even asynchronous features (shared worlds, visitor mechanics) add substantial backend scope. Leaning toward no, revisit in Phase 4.
-3. **Own the identity system or federate?** Federating to Discord and Google reduces friction for creators but complicates payouts and account recovery. Probably both, with email as the canonical identity.
-4. **Free-tier publishing limits?** Unlimited free hosting is a real cost center if a game goes viral. Options: bandwidth cap with a paid upgrade prompt, or ad-supported free tier (unpopular with creators).
+3. ~~**Own the identity system or federate?**~~ **Resolved, Section 23.4**: both — local email+password via ASP.NET Identity/OpenIddict as the canonical account, Google/Discord OAuth as additional login methods on the same row.
+4. **Free-tier publishing limits?** Partially resolved, Section 23.2: Free doesn't publish at all (export/publish requires Pro/Studio), which sidesteps the viral-bandwidth cost risk entirely rather than capping it. Still open: whether that's too strict once real users hit it.
 5. **Desktop app in scope?** Electron or Tauri wrapper around the same SPA gives offline work and local file access. Cheap to add later, expensive to design for from the start. Defer, but keep the editor free of hard cloud dependencies so the option stays open.
 6. **How opinionated should the RPG template be?** Too opinionated and it is RPG Maker with worse tooling. Too generic and creators face a blank page. Leaning toward a strong starter template that is fully deletable.
+---
+## 23. Creator Accounts and Subscriptions
+This section defines the platform-level account/subscription system (signup, verification, login, logout, account page, plan gating) — distinct from Section 16's marketplace, which is about paying module authors, not charging creators for platform access. The `users.stripe_account` / `subscriptions.stripe_customer_id` split in Section 6.2 exists precisely to keep those two money flows (marketplace payouts out, platform subscription in) from colliding in one column.
+### 23.1 Identity architecture
+- OpenIddict is this app's own OIDC authorization server (already pinned, CLAUDE.md Section 2.1); ASP.NET Core Identity backs local email+password accounts.
+- The domain `users` table (Section 6.2) is a projection, not Identity's own internal schema — linked via `identity_subject_id` (the token's `sub` claim). This keeps the domain model free of Identity's internal columns (password hashes, security stamps) and lets a federated-login user (23.4) and a local-password user share the exact same domain row shape.
+- Access tokens: short-lived JWT, memory-only in the SPA, never `localStorage` (CLAUDE.md Section 12 of the brief / Section 1 guardrails). Refresh tokens: `httpOnly`, `SameSite=Strict` cookie, rotated on every use, reuse detection revokes the whole token family (Section 4.7 of the brief).
+### 23.2 Plan tiers and what each gates
+Maps directly onto `workspaces.plan` (Section 6.2), which already had the `free | pro | studio` enum. The table below is a proposed default, not something dictated to me — easy to re-cut once real users hit these walls.
+| Capability | Free | Pro | Studio |
+|---|---|---|---|
+| Projects per workspace | 1 | Unlimited | Unlimited |
+| Seats per workspace | 1 | 1 | `seat_limit` (Stripe quantity) |
+| Editor access — build, preview, play mode | Full | Full | Full |
+| Export / publish to a live URL | No — returns `402 Payment Required` with an upgrade prompt, never a silent no-op | Yes | Yes |
+| Preview builds | Watermarked, no custom domain | Unwatermarked | Unwatermarked + custom domain |
+| Wizard generations (proposal 0001) | 5/month, Haiku tier | 100/month, Sonnet tier | 500/month, Sonnet/Opus tier |
+| Marketplace purchases | Yes — not plan-gated | Yes | Yes |
+| Cloud saves / leaderboards for published games | N/A (can't publish) | Yes | Yes |
+| Real-time collaboration (Yjs) | N/A (1 seat) | N/A (1 seat) | Yes |
+⚠ **Free is a permanently free tier that lets someone build and play-test a complete game — not a time-boxed trial.** A countdown-anxiety trial UX fights the "the canvas never blocks" interaction law (Section 5.3 of the brief). The wall sits at *leaving the editor* (export/publish), not at using it — this is also what sidesteps Open Question 4's viral-bandwidth cost risk, since a Free project physically cannot generate public traffic.
+### 23.3 Signup, verification, login, logout
+1. **Signup**: email + password. Identity's password rules (minimum length, breached-password check) apply to every account, not only authors — Section 10.5's author-account discipline is really just the general case with 2FA added on top once someone publishes. Creates a `users` row with `email_verified_at = null` and an owned `workspaces` row at `plan = 'free'`.
+2. **Verification email**: a signed, single-use, 24-hour token via Identity's built-in data-protection token provider — no separate tokens table needed. Sent through a transactional provider (Resend/SendGrid, per the earlier cost discussion). An unverified account keeps full Free-tier editor access but cannot start a billing checkout (23.5) or publish a module — the same "email verified" gate Section 16.3's Unverified tier already required, now enforced at the front door instead of only at publish time.
+3. **Login**: OpenIddict authorization-code + PKCE (already pinned), or federated OAuth (23.4).
+4. **Logout**: revokes the refresh token server-side and clears the cookie. Never a client-side-only token discard — a stolen refresh token must actually stop working, not just get forgotten by the browser that logged out.
+5. **Password reset**: the same signed-token mechanism as verification; completing a reset invalidates every other existing session.
+### 23.4 Federation (resolves Open Question 3)
+Google and Discord OAuth as *additional* login methods on the same `users` row (matched by verified email on first federated login), not a replacement for local accounts — author payouts and account recovery still key off the verified email either way, so this doesn't complicate either path the way pure federation would. Cost is $0 in provider fees; the remaining friction is UI polish, not backend work.
+### 23.5 Server-side authorization for plan gating (CLAUDE.md Section 1.1, guardrail 4)
+Every plan-gated endpoint resolves the workspace's plan from `subscriptions`/`workspaces` server-side on each request — a client never supplies or asserts its own plan, exactly as guardrail 4 requires for any authorization decision. Stripe is the system of record; `subscriptions` is a read model kept in sync exclusively by signature-verified webhook events (`checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`) — never written from the checkout-session response the browser itself sees, since that response is not proof of payment. A `past_due` subscription keeps Pro/Studio access for a grace window (proposed: 7 days) before dropping back to the Free gates in 23.2, rather than an abrupt mid-session lockout.
+### 23.6 UI states (CLAUDE.md Section 5.4 — non-negotiable)
+The account and billing pages need all six: Loading (fetching `/me` and `/billing`), Empty (a brand-new workspace with no projects yet), Error (billing provider unreachable — state what happened, not "something went wrong"), Permission denied (a viewer role reaching a billing page only owner/admin may see), Offline, Populated. The upgrade prompt on an export/publish `402` is itself required copy under Section 5.5's error-copy rules, not an afterthought dialog.
+### 23.7 Milestone placement
+Lands in **M5 — Backend and persistence**, alongside the authorization-policy work already scoped there (Section 20 of the brief). Exit-criterion addition: a Free-tier workspace can build and play-test a full project but gets a `402` with a clear upgrade path on export/publish; a Pro checkout completes end-to-end against Stripe test mode and the gate flips within one webhook round-trip.
 ---
 ## Appendix A: Glossary
 | Term | Meaning |

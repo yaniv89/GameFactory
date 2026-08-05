@@ -46,12 +46,13 @@ Forge executes untrusted third-party code in players' browsers and processes unt
 | T8 | IDOR on project, asset, or build endpoints | CWE-639 | High | Server-side authorization on every request, no client-supplied scope |
 | T9 | SSRF via module manifest URLs or asset import-by-URL | CWE-918 | High | No server-side fetch of user URLs. Ever |
 | T10 | Zip-slip / path traversal on project import | CWE-22 | High | Path canonicalization and allowlist on every archive entry |
-| T11 | Billing manipulation via tampered checkout | CWE-602 | High | Server-side price resolution, Stripe webhook signature verification |
+| T11 | Billing manipulation via tampered checkout or a forged client-supplied plan/tier | CWE-602 | High | Server-side price resolution, Stripe webhook signature verification, plan resolved from `subscriptions`/`workspaces` server-side on every request (`docs/SPEC.md` Section 23.5) — never accepted from the client |
 | T12 | Save data deserialization attack | CWE-502 | Medium | JSON only, schema-validated, no type hints, no polymorphic deserialization |
 | T13 | Denial of service via oversized project documents or saves | CWE-770 | Medium | Hard size caps at the edge, before parsing |
 | T14 | Session hijacking via token in URL or localStorage | CWE-522 | High | Tokens in memory + httpOnly refresh cookie, never localStorage |
 | T15 | Creator ships a game that phishes players | CWE-451 | Medium | Persistent platform chrome on hosted games, no fullscreen overlay of platform UI |
 | T16 | Architecture cannot scale horizontally (stateful SignalR hub, in-memory rate limiter, unpooled DB connections), leading to an outage rather than a compromise under real load | CWE-770 (resource exhaustion) | High | Stateless API, Redis-backed rate limiter and SignalR backplane, pooled DB connections — see `docs/SPEC.md` Section 5.5 and Section 1.5 of `CLAUDE.md` |
+| T17 | Signup/login abuse: credential stuffing, account enumeration via signup error messages, brute-forcing an email-verification or password-reset token | CWE-307 / CWE-203 | High | Rate limiting on `/auth/*` (CLAUDE.md Section 4.8), generic "check your email" response regardless of whether the address exists, single-use time-boxed tokens via Identity's data-protection provider — see `docs/SPEC.md` Section 23.3 |
 
 ## 3. Detailed notes per threat class
 
@@ -71,10 +72,13 @@ Every input source has a specific rule (project documents, uploaded archives, im
 Every endpoint resolves the caller's role server-side from the token subject via `WorkspaceAuthorizationHandler`, never from a client-supplied ID. Cross-tenant access returns **404**, never 403 — a 403 confirms the resource exists and leaks the ID space. Full authorization test suite required per endpoint (CLAUDE.md Section 4.5).
 
 ### 3.6 Billing (T11)
-Price resolution happens server-side from the package's `listings` row, never from a client-supplied amount. Stripe webhook signatures are verified before any purchase or license is recorded.
+Price resolution happens server-side from the package's `listings` row, never from a client-supplied amount. Stripe webhook signatures are verified before any purchase or license is recorded. The same rule now covers platform subscription gating (`docs/SPEC.md` Section 23.5): a workspace's plan is read from the `subscriptions` table, itself written only by verified Stripe webhook events, never from anything the checkout-session response handed to the browser.
 
 ### 3.7 Availability under load (T16)
 Distinct from the other threats in that the attacker may simply be organic growth. Stateless API tier, Redis-backed rate limiting and SignalR backplane, pooled DB connections with read-replica routing for reporting queries, and CDN/Table-Storage-carried play traffic are the controls. See `docs/SPEC.md` Section 5.5 (architecture) and Section 18.4 (enforced budgets).
+
+### 3.8 Account signup and login surface (T17)
+`/api/v1/auth/signup`, `/connect/token`, `/api/v1/auth/password/forgot`, and `/api/v1/auth/resend-verification` are the only unauthenticated endpoints in the API and the newest trust boundary in the system — anyone on the internet can call them, not just an existing token holder. Rate limiting applies per-IP and per-account-identifier (CLAUDE.md Section 4.8), signup/forgot-password responses never reveal whether an email address is already registered, and verification/reset tokens are single-use and short-lived (Section 23.3). This boundary did not exist before Section 23 and is recorded here per the living-document rule at the top of this file.
 
 ## 4. CI security gates enforcing this model
 

@@ -1,0 +1,49 @@
+.fg-toast-viewport {
+  position: fixed;
+  bottom: var(--space-5);
+  inset-inline-end: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  z-index: 200;
+  max-width: 360px;
+}
+
+.fg-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  background: var(--surface-overlay);
+  border: 1px solid var(--line-default);
+  border-inline-start: 3px solid var(--accent-select);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-menu);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.fg-toast--success {
+  border-inline-start-color: var(--accent-create);
+}
+
+.fg-toast--error {
+  border-inline-start-color: var(--accent-destroy);
+}
+
+.fg-toast--caution {
+  border-inline-start-color: var(--accent-caution);
+}
+
+.fg-toast__body {
+  flex: 1;
+}
+
+.fg-toast__dismiss {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  min-width: var(--hit-target-min);
+  min-height: var(--hit-target-min);
+}

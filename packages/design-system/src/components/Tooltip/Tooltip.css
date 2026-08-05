@@ -1,0 +1,21 @@
+.fg-tooltip-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.fg-tooltip {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + var(--space-2));
+  inset-inline-start: 50%;
+  transform: translateX(-50%);
+  background: var(--surface-overlay);
+  color: var(--text-primary);
+  border: 1px solid var(--line-default);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  box-shadow: var(--shadow-menu);
+  pointer-events: none;
+}

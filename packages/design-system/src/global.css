@@ -1,0 +1,34 @@
+/* Base reset. Applied once, at the app root. Every value below is a token
+   reference — a raw hex or px here fails review same as anywhere else. */
+@import "./tokens.css";
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--surface-abyss);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+}
+
+/* Never `outline: none` without an equivalent replacement (CLAUDE.md 5.6). */
+:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* Numbers, coordinates, IDs, hashes stay LTR inside RTL text (CLAUDE.md 5.7). */
+.fg-ltr-isolate {
+  unicode-bidi: isolate;
+  direction: ltr;
+}

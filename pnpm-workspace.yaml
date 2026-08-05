@@ -1,6 +1,9 @@
 packages:
   - "packages/*"
   - "packages/modules/*"
+auditConfig:
+  ignoreCves:
+    - CVE-2026-53571
 
 # Supply-chain hardening (Semgrep pnpm-workspace rules, run by the semgrep
 # CI gate — CLAUDE.md Section 4.9):

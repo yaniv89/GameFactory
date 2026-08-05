@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Forge.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <!--
+    xUnit package references are added when the first real test is written
+    (Milestone M5: authorization, header-assertion, and cross-tenant test
+    suites — docs/SPEC.md Section 13, CLAUDE.md Section 4.9/4.5). Not added
+    speculatively here since this environment has no .NET SDK to verify a
+    restore against real package versions.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\Forge.Domain\Forge.Domain.csproj" />
+    <ProjectReference Include="..\Forge.Infrastructure\Forge.Infrastructure.csproj" />
+    <ProjectReference Include="..\Forge.Api\Forge.Api.csproj" />
+  </ItemGroup>
+
+</Project>

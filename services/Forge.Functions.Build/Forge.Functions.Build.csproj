@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Forge.Functions.Build</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    This becomes an Azure Functions isolated-worker project (Sdk="Microsoft.NET.Sdk"
+    plus Microsoft.NET.Sdk.Functions / Microsoft.Azure.Functions.Worker package
+    references) when the build pipeline (docs/SPEC.md Section 15) is implemented
+    in Milestone M6. Deferred rather than guessed here because this environment
+    has no .NET SDK or Azure Functions Core Tools to verify a restore/build
+    against real package versions — see docs/adr for the decision to keep
+    scaffold-only projects honest about what has and hasn't been verified.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\Forge.Domain\Forge.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

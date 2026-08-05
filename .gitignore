@@ -1,0 +1,36 @@
+# --- JS / TS / pnpm ---
+node_modules/
+dist/
+.vite/
+.turbo/
+*.tsbuildinfo
+pnpm-lock.yaml.bak
+coverage/
+
+# --- .NET ---
+bin/
+obj/
+*.user
+.vs/
+
+# --- Forge project working files ---
+.forge/cache/
+
+# --- Env / secrets ---
+.env
+.env.*
+!.env.example
+*.pfx
+*.pem
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# --- Storybook / test artifacts ---
+storybook-static/
+playwright-report/
+test-results/

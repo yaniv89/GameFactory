@@ -1,0 +1,15 @@
+{
+  "name": "@forge/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ECS world, fixed-step scheduler, event bus, save system, asset loader for the Forge runtime.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo \"no tests yet for @forge/core\" && exit 0"
+  }
+}

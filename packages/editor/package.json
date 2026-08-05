@@ -1,0 +1,15 @@
+{
+  "name": "forge-editor",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The Forge editor SPA (React 18 + TypeScript, Vite).",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo \"no tests yet for forge-editor\" && exit 0"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@forge/module-api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Public Module API types and constants ONLY. Zero runtime code, zero dependencies. See CLAUDE.md 3.1.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo \"no tests yet for @forge/module-api\" && exit 0"
+  }
+}

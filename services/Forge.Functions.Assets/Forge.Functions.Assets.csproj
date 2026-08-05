@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Forge.Functions.Assets</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    Becomes an Azure Functions isolated-worker project running asset
+    transcode/atlas processing (docs/SPEC.md Section 14) when implemented,
+    starting in Milestone M6. See Forge.Functions.Build's csproj comment
+    for why package references are deferred rather than guessed here.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\Forge.Domain\Forge.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

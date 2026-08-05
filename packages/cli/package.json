@@ -1,0 +1,15 @@
+{
+  "name": "forge",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The forge CLI: local dev loop, CI helpers, bulk operations.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo \"no tests yet for forge\" && exit 0"
+  }
+}

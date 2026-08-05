@@ -1,0 +1,15 @@
+{
+  "name": "@forge/render-2d",
+  "version": "0.0.0",
+  "private": true,
+  "description": "PixiJS v8 rendering integration: tilemap renderer, camera, sprite batching.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo \"no tests yet for @forge/render-2d\" && exit 0"
+  }
+}

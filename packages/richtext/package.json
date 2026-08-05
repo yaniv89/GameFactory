@@ -1,0 +1,15 @@
+{
+  "name": "@forge/richtext",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Sanitizing rich text AST parser. No HTML string rendering anywhere in Forge goes around this.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo \"no tests yet for @forge/richtext\" && exit 0"
+  }
+}

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Forge.Functions.Scan</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    Becomes an Azure Functions isolated-worker project running the module
+    security scan gates (docs/SPEC.md Section 10.4: static analysis,
+    dependency audit, sandboxed smoke run) when implemented in Milestone M6.
+    See Forge.Functions.Build's csproj comment for why package references
+    are deferred rather than guessed in this environment.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\Forge.Domain\Forge.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

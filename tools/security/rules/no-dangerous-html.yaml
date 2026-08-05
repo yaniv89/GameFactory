@@ -1,0 +1,31 @@
+rules:
+  - id: no-dangerously-set-inner-html
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      dangerouslySetInnerHTML renders unsanitized HTML (CLAUDE.md Section
+      1.1 guardrail 3 / CWE-79). User-supplied content — dialogue text,
+      item names, project descriptions — must go through the sanitizing
+      AST parser in @forge/richtext, rendered as React elements, never as
+      an HTML string.
+    metadata:
+      cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation (XSS)"
+      references:
+        - CLAUDE.md Section 1.1 guardrail 3
+        - docs/SPEC.md Section 10.6
+    patterns:
+      - pattern: <$EL dangerouslySetInnerHTML={...} />
+
+  - id: no-inner-html-assignment
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      Assigning to .innerHTML/.outerHTML renders unsanitized HTML
+      (CLAUDE.md Section 1.1 guardrail 3 / CWE-79). Use textContent, or
+      route through @forge/richtext's sanitizing AST parser for rich text.
+    metadata:
+      cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation (XSS)"
+    patterns:
+      - pattern-either:
+          - pattern: $EL.innerHTML = $VALUE
+          - pattern: $EL.outerHTML = $VALUE

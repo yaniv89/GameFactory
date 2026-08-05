@@ -1,0 +1,194 @@
+name: CI
+
+# CLAUDE.md Section 4.9 / docs/SPEC.md Section 10.4: every gate here runs on
+# every PR and blocks merge. M0's exit criterion is that a deliberately
+# introduced XSS, eval, hardcoded secret, CSP wildcard, or bundle-size
+# regression each independently fails one of these jobs.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── JS/TS: typecheck, test, build, Storybook ──────────────────────────
+  js-build-test:
+    name: JS/TS — typecheck, test, build, Storybook
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r run typecheck
+      - run: pnpm -r run test
+      - run: pnpm -r run build
+      - name: Build Storybook (design-system)
+        run: pnpm --filter @forge/ds run build-storybook
+
+  # ── Gate: pnpm dependency vulnerability scan ──────────────────────────
+  js-audit:
+    name: Security gate — pnpm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level=high
+
+  # ── Gate: license compliance (CLAUDE.md 4.9 #10) ──────────────────────
+  license-check:
+    name: Security gate — license compliance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node tools/security/license-check.mjs
+
+  # ── Gate: module-api / first-party-module boundary (CLAUDE.md 3.1/3.2) ─
+  module-boundaries:
+    name: Structure gate — module-api and module boundaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: node tools/security/check-module-boundaries.mjs
+
+  # ── Gate: CSP linter — no wildcard/unsafe-eval/unsafe-inline (4.9 #9) ─
+  csp-lint:
+    name: Security gate — CSP linter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: node tools/security/csp-lint.mjs
+
+  # ── Gate: performance budgets (CLAUDE.md Section 7) ───────────────────
+  bundle-size:
+    name: Performance gate — bundle size budgets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node tools/bench/check-bundle-size.mjs
+
+  # ── Gate: Semgrep (custom rules + OWASP Top 10 pack) ──────────────────
+  semgrep:
+    name: Security gate — Semgrep
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      - run: semgrep scan --config tools/security/rules --config p/owasp-top-ten --error
+
+  # ── Gate: secret scanning (gitleaks) on full PR history ───────────────
+  gitleaks:
+    name: Security gate — gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: |
+          curl -sSL -o gitleaks.tar.gz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+      - name: Scan full history
+        run: gitleaks detect --source . --log-opts="--all" --redact --verbose
+
+  # ── Gate: CodeQL (TypeScript/JavaScript and C#) ───────────────────────
+  codeql:
+    name: Security gate — CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, csharp]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+      - if: matrix.language == 'csharp'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - if: matrix.language == 'csharp'
+        run: dotnet build Forge.sln
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  # ── .NET: restore, build, vulnerable-package scan, test ───────────────
+  dotnet-build-test:
+    name: .NET — build, vulnerable-package scan, test (incl. security headers)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet restore Forge.sln
+      - run: dotnet build Forge.sln --no-restore --configuration Release
+
+      - name: Security gate — vulnerable NuGet packages
+        run: |
+          dotnet list Forge.sln package --vulnerable --include-transitive 2>&1 | tee vulnerable-packages.log
+          if grep -qi "has the following vulnerable packages" vulnerable-packages.log; then
+            echo "::error::Vulnerable NuGet package(s) found. See CLAUDE.md Section 4.9 gate #1."
+            exit 1
+          fi
+
+      - name: Test (includes services/Forge.Tests/Security/HeaderTests.cs)
+        run: dotnet test Forge.sln --no-build --configuration Release
+
+  # ── Gates whose target code doesn't exist yet: log honestly, don't fake ─
+  future-milestone-gates:
+    name: Deferred gates (sandbox escape M2, cross-tenant auth M5)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sandbox escape suite (Milestone M2)
+        run: |
+          if [ -f packages/runtime-host/test/sandbox-escape.test.ts ]; then
+            echo "sandbox-escape.test.ts found — this job needs updating to actually run it."
+            exit 1
+          else
+            echo "::notice::packages/runtime-host/test/sandbox-escape.test.ts does not exist yet. Required before Milestone M2 exits (CLAUDE.md Section 8), not before M0. Not faking a pass — this step exists so the gate is visible in CI from day one."
+          fi
+      - name: Cross-tenant authorization suite (Milestone M5)
+        run: |
+          if find services/Forge.Tests -iname "*CrossTenant*" | grep -q .; then
+            echo "Cross-tenant test files found — this job needs updating to actually run them."
+            exit 1
+          else
+            echo "::notice::No cross-tenant authorization tests yet. Required before Milestone M5 exits (CLAUDE.md Section 8), not before M0."
+          fi

@@ -1,0 +1,41 @@
+rules:
+  - id: no-eval
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      eval() is banned everywhere in the editor and API (CLAUDE.md Section
+      1.1 guardrail 2 / CWE-95). The runtime sandbox (quickjs-emscripten in
+      a Web Worker) is the only place code is evaluated, and it is a WASM
+      interpreter, not the host JS engine.
+    metadata:
+      cwe: "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code"
+      references:
+        - CLAUDE.md Section 1.1 guardrail 2
+    patterns:
+      - pattern: eval(...)
+
+  - id: no-new-function
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      `new Function(...)` compiles a string to code, equivalent to eval()
+      (CLAUDE.md Section 1.1 guardrail 2 / CWE-95). Banned everywhere
+      outside the sandbox interpreter.
+    metadata:
+      cwe: "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code"
+    patterns:
+      - pattern: new Function(...)
+
+  - id: no-string-timer-callback
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      setTimeout/setInterval with a string argument evaluates the string as
+      code, equivalent to eval() (CLAUDE.md Section 1.1 guardrail 2).
+      Pass a function reference instead.
+    metadata:
+      cwe: "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code"
+    patterns:
+      - pattern-either:
+          - pattern: setTimeout("...", ...)
+          - pattern: setInterval("...", ...)

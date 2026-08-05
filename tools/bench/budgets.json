@@ -1,0 +1,8 @@
+{
+  "description": "Client bundle-size budgets from CLAUDE.md Section 7 / docs/SPEC.md Section 18.1. Enforced by tools/bench/check-bundle-size.mjs.",
+  "packages": [
+    { "name": "@forge/core", "path": "packages/core", "targetKB": 45, "hardFailKB": 60 },
+    { "name": "@forge/render-2d", "path": "packages/render-2d", "targetKB": 130, "hardFailKB": 160 },
+    { "name": "@forge/runtime-host", "path": "packages/runtime-host", "targetKB": 60, "hardFailKB": 80 }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/schema-catalog.json",
+  "description": "Allowlisted SPDX license identifiers for pnpm dependencies (CLAUDE.md Section 4.9 gate #10). tools/security/license-check.mjs fails CI if `pnpm licenses list` reports anything not in this list. Add a license here only after confirming it's compatible with redistributing exported games (docs/SPEC.md Section 15.3) — that is the actual constraint, not just \"permissive-sounding\".",
+  "allowed": [
+    "MIT",
+    "MIT-0",
+    "ISC",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "0BSD",
+    "BlueOak-1.0.0",
+    "CC0-1.0",
+    "CC-BY-4.0",
+    "MPL-2.0"
+  ]
+}

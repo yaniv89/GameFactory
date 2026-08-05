@@ -1,0 +1,43 @@
+.fg-statusbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--statusbar-height);
+  padding: 0 var(--space-3);
+  background: var(--surface-chrome);
+  border-top: 1px solid var(--line-subtle);
+  font-size: var(--text-2xs);
+  color: var(--text-secondary);
+}
+
+.fg-statusbar__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.fg-statusbar--saved .fg-statusbar__dot {
+  background: var(--accent-create);
+}
+.fg-statusbar--saving .fg-statusbar__dot {
+  background: var(--accent-select);
+  animation: fg-pulse 1s ease-in-out infinite;
+}
+.fg-statusbar--unsaved .fg-statusbar__dot {
+  background: var(--accent-caution);
+}
+.fg-statusbar--offline .fg-statusbar__dot {
+  background: var(--text-tertiary);
+}
+
+@keyframes fg-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fg-statusbar--saving .fg-statusbar__dot {
+    animation: none;
+  }
+}

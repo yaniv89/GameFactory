@@ -1,0 +1,46 @@
+.fg-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: var(--text-xs);
+}
+
+.fg-tree__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--hit-target-min);
+  padding-inline-start: calc(var(--space-4) * var(--fg-tree-depth, 0));
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.fg-tree__item[aria-selected="true"] {
+  background: var(--surface-raised);
+}
+
+.fg-tree__disclosure {
+  width: 14px;
+  display: inline-flex;
+  justify-content: center;
+  color: var(--text-tertiary);
+  flex: none;
+}
+
+.fg-tree__state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  padding: var(--space-3);
+  max-width: 40ch;
+}
+
+.fg-tree__state-title {
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
+}

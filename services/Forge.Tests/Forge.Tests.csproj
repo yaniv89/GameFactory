@@ -10,12 +10,24 @@
   </PropertyGroup>
 
   <!--
-    xUnit package references are added when the first real test is written
-    (Milestone M5: authorization, header-assertion, and cross-tenant test
-    suites — docs/SPEC.md Section 13, CLAUDE.md Section 4.9/4.5). Not added
-    speculatively here since this environment has no .NET SDK to verify a
-    restore against real package versions.
+    Package versions confirmed to exist on nuget.org at scaffold time (this
+    environment has no .NET SDK, so `dotnet restore` itself is unverified —
+    see the CI workflow, which runs the real restore/build/test on a
+    GitHub-hosted runner that has the SDK).
   -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.29" />
+    <PackageReference Include="coverlet.collector" Version="6.0.4">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Forge.Domain\Forge.Domain.csproj" />

@@ -1,0 +1,92 @@
+/* packages/design-system/src/tokens.css
+   Forge design tokens. Nothing in the product uses a value not defined here. */
+:root {
+  /* ── Surfaces: cool chrome, warm work ───────────────────────────── */
+  --surface-abyss:    #12161c;  /* app background, behind everything      */
+  --surface-chrome:   #191e26;  /* panels, toolbars, trees                */
+  --surface-raised:   #212832;  /* inputs, cards, menus                   */
+  --surface-overlay:  #2a323e;  /* modals, popovers, tooltips             */
+  --surface-canvas:   #232a26;  /* THE WORKTABLE: warmer, lighter         */
+  --surface-paper:    #f2efe9;  /* data tables and long text only         */
+
+  /* ── Lines ──────────────────────────────────────────────────────── */
+  --line-subtle:      #262d38;
+  --line-default:     #333c4a;
+  --line-strong:      #4a5668;
+
+  /* ── Text ───────────────────────────────────────────────────────── */
+  --text-primary:     #e6e9ee;
+  --text-secondary:   #9aa5b4;
+  --text-tertiary:    #6b7686;
+  --text-on-paper:    #1a1d22;
+  --text-inverse:     #12161c;
+
+  /* ── Accents. Each has exactly one job. ─────────────────────────── */
+  --accent-running:   #e8a33d;  /* RESERVED: play mode, live build only   */
+  --accent-select:    #5b9dd9;  /* selection, focus, active tool          */
+  --accent-create:    #6bbf8a;  /* additive: new, install, success        */
+  --accent-destroy:   #d9636f;  /* destructive: delete, error, uninstall  */
+  --accent-caution:   #c9a227;  /* warnings, budget overruns, deprecation */
+
+  /* ── Semantic aliases ───────────────────────────────────────────── */
+  --focus-ring:       var(--accent-select);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+
+  /* ── Type ───────────────────────────────────────────────────────── */
+  --font-ui:      'IBM Plex Sans', 'IBM Plex Sans Hebrew',
+                  'IBM Plex Sans Arabic', system-ui, sans-serif;
+  --font-mono:    'IBM Plex Mono', ui-monospace, monospace;
+  --font-display: 'Bricolage Grotesque', var(--font-ui);
+
+  --text-2xs:  10px;  --lh-2xs:  14px;   /* pixel coordinates, badges     */
+  --text-xs:   11px;  --lh-xs:   16px;   /* panel labels, tree items      */
+  --text-sm:   13px;  --lh-sm:   20px;   /* DEFAULT UI SIZE               */
+  --text-base: 15px;  --lh-base: 24px;   /* dialogue text, long prose     */
+  --text-lg:   19px;  --lh-lg:   28px;   /* panel headers, dialog titles  */
+  --text-xl:   25px;  --lh-xl:   32px;   /* empty state headlines         */
+  --text-2xl:  33px;  --lh-2xl:  40px;   /* onboarding, marketing only    */
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-bold:   600;   /* 700 is never used in the editor. Too shouty. */
+
+  /* ── Space: 4px base, no arbitrary values ───────────────────────── */
+  --space-1: 4px;   --space-2: 8px;   --space-3: 12px;  --space-4: 16px;
+  --space-5: 24px;  --space-6: 32px;  --space-7: 48px;  --space-8: 64px;
+
+  /* ── Radius: small and consistent. This is a tool, not a card UI. ─ */
+  --radius-sm: 3px;   /* inputs, buttons, chips                          */
+  --radius-md: 5px;   /* panels, menus                                   */
+  --radius-lg: 8px;   /* modals only                                     */
+
+  /* ── Elevation: used sparingly. Depth is conveyed by surface, not shadow. */
+  --shadow-menu:  0 4px 12px rgb(0 0 0 / 0.35);
+  --shadow-modal: 0 16px 48px rgb(0 0 0 / 0.5);
+
+  /* ── Motion ─────────────────────────────────────────────────────── */
+  --ease-out:   cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-inout: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-instant: 80ms;    /* hover, press                               */
+  --dur-quick:   140ms;   /* menus, tooltips, panel toggles             */
+  --dur-normal:  220ms;   /* modals, drawer slides                      */
+
+  /* ── Layout ─────────────────────────────────────────────────────── */
+  --panel-min-width: 240px;
+  --toolbar-height:  40px;
+  --statusbar-height: 24px;
+  --hit-target-min:  32px;   /* desktop. 44px on touch. NEVER smaller.  */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-instant: 0ms; --dur-quick: 0ms; --dur-normal: 0ms;
+  }
+}
+
+/* Touch: bump the minimum hit target per CLAUDE.md Section 5.6. */
+@media (pointer: coarse) {
+  :root {
+    --hit-target-min: 44px;
+  }
+}

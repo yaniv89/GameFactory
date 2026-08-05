@@ -1,0 +1,37 @@
+.fg-select-wrap {
+  position: relative;
+}
+
+.fg-select {
+  width: 100%;
+  min-height: var(--hit-target-min);
+  padding: 0 var(--space-6) 0 var(--space-3);
+  background: var(--surface-raised);
+  border: 1px solid var(--line-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  appearance: none;
+}
+
+.fg-select:hover:not(:disabled) {
+  border-color: var(--line-strong);
+}
+
+.fg-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.fg-select[aria-invalid="true"] {
+  border-color: var(--accent-destroy);
+}
+
+.fg-select-wrap__chevron {
+  position: absolute;
+  inset-inline-end: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--text-tertiary);
+}

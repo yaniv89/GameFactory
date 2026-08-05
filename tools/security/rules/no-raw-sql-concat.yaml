@@ -1,0 +1,18 @@
+rules:
+  - id: no-raw-sql-string-building
+    languages: [csharp]
+    severity: ERROR
+    message: >
+      Raw SQL passed to FromSqlRaw/ExecuteSqlRaw/SqlCommand as a built
+      string — string concatenation ('+') or a C# interpolated string
+      literal ($"...") — is banned (CLAUDE.md Section 1.1 guardrail 7 /
+      CWE-89). Use parameterized queries: EF Core LINQ, FromSqlInterpolated
+      (which parameterizes interpolated values automatically), or Dapper
+      with a parameters object. If dynamic SQL is unavoidable, whitelist
+      column/table names — never interpolate or concatenate raw input.
+    metadata:
+      cwe: "CWE-89: SQL Injection"
+      references:
+        - CLAUDE.md Section 1.1 guardrail 7
+    patterns:
+      - pattern-regex: '(FromSqlRaw|ExecuteSqlRaw|new\s+SqlCommand)\s*\(\s*(\$"|[A-Za-z_][A-Za-z0-9_]*\s*\+)'

@@ -1,0 +1,58 @@
+.fg-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--hit-target-min);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.fg-checkbox--disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.fg-checkbox__box {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-default);
+  background: var(--surface-raised);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fg-checkbox__input:checked + .fg-checkbox__box,
+.fg-checkbox__input:indeterminate + .fg-checkbox__box {
+  background: var(--accent-select);
+  border-color: var(--accent-select);
+}
+
+.fg-checkbox__input {
+  position: absolute;
+  opacity: 0;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.fg-checkbox__box::after {
+  content: "";
+}
+
+.fg-checkbox__input:checked + .fg-checkbox__box::after {
+  content: "\2713";
+  color: var(--text-inverse);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.fg-checkbox__input:indeterminate + .fg-checkbox__box::after {
+  content: "\2013";
+  color: var(--text-inverse);
+  font-size: 11px;
+  line-height: 1;
+}

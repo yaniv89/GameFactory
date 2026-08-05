@@ -238,6 +238,17 @@ Modifiers that matter a lot here:
 | External security audit of the sandbox | $15,000–50,000 | `docs/SPEC.md` Section 21 R3 requires this before Phase 3. Wide range because scope varies enormously; this is the single largest non-salary line |
 | Seed content: first-party art packs + Mission Kits | $5,000–20,000 | Section 21 R1's "fund the first 20 modules directly if needed." A marketplace with an empty Demand Board and no Mission Kits does not demonstrate the flywheel |
 
+### 6.2.1 Bootstrap phase (solo/home, no live users yet)
+
+§6.2's table is the *scaled* picture — it assumes real traffic and is the wrong thing to budget against on day one. This project is being built solo, from home, before any user exists. Nearly every line above is deferred, not incurred:
+
+| Phase | Rough monthly | What it actually buys |
+|---|---|---|
+| Building the engine + editor (M1–M4), no live deployment | **$0–30** | Postgres/Redis/Blob run locally in Docker ($0); GitHub Actions free tier (2,000 min/mo) covers a solo repo; Chromatic free tier (5,000 snapshots/mo); a domain (~$1/mo); Claude API spend from personally testing the wizard (~$5–20/mo) |
+| First live beta, ~10–100 real users | **$100–250** | One small VM or a consumption-tier container host ($20–50); managed Postgres burstable tier or a free/starter hosted tier ($0–25); Redis free tier ($0–10); blob storage at this scale (a few dollars); wizard LLM calls at light beta usage ($50–150) |
+
+The real-device farm, the paid Chromatic tier, the $15–50K security audit, and the $5–20K content-seeding budget in §6.2 stay exactly where they are: gated to M6/M7, funded only once there's a product and traffic worth protecting. None of them are a pre-condition for building or for the first beta. The §6.2 figures ($550–1,700/mo fixed, scaling to $20K+/mo in LLM spend) become relevant only at the creator counts stated there — by which point they're funded by usage, not by savings.
+
 ### 6.3 What the flywheel actually earns
 
 At Section 16.1's 80/20 split, platform revenue is 20% of marketplace GMV. Mission Kits are the interesting line because they are low-price and high-volume: 10,000 creators × 2 kits × $4 × 20% = $16K/mo. That is not a business on its own — it is a signal that the ecosystem is alive, which is what makes the subscription defensible. **The marketplace's job is to prove the platform is worth subscribing to, not to be the revenue.**

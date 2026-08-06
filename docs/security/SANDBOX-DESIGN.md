@@ -170,6 +170,23 @@ else is simply absent from its global scope, not present-but-checked.
 Absence is the enforcement mechanism, not a runtime permission check
 inside a universally-available function.
 
+### 4.0 What actually got built (`packages/runtime-host/src/sandbox/bridge.ts`)
+
+The implementation goes one step further than the illustrative pattern
+above: instead of one `vm.newFunction` per capability method (each one a
+place the "no live reference" rule could be forgotten), there are
+exactly two host functions total — `__hostCall` (sync) and
+`__hostCallAsync` (async) — and every argument and return value crosses
+as a JSON string. JSON structurally cannot carry a live object, function,
+or closure reference, so the rule stops being something every capability
+implementer has to remember correctly and becomes something the
+mechanism itself guarantees. A small generated JS shim (built only from
+the granted `CapabilityHandler`s' declared method names, evaluated once
+at context setup) turns that into the ergonomic `storage.get(key)` /
+`network.fetch(url)` surface a capability implementation actually sees —
+see `CapabilityHandler` in `capabilities.ts` and the concrete
+`LocalStorageHandler`/`NetworkHandler` in `sandbox/capabilities/`.
+
 ### 4.1 `network` gets extra scrutiny
 
 Per `docs/SPEC.md` Section 10.3's own callout, `network` is the
@@ -233,13 +250,14 @@ attack yet.
 - [x] Memory exhaustion (allocation bomb)
 - [x] A crashed module's corruption does not affect a freshly created, unrelated module's runtime
 - [x] Lifecycle safety: `eval()` after `dispose()` throws cleanly; `dispose()` is idempotent and never throws even when the underlying VM is already in a bad state
+- [x] Calling a capability function the module's manifest did not declare — proven two ways: `typeof <capability>` is `"undefined"` in the guest when not granted, and a module granted zero capabilities has no bridge globals (not even `__hostCall`) at all
+- [x] Calling a declared capability with out-of-range/malformed arguments — `storage.set` with a non-string key fails host-side with a clean, catchable error, never trusting the guest's argument types
+- [x] `network` capability requesting a domain outside the manifest's allowlist — rejected host-side before the underlying `fetch` is ever called (proven: the injected fetch mock records zero calls)
+- [x] Calling a method that exists on the capability's namespace object shape but wasn't declared in its `syncMethods`/`asyncMethods` (e.g. `storage.wipe()`) — a normal guest-side `TypeError`, since the shim never defines that key at all
 - [ ] Realm-escape via `Object.getPrototypeOf` chains reaching toward a host-injected object
-- [ ] Calling a capability function the module's manifest did not declare (should not exist in scope at all)
-- [ ] Calling a declared capability with out-of-range/malformed arguments (bridge function must validate, not trust)
-- [ ] `network` capability requesting a domain outside the manifest's allowlist
-- [ ] Attempting to reach another module's runtime/context via a granted capability's bridge function (structurally should be impossible, but assert it once bridge functions exist to try it through)
+- [ ] Attempting to reach another module's runtime/context via a granted capability's bridge function's closure state (the isolation test in `capabilityBridge.test.ts` proves storage state doesn't leak between modules; a fixture specifically probing the bridge closures themselves — e.g. via `Function.prototype.toString`/`arguments.callee`-style introspection — is still open)
 - [ ] Timing-based side-channel probing (measuring interrupt-handler cadence to infer host state) — low severity, worth one fixture to document the residual risk rather than silently ignoring it
-- [ ] Worker termination / cleanup: a module that gets suspended for budget overage does not leave the Worker in a state that leaks memory or blocks the next tick
+- [ ] Worker termination / cleanup: a module that gets suspended for budget overage does not leave the Worker in a state that leaks memory or blocks the next tick — depends on the Worker-hosting wrapper, which Phase 3 deferred (see that section's scope note)
 
 ## 8. Residual risk not resolved by this design
 

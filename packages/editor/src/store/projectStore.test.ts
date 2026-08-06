@@ -3,7 +3,7 @@ import { selectCanRedo, selectCanUndo, useProjectStore } from "./projectStore";
 
 function reset(): void {
   localStorage.clear();
-  useProjectStore.setState({ document: { scenes: [] }, past: [], future: [] });
+  useProjectStore.setState({ document: { scenes: [] }, past: [], future: [], selectedSceneId: undefined });
 }
 
 describe("useProjectStore", () => {
@@ -85,5 +85,56 @@ describe("useProjectStore", () => {
     const persisted = JSON.parse(raw as string);
     expect(persisted.state.document.scenes).toHaveLength(1);
     expect(persisted.state.past).toHaveLength(1);
+  });
+
+  it("selectScene sets and clears the selection without touching the command log", () => {
+    useProjectStore.getState().createScene();
+    const sceneId = useProjectStore.getState().document.scenes[0]?.id as string;
+
+    useProjectStore.getState().selectScene(sceneId);
+    expect(useProjectStore.getState().selectedSceneId).toBe(sceneId);
+    expect(selectCanUndo(useProjectStore.getState())).toBe(true);
+
+    useProjectStore.getState().selectScene(undefined);
+    expect(useProjectStore.getState().selectedSceneId).toBeUndefined();
+  });
+
+  it("does not persist the selection: a fresh session starts with nothing selected", () => {
+    useProjectStore.getState().createScene();
+    const sceneId = useProjectStore.getState().document.scenes[0]?.id as string;
+    useProjectStore.getState().selectScene(sceneId);
+
+    const raw = localStorage.getItem("forge:editor:project-document");
+    const persisted = JSON.parse(raw as string);
+    expect(persisted.state.selectedSceneId).toBeUndefined();
+  });
+
+  it("renameScene dispatches an undoable command that updates only the target scene", () => {
+    useProjectStore.getState().createScene();
+    useProjectStore.getState().createScene();
+    const [first, second] = useProjectStore.getState().document.scenes;
+
+    useProjectStore.getState().renameScene(first!.id, "Village Square");
+    const state = useProjectStore.getState();
+    expect(state.document.scenes.map((scene) => scene.name)).toEqual(["Village Square", second!.name]);
+    expect(selectCanUndo(state)).toBe(true);
+
+    useProjectStore.getState().undo();
+    expect(useProjectStore.getState().document.scenes.map((scene) => scene.name)).toEqual(["Scene 1", "Scene 2"]);
+
+    useProjectStore.getState().redo();
+    expect(useProjectStore.getState().document.scenes.map((scene) => scene.name)).toEqual([
+      "Village Square",
+      "Scene 2",
+    ]);
+  });
+
+  it("renameScene to the same name is a no-op that does not grow the undo log", () => {
+    useProjectStore.getState().createScene();
+    const sceneId = useProjectStore.getState().document.scenes[0]?.id as string;
+
+    useProjectStore.getState().renameScene(sceneId, "Scene 1");
+    const state = useProjectStore.getState();
+    expect(state.past).toHaveLength(1); // only the original createScene entry
   });
 });

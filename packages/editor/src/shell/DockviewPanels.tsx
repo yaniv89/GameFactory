@@ -1,3 +1,4 @@
+import { SceneInspector } from "../inspector/SceneInspector";
 import { InspectorPanel } from "../panels/InspectorPanel";
 import { ModulesPanel, type ModuleSummary } from "../panels/ModulesPanel";
 import { ScenesPanel } from "../panels/ScenesPanel";
@@ -19,19 +20,20 @@ const FIRST_PARTY_MODULES: readonly ModuleSummary[] = [
  * Scene creation now goes through the command-log undo store (Phase 3):
  * every click dispatches a real, undoable "scene/create" command and the
  * document persists to localStorage, so it survives a reload. There is
- * still no backend (M5) — persistence is local-only until then.
+ * still no backend (M5) — persistence is local-only until then. Selecting
+ * a scene (Phase 4) feeds the Inspector via the store's selectedSceneId.
  */
 export function ScenesPanelContainer() {
   const scenes = useProjectStore((state) => state.document.scenes);
   const createScene = useProjectStore((state) => state.createScene);
-
-  const sceneNames = scenes.map((scene) => scene.name);
+  const selectScene = useProjectStore((state) => state.selectScene);
 
   return (
     <ScenesPanel
-      state={sceneNames.length > 0 ? "populated" : "empty"}
-      scenes={sceneNames}
+      state={scenes.length > 0 ? "populated" : "empty"}
+      scenes={scenes}
       onCreateScene={createScene}
+      onSelectScene={selectScene}
     />
   );
 }
@@ -49,7 +51,26 @@ export function ModulesPanelContainer() {
   );
 }
 
+/**
+ * Renders the JSON-Schema-driven SceneInspector for the selected scene
+ * (Phase 4). If the selection points at a scene that no longer exists —
+ * e.g. its creation was undone while it was selected — "empty" is still
+ * the honest state, not a crash or a stale form.
+ */
 export function InspectorPanelContainer() {
-  // No selection model exists yet (Phase 4) — "empty" is the honest state.
-  return <InspectorPanel state="empty" />;
+  const scenes = useProjectStore((state) => state.document.scenes);
+  const selectedSceneId = useProjectStore((state) => state.selectedSceneId);
+  const renameScene = useProjectStore((state) => state.renameScene);
+
+  const selectedScene = scenes.find((scene) => scene.id === selectedSceneId);
+
+  if (!selectedScene) {
+    return <InspectorPanel state="empty" />;
+  }
+
+  return (
+    <InspectorPanel state="populated" selectionLabel={`Scene: ${selectedScene.name}`}>
+      <SceneInspector scene={selectedScene} onRename={renameScene} />
+    </InspectorPanel>
+  );
 }

@@ -13,9 +13,23 @@ describe("ScenesPanel", () => {
   });
 
   it("lists scenes when populated", () => {
-    render(<ScenesPanel state="populated" scenes={["village", "cave-01"]} onCreateScene={() => {}} />);
+    const scenes = [
+      { id: "s1", name: "village" },
+      { id: "s2", name: "cave-01" },
+    ];
+    render(<ScenesPanel state="populated" scenes={scenes} onCreateScene={() => {}} />);
     expect(screen.getByText("village")).toBeInTheDocument();
     expect(screen.getByText("cave-01")).toBeInTheDocument();
+  });
+
+  it("calls onSelectScene with the clicked scene's id", async () => {
+    const onSelectScene = vi.fn();
+    const scenes = [{ id: "s1", name: "village" }];
+    render(
+      <ScenesPanel state="populated" scenes={scenes} onCreateScene={() => {}} onSelectScene={onSelectScene} />,
+    );
+    await userEvent.click(screen.getByRole("treeitem", { name: "village" }));
+    expect(onSelectScene).toHaveBeenCalledWith("s1");
   });
 
   it("fires onRetry from the error state", async () => {

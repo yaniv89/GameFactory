@@ -20,7 +20,8 @@ interface ProjectDocument {
  */
 type ProjectCommand =
   | { readonly type: "scene/create"; readonly sceneId: string; readonly name: string }
-  | { readonly type: "scene/delete"; readonly sceneId: string; readonly name: string };
+  | { readonly type: "scene/delete"; readonly sceneId: string; readonly name: string }
+  | { readonly type: "scene/rename"; readonly sceneId: string; readonly name: string };
 
 interface HistoryEntry {
   readonly forward: ProjectCommand;
@@ -43,6 +44,15 @@ function applyCommand(document: ProjectDocument, command: ProjectCommand): void 
       if (index !== -1) document.scenes.splice(index, 1);
       return;
     }
+    case "scene/rename": {
+      const index = document.scenes.findIndex((candidate) => candidate.id === command.sceneId);
+      const scene = document.scenes[index];
+      // Replaces the element rather than assigning `.name` in place:
+      // SceneSummary's fields are readonly by design (Section 3), so a
+      // rename is "swap in a new value", not a mutation of the old one.
+      if (scene) document.scenes[index] = { id: scene.id, name: command.name };
+      return;
+    }
   }
 }
 
@@ -50,7 +60,16 @@ interface ProjectStoreState {
   document: ProjectDocument;
   past: HistoryEntry[];
   future: HistoryEntry[];
+  /**
+   * Which scene the Scenes tree has selected. Transient UI focus, not
+   * document content — deliberately not part of the command log (selecting
+   * something isn't a fact worth undoing) and not persisted (a reload
+   * should land on "nothing selected", not resume an old focus target).
+   */
+  selectedSceneId: string | undefined;
   createScene: () => void;
+  renameScene: (sceneId: string, name: string) => void;
+  selectScene: (sceneId: string | undefined) => void;
   undo: () => void;
   redo: () => void;
 }
@@ -64,6 +83,7 @@ export const useProjectStore = create<ProjectStoreState>()(
       document: { scenes: [] },
       past: [],
       future: [],
+      selectedSceneId: undefined,
 
       createScene: () =>
         set((state) => {
@@ -74,6 +94,22 @@ export const useProjectStore = create<ProjectStoreState>()(
           applyCommand(state.document, forward);
           state.past.push({ forward, inverse });
           state.future = [];
+        }),
+
+      renameScene: (sceneId, name) =>
+        set((state) => {
+          const scene = state.document.scenes.find((candidate) => candidate.id === sceneId);
+          if (!scene || scene.name === name) return;
+          const forward: ProjectCommand = { type: "scene/rename", sceneId, name };
+          const inverse: ProjectCommand = { type: "scene/rename", sceneId, name: scene.name };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        }),
+
+      selectScene: (sceneId) =>
+        set((state) => {
+          state.selectedSceneId = sceneId;
         }),
 
       undo: () =>

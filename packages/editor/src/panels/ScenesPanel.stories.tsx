@@ -31,5 +31,12 @@ export const Offline: Story = {
 };
 
 export const Populated: Story = {
-  args: { state: "populated", scenes: ["village", "cave-01"], onCreateScene: () => {} },
+  args: {
+    state: "populated",
+    scenes: [
+      { id: "s1", name: "village" },
+      { id: "s2", name: "cave-01" },
+    ],
+    onCreateScene: () => {},
+  },
 };

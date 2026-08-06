@@ -197,6 +197,46 @@ header is the second, independent layer (defense in depth: a bug in the
 bridge's allowlist check doesn't become a full SSRF-via-module bypass if
 the browser's own CSP still blocks the request).
 
+### 4.2 The module bridge (`packages/runtime-host/src/module/`) is a deliberate, narrow exception to "no function reference ever crosses the boundary"
+
+M3's module bridge (`docs/adr/0005`) needs the host to call back into the
+guest — running a system's `run(ctx, entities)` against a batched
+snapshot, invoking an interceptor's `fn`, delivering an event to a guest
+`ctx.events.on()` handler. None of that is expressible through
+`__hostCall`/`__hostCallAsync`, which only carry the guest calling the
+host. So `ModuleBridge` (`moduleBridge.ts`) installs a second, distinct
+family of native functions — `__forge_addSystem`, `__forge_addInterceptor`,
+`__forge_eventsOn`, `__forge_registerModule` — that receive a **live
+guest function handle** as an argument and `.dup()` it for later use via
+`ModuleRuntime.callFunction()`, instead of decomposing it to JSON (which
+is impossible for a function value in the first place).
+
+This does not weaken the isolation property Section 3/4 establish, for a
+specific reason worth stating plainly: the handle never leaves the
+QuickJS runtime it came from. It's a reference into that runtime's own
+WASM heap, valid only for `context.callFunction()` calls made against
+that same `QuickJSContext` — there is no way to turn it into a host-side
+JS closure, pass it to a *different* module's runtime, or use it to reach
+anything outside the VM that produced it. What crosses the boundary in
+*both* directions remains JSON exclusively: the snapshot payload into a
+system, the write-batch back out, the value into and out of an
+interceptor, the event payload into a handler. The function handle itself
+is bookkeeping for "which VM do I call back into," not a channel that
+carries data or capability across the trust boundary — that's still JSON,
+still governed by the same interrupt/memory limits (`ModuleRuntime.callFunction`
+reuses `eval()`'s exact compute-budget rearm and host-exception teardown
+machinery, so a guest system/interceptor/handler is bounded identically
+to top-level guest code).
+
+Everything genuinely security-sensitive — `storage`, `network`, and any
+future capability — stays on the original `__hostCall`/`__hostCallAsync`
+JSON-only mechanism, gated by the manifest capability grant. The
+function-handle mechanism is used only for the module's own
+data/control-flow surface (`WorldApi`, `EventBus`, `InterceptorMap`),
+which every installed module gets access to by definition — it isn't a
+manifest-gated capability, so "absence is the enforcement" doesn't apply
+to it the way it does to `network`.
+
 ## 5. Compute and memory budgets
 
 - **Compute**: `runtime.setInterruptHandler()` with a time-based deadline

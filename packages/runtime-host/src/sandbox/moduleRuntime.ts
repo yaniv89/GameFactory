@@ -49,14 +49,14 @@ export interface EvalFailure {
 export type EvalOutcome = EvalSuccess | EvalFailure;
 
 export class ModuleRuntime {
-  private runtime: QuickJSRuntime | undefined;
-  private context: QuickJSContext | undefined;
+  private vmRuntime: QuickJSRuntime | undefined;
+  private vmContext: QuickJSContext | undefined;
   private readonly computeBudgetMs: number;
   private disposed = false;
 
   private constructor(runtime: QuickJSRuntime, context: QuickJSContext, computeBudgetMs: number) {
-    this.runtime = runtime;
-    this.context = context;
+    this.vmRuntime = runtime;
+    this.vmContext = context;
     this.computeBudgetMs = computeBudgetMs;
   }
 
@@ -78,22 +78,68 @@ export class ModuleRuntime {
   }
 
   /**
+   * Direct access to the underlying context, for bridge installation that
+   * needs live QuickJS handles — e.g. the module-api SetupContext bridge
+   * (`packages/runtime-host/src/module/`), which stores guest function
+   * handles (a system's `run`, an interceptor's `fn`) to call back into
+   * later. That's a different shape of trust than the JSON-only
+   * `CapabilityHandler` contract in `./capabilities.ts`, so it's kept as
+   * a distinct, explicit accessor rather than folded into
+   * `ModuleRuntimeOptions.capabilities`. Throws after dispose() — there is
+   * no context to hand out once the VM is torn down.
+   */
+  get context(): QuickJSContext {
+    if (this.disposed || !this.vmContext) {
+      throw new Error("ModuleRuntime: context accessed after dispose()");
+    }
+    return this.vmContext;
+  }
+
+  /** See `context` above. Needed alongside it for anything that calls `setInterruptHandler`/`executePendingJobs` directly. */
+  get runtime(): QuickJSRuntime {
+    if (this.disposed || !this.vmRuntime) {
+      throw new Error("ModuleRuntime: runtime accessed after dispose()");
+    }
+    return this.vmRuntime;
+  }
+
+  /**
    * Evaluates `code` with a fresh compute-budget deadline for this call —
    * per docs/security/SANDBOX-DESIGN.md Section 5, the interrupt handler
    * is re-armed on every call rather than set once, so each call gets its
    * own budget rather than sharing a stale one.
    */
   eval(code: string): EvalOutcome {
+    return this.evaluateProtected((context) => context.evalCode(code));
+  }
+
+  /**
+   * Calls a guest function handle directly — the host-calls-into-guest
+   * direction the module bridge needs (running a system's `run(ctx,
+   * entities)` against a batched snapshot, per docs/adr/0005). Wrapped in
+   * exactly the same compute-budget rearm and host-exception teardown as
+   * `eval()`: guest code invoked this way is not any more trusted than
+   * guest code invoked via a top-level eval, and must be bounded the same
+   * way. `args` handles are the caller's to dispose; this method does not
+   * take ownership of them.
+   */
+  callFunction(fn: QuickJSHandle, args: readonly QuickJSHandle[]): EvalOutcome {
+    return this.evaluateProtected((context) => context.callFunction(fn, context.undefined, args as QuickJSHandle[]));
+  }
+
+  private evaluateProtected(
+    run: (context: QuickJSContext) => ReturnType<QuickJSContext["evalCode"]>,
+  ): EvalOutcome {
     if (this.disposed) {
-      throw new Error("ModuleRuntime: cannot eval() after dispose()");
+      throw new Error("ModuleRuntime: cannot evaluate after dispose()");
     }
-    const runtime = this.runtime!;
-    const context = this.context!;
+    const runtime = this.vmRuntime!;
+    const context = this.vmContext!;
     const deadline = Date.now() + this.computeBudgetMs;
     runtime.setInterruptHandler(() => Date.now() > deadline);
 
     try {
-      const result = context.evalCode(code);
+      const result = run(context);
       if (result.error) {
         const dumped = context.dump(result.error) as { name?: unknown; message?: unknown } | undefined;
         result.error.dispose();
@@ -146,8 +192,8 @@ export class ModuleRuntime {
    */
   runPendingJobs(): void {
     if (this.disposed) return;
-    const runtime = this.runtime!;
-    const context = this.context!;
+    const runtime = this.vmRuntime!;
+    const context = this.vmContext!;
     const deadline = Date.now() + this.computeBudgetMs;
     runtime.setInterruptHandler(() => Date.now() > deadline);
     try {
@@ -177,16 +223,16 @@ export class ModuleRuntime {
     // failure is exactly the kind of thing worth knowing about even
     // though this method can't propagate it further.
     try {
-      this.context?.dispose();
+      this.vmContext?.dispose();
     } catch (err) {
       console.error("ModuleRuntime.dispose(): context.dispose() failed, continuing cleanup", err);
     }
     try {
-      this.runtime?.dispose();
+      this.vmRuntime?.dispose();
     } catch (err) {
       console.error("ModuleRuntime.dispose(): runtime.dispose() failed, continuing cleanup", err);
     }
-    this.context = undefined;
-    this.runtime = undefined;
+    this.vmContext = undefined;
+    this.vmRuntime = undefined;
   }
 }

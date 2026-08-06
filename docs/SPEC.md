@@ -639,8 +639,10 @@ The runtime ships as three separable layers so that a published game bundles onl
 |---|---|---|
 | `@forge/core` | ECS world, scheduler, event bus, save system, asset loader | 45 KB |
 | `@forge/render-2d` | PixiJS v8 integration, tilemap renderer, camera, sprite batching | 130 KB (incl. Pixi) |
-| `@forge/runtime-host` | Module sandbox, lifecycle, config resolution, dev tooling bridge | 60 KB |
+| `@forge/runtime-host` | Module sandbox lifecycle, capability bridge, config resolution, dev tooling bridge | 60 KB static + ~250 KB sandbox payload, lazy — see below |
 Total engine floor: roughly 235 KB gzipped before any game content or Modules. ⚠ This is a hard budget. Every PR that raises it needs explicit sign-off. Bundle bloat is how browser game platforms die.
+
+⚠ **The QuickJS-in-WASM interpreter (`docs/security/SANDBOX-DESIGN.md`) does not fit inside `@forge/runtime-host`'s 60 KB floor** — the interpreter binary alone is ~234 KB gzipped (measured directly from `quickjs-emscripten`'s `release-sync` variant), 3–4x over even the hard-fail number. `docs/adr/0004` resolves this: the WASM payload is fetched lazily, on first module instantiation, not bundled into the always-shipped floor above. A project with zero installed Modules never pays this cost; a project with at least one Module (first-party or third-party — see that ADR for why first-party modules also go through the sandbox for now) pays it once, cached by the browser thereafter. The 235 KB floor stated above is therefore still accurate for the *always-shipped* baseline; the sandbox payload is tracked as its own separate, lazy-loaded budget line (CLAUDE.md Section 7).
 ### 8.2 Frame loop
 Fixed-timestep simulation with interpolated rendering. This is required for deterministic replays, consistent physics, and sane save/load.
 ```
@@ -1566,6 +1568,7 @@ Enforced in CI. A PR that breaches a budget fails the build.
 | Metric | Target | Hard fail |
 |---|---|---|
 | Engine bundle (gzipped) | 235 KB | 300 KB |
+| Sandbox payload (QuickJS WASM, gzipped, lazy — only paid by a project with ≥1 installed Module, cached after first load) | 250 KB | 320 KB |
 | Time to first frame (cold, 4G) | 2.5 s | 4.0 s |
 | Time to first frame (warm cache) | 800 ms | 1.5 s |
 | Frame time, 1000 entities, desktop | 6 ms | 10 ms |

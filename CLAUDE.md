@@ -198,7 +198,8 @@ Wire into CI in Milestone 1, not later. Full tables in `docs/SPEC.md` Section 18
 |---|---|---|
 | `@forge/core` gzipped | 45 KB | 60 KB |
 | `@forge/render-2d` gzipped | 130 KB | 160 KB |
-| `@forge/runtime-host` gzipped | 60 KB | 80 KB |
+| `@forge/runtime-host` static (lifecycle/bridge glue, always shipped) gzipped | 60 KB | 80 KB |
+| `@forge/runtime-host` sandbox payload (QuickJS WASM, lazy-loaded on first module instantiation, browser-cached after) gzipped | 250 KB | 320 KB — see `docs/adr/0004` |
 | Frame time, 1000 entities, reference desktop | 6 ms | 10 ms |
 | Frame time, 1000 entities, Pixel 6a | 12 ms | 16 ms |
 | Per-module frame cost | 1.0 ms warn | 2.0 ms kill |

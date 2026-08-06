@@ -67,6 +67,16 @@ boundary correctly and prove it holds against the fixtures we can think
 of; it is not a substitute for that audit, and nothing here should be
 read as claiming otherwise.
 
+## 2.3 Loading strategy: lazy, not bundled
+
+The QuickJS WASM interpreter is ~228 KB gzipped on its own — see
+`docs/adr/0004` for the full measurement and the resulting decision.
+Practically, this means the Worker bootstrap must fetch it via a dynamic
+`import()` triggered by "a module is actually about to be instantiated,"
+never a static top-level import in any code path that runs whether or
+not a game has Modules installed. A project with zero installed Modules
+must never cause this payload to load.
+
 ## 3. Isolation architecture
 
 **One `QuickJSRuntime` per module instance, never shared across modules

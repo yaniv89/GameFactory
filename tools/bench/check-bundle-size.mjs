@@ -15,17 +15,31 @@
  * after the code exists is a budget that gets raised (CLAUDE.md Section 7
  * intro).
  *
+ * Also checks `wasmPayloads`: real, npm-resolvable binary assets (the
+ * QuickJS sandbox interpreter — see docs/adr/0004) that are lazy-loaded
+ * rather than bundled into a package's static output, so they can't be
+ * measured by gzipping `dist/*.js` the way the packages above are. These
+ * ARE the final number already — a WASM binary doesn't get smaller by
+ * bundling — so they're not a proxy metric the way the JS packages are.
+ *
  * Usage: node tools/bench/check-bundle-size.mjs
  */
 import { execFileSync } from "node:child_process";
 import { gzipSync } from "node:zlib";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, extname } from "node:path";
+import { createRequire } from "node:module";
 
 const ROOT = new URL("../../", import.meta.url).pathname;
-const { packages } = JSON.parse(
+const { packages, wasmPayloads = [] } = JSON.parse(
   readFileSync(new URL("./budgets.json", import.meta.url), "utf8"),
 );
+// pnpm's strict node_modules isolation means a transitive dependency like
+// @jitl/quickjs-wasmfile-release-sync is only resolvable from within the
+// package that actually depends on it (quickjs-emscripten), not from
+// runtime-host's own node_modules — so resolution starts from there.
+const quickjsEmscriptenRequire = createRequire(new URL("../../packages/runtime-host/package.json", import.meta.url));
+const require = createRequire(quickjsEmscriptenRequire.resolve("quickjs-emscripten"));
 
 function collectJsFiles(dir) {
   const out = [];
@@ -90,8 +104,36 @@ for (const pkg of packages) {
   }
 }
 
+for (const asset of wasmPayloads) {
+  let assetPath;
+  try {
+    assetPath = require.resolve(asset.resolve);
+  } catch (err) {
+    console.error(`check-bundle-size: could not resolve "${asset.resolve}" for "${asset.name}": ${err.message}`);
+    hardFailures++;
+    continue;
+  }
+
+  const sizeKB = gzipSync(readFileSync(assetPath), { level: 9 }).length / 1024;
+  const sizeStr = sizeKB.toFixed(2);
+
+  if (sizeKB > asset.hardFailKB) {
+    console.error(
+      `check-bundle-size: ${asset.name} is ${sizeStr} KB gzipped — exceeds the hard-fail budget of ${asset.hardFailKB} KB.`,
+    );
+    hardFailures++;
+  } else if (sizeKB > asset.targetKB) {
+    console.warn(
+      `check-bundle-size: ${asset.name} is ${sizeStr} KB gzipped — over target (${asset.targetKB} KB) but under hard-fail (${asset.hardFailKB} KB).`,
+    );
+    warnings++;
+  } else {
+    console.log(`check-bundle-size: ${asset.name} is ${sizeStr} KB gzipped (target ${asset.targetKB} KB). OK.`);
+  }
+}
+
 if (hardFailures > 0) {
-  console.error(`\ncheck-bundle-size: ${hardFailures} package(s) over hard-fail budget. See CLAUDE.md Section 7.`);
+  console.error(`\ncheck-bundle-size: ${hardFailures} package(s)/asset(s) over hard-fail budget. See CLAUDE.md Section 7.`);
   process.exit(1);
 }
 

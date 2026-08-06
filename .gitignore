@@ -34,3 +34,6 @@ Thumbs.db
 storybook-static/
 playwright-report/
 test-results/
+
+# --- api-extractor scratch output (etc/*.api.md is the tracked report) ---
+packages/*/temp/

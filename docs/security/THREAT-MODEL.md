@@ -57,7 +57,7 @@ Forge executes untrusted third-party code in players' browsers and processes unt
 ## 3. Detailed notes per threat class
 
 ### 3.1 Runtime module sandbox (T1, T2, T5)
-Third-party runtime module code executes only inside `quickjs-emscripten` in a dedicated Web Worker. See `docs/SPEC.md` Section 10.2 for the ranked sandbox options and the recommendation, and `docs/security/SANDBOX-DESIGN.md` (written during M2) for the adversarial write-up. Required test suite: `packages/runtime-host/test/sandbox-escape.test.ts` (CLAUDE.md Section 4.2 / `docs/SPEC.md` Section 10).
+Third-party runtime module code executes only inside `quickjs-emscripten` in a dedicated Web Worker. See `docs/SPEC.md` Section 10.2 for the ranked sandbox options and the recommendation, and `docs/security/SANDBOX-DESIGN.md` for the adversarial write-up, including what's empirically verified versus still assumed. Required test suite: `packages/runtime-host/test/sandbox-escape.test.ts` (CLAUDE.md Section 4.2 / `docs/SPEC.md` Section 10) — not yet written; the fixture checklist SANDBOX-DESIGN.md Section 7 defines is what it must cover.
 
 ### 3.2 Origin separation (T3, T14, T15)
 Three origins, no exceptions: `app.forge.dev` (editor, first-party only), `play.forge.dev` (published games, previews), `cdn.forge.dev` (static assets, never credentials). Editor embeds the preview in a cross-origin `<iframe>`; every inbound `postMessage` is origin-checked and Zod-schema-validated before use.

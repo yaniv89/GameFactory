@@ -11,5 +11,8 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "echo \"no tests yet for @forge/runtime-host\" && exit 0"
+  },
+  "dependencies": {
+    "quickjs-emscripten": "^0.32.0"
   }
 }

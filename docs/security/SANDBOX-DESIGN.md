@@ -46,9 +46,23 @@ Result, run for real, not inferred from docs:
 | `runtime.setInterruptHandler()` actually stops a hostile infinite loop | ✅ `while (true) {}` interrupted at 201ms against a 200ms deadline (`InternalError: interrupted`), catchable, no tab hang. |
 | `runtime.setMemoryLimit()` actually stops a hostile allocation bomb | ✅ A 10M-iteration string-accumulation loop against a 1MB limit threw a catchable `InternalError: out of memory` — no crash, no host-process memory spike. |
 
-None of this is a substitute for the real fixture suite (Phase 5) — it's
-the minimum "does the premise of this whole milestone actually hold"
-check that had to happen before investing in the architecture below.
+A second round, once `ModuleRuntime` (Phase 3) existed to test against —
+this time in plain Node, not a browser, since QuickJS-in-WASM's isolation
+guarantees don't depend on which JS host environment hosts it (Node
+supports it too, per the library's own platform list; only the
+Worker-hosting wrapper around `ModuleRuntime` is browser-specific, and
+that's thin plumbing, not the security boundary itself):
+
+| Check | Result |
+|---|---|
+| Unbounded guest recursion (`function recurse(n){return recurse(n+1)}`) | ⚠️→✅ **Found a real bug during testing, not just confirmed a guess**: the initial `eval()` implementation let a host-level `RangeError` (the guest recursion overflowing the *host's* native call stack inside the WASM interpreter) escape uncaught, since it never reaches `evalCode()`'s own `{ error }` result path. Fixed: `eval()` now wraps the whole call in try/catch and treats any such exception as fatal to that one `ModuleRuntime` — it disposes itself immediately rather than risk continuing against a WASM instance left in an unknown state. |
+| Does a crashed instance's corruption stay contained, or poison the shared WASM module singleton `getQuickJS()` hands to every runtime? | ✅ Checked, not assumed: after the recursion crash above, attempting `dispose()` on the crashed instance itself triggers a QuickJS-internal C-level assertion abort (`Assertion failed: list_empty(&rt->gc_obj_list)`) — the crash leaves real internal corruption behind. A **freshly created, unrelated `ModuleRuntime`** created immediately after still evaluates `6 * 7` correctly. The corruption stays scoped to the one crashed instance. |
+
+None of this is a substitute for the real fixture suite (`sandbox-escape.test.ts`,
+now written) — it's the minimum "does the premise of this whole
+milestone actually hold" check that had to happen before, and while,
+building the architecture below. The bug it found is exactly why this
+kind of testing has to happen before an audit, not instead of one.
 
 ### 2.2 What is explicitly NOT verified, and why it still matters
 
@@ -204,17 +218,26 @@ from the module's original source. This intrinsic stays enabled.
 
 Each of these needs a fixture module and an assertion that it fails to
 achieve its goal, cleanly (a catchable error or a suspended/terminated
-module — never a hung tab, a host-process crash, or successful escape):
+module — never a hung tab, a host-process crash, or successful escape).
+Checked items have a permanent regression test in
+`packages/runtime-host/test/sandbox-escape.test.ts`; unchecked ones need
+the capability bridge (Phase 4) to exist first, since there's nothing to
+attack yet.
 
-- [ ] Realm-escape via `Function` constructor chain (`({}).constructor.constructor(...)`) — spot-checked in Section 2.1, needs a permanent regression test
+- [x] Realm-escape via `Function` constructor chain (`({}).constructor.constructor(...)`)
+- [x] Host/Node global leakage (`process`, `require`, `globalThis` identity) into evaluated code
+- [x] Prototype pollution of built-ins (`Object.prototype`, `Array.prototype`) attempting to affect a sibling module's realm — confirmed two separate `ModuleRuntime` instances stay isolated
+- [x] Infinite loop / compute exhaustion (`while(true){}`)
+- [x] Unbounded recursion — found and fixed a real bug here (Section 2.1's second table): the original `eval()` let the resulting host-level `RangeError` escape uncaught instead of returning a clean failure
+- [x] Exponential regex backtracking (ReDoS pattern)
+- [x] Memory exhaustion (allocation bomb)
+- [x] A crashed module's corruption does not affect a freshly created, unrelated module's runtime
+- [x] Lifecycle safety: `eval()` after `dispose()` throws cleanly; `dispose()` is idempotent and never throws even when the underlying VM is already in a bad state
 - [ ] Realm-escape via `Object.getPrototypeOf` chains reaching toward a host-injected object
-- [ ] Prototype pollution of built-ins (`Object.prototype`, `Array.prototype`) attempting to affect the host realm or a sibling module's realm
-- [ ] Infinite loop / compute exhaustion (`while(true){}`, deeply recursive function, exponential regex backtracking) — spot-checked in Section 2.1, needs a permanent regression test
-- [ ] Memory exhaustion (allocation bomb) — spot-checked in Section 2.1, needs a permanent regression test
 - [ ] Calling a capability function the module's manifest did not declare (should not exist in scope at all)
 - [ ] Calling a declared capability with out-of-range/malformed arguments (bridge function must validate, not trust)
 - [ ] `network` capability requesting a domain outside the manifest's allowlist
-- [ ] Attempting to reach another module's runtime/context (two Workers, two runtimes — should be structurally impossible, but assert it)
+- [ ] Attempting to reach another module's runtime/context via a granted capability's bridge function (structurally should be impossible, but assert it once bridge functions exist to try it through)
 - [ ] Timing-based side-channel probing (measuring interrupt-handler cadence to infer host state) — low severity, worth one fixture to document the residual risk rather than silently ignoring it
 - [ ] Worker termination / cleanup: a module that gets suspended for budget overage does not leave the Worker in a state that leaks memory or blocks the next tick
 

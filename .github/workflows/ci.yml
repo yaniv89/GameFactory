@@ -224,18 +224,18 @@ jobs:
 
   # ── Gates whose target code doesn't exist yet: log honestly, don't fake ─
   future-milestone-gates:
-    name: Deferred gates (sandbox escape M2, cross-tenant auth M5)
+    name: Deferred gates (cross-tenant auth M5)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Sandbox escape suite (Milestone M2)
-        run: |
-          if [ -f packages/runtime-host/test/sandbox-escape.test.ts ]; then
-            echo "sandbox-escape.test.ts found — this job needs updating to actually run it."
-            exit 1
-          else
-            echo "::notice::packages/runtime-host/test/sandbox-escape.test.ts does not exist yet. Required before Milestone M2 exits (CLAUDE.md Section 8), not before M0. Not faking a pass — this step exists so the gate is visible in CI from day one."
-          fi
+      # Sandbox escape suite (Milestone M2) is no longer a tripwire here —
+      # packages/runtime-host/test/sandbox-escape.test.ts exists and runs
+      # for real via js-build-test's `pnpm -r run test` (runtime-host's
+      # own package.json `test` script is now `vitest run`, same as every
+      # other package). Its capability-bridge fixtures are still pending
+      # M2 Phase 4 — tracked in docs/security/SANDBOX-DESIGN.md Section 7,
+      # not hidden behind a CI tripwire that would otherwise never fire
+      # again once the file exists.
       - name: Cross-tenant authorization suite (Milestone M5)
         run: |
           if find services/Forge.Tests -iname "*CrossTenant*" | grep -q .; then

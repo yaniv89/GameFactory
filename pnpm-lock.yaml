@@ -105,6 +105,10 @@ importers:
       quickjs-emscripten:
         specifier: ^0.32.0
         version: 0.32.0
+    devDependencies:
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@26.1.2)(jsdom@30.0.1)(lightningcss@1.33.0)
 
 packages:
 

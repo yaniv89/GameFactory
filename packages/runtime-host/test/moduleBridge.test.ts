@@ -173,6 +173,57 @@ describe("ModuleBridge: interceptors", () => {
     expect(result).toEqual({ attacker: 1, target: 2, amount: 10, type: "physical" });
   });
 
+  it("ctx.runInterceptor triggers the shared chain, including filters registered by a different module", async () => {
+    const harness = makeHarness();
+    const owner = await createBridge("test-dialogue", harness); // owns and triggers the point
+    const translator = await createBridge("test-translator", harness); // filters it
+
+    owner.setup(`
+      (function () {
+        function setup(ctx) {
+          ctx.events.on("dialogue:start", function () {
+            var line = ctx.runInterceptor("dialogue:line", { speaker: "Shopkeeper", text: "Welcome.", locale: "en" });
+            ctx.events.emit("dialogue:shown", line);
+          });
+        }
+        __forge_registerModule({ setup: setup });
+      })();
+    `);
+    translator.setup(`
+      (function () {
+        function setup(ctx) {
+          ctx.addInterceptor("dialogue:line", 10, function (value) {
+            return Object.assign({}, value, { text: value.text.toUpperCase() });
+          });
+        }
+        __forge_registerModule({ setup: setup });
+      })();
+    `);
+
+    const shown: unknown[] = [];
+    harness.events.on("dialogue:shown", (payload) => shown.push(payload));
+    harness.events.emit("dialogue:start", {});
+
+    expect(shown).toEqual([{ speaker: "Shopkeeper", text: "WELCOME.", locale: "en" }]);
+  });
+
+  it("ctx.runInterceptor returns the value unchanged when no filter is registered for the point", async () => {
+    const harness = makeHarness();
+    const bridge = await createBridge("test-no-filters", harness);
+    const outcome = bridge.setup(`
+      (function () {
+        function setup(ctx) {
+          var result = ctx.runInterceptor("dialogue:line", { speaker: "A", text: "hi", locale: "en" });
+          if (result.speaker !== "A" || result.text !== "hi" || result.locale !== "en") {
+            throw new Error("runInterceptor mutated the value with no filters registered: " + JSON.stringify(result));
+          }
+        }
+        __forge_registerModule({ setup: setup });
+      })();
+    `);
+    expect(outcome.ok).toBe(true);
+  });
+
   it("an interceptor that throws fails open — the value passes through unchanged", async () => {
     const harness = makeHarness();
     const bridge = await createBridge("test-bad-interceptor", harness);
@@ -235,6 +286,37 @@ describe("ModuleBridge: events", () => {
     // guest-local) — the real assertion is that emit() didn't throw and
     // didn't call a disposed handle, which a crash here would reveal.
     expect(true).toBe(true);
+  });
+});
+
+describe("ModuleBridge: ctx.world (docs/adr/0006)", () => {
+  it("is reachable from setup() and from an events.on() handler, and writes apply immediately", async () => {
+    const harness = makeHarness();
+    const bridge = await createBridge("test-ctx-world", harness);
+
+    const outcome = bridge.setup(`
+      (function () {
+        function setup(ctx) {
+          ctx.defineComponent("Health", { hp: { type: "number" } }, { hp: 10 });
+          var entity = ctx.world.create({ Health: { hp: 10 } });
+          if (!ctx.world.has(entity, "Health")) throw new Error("ctx.world.create()/has() did not apply immediately");
+
+          ctx.events.on("damage", function (payload) {
+            var health = ctx.world.get(payload.entity, "Health");
+            ctx.world.set(payload.entity, "Health", { hp: health.hp - payload.amount });
+          });
+
+          // Drive the event from inside setup() itself — proves ctx.world inside
+          // the events.on() handler (not just setup()'s own top-level scope) sees
+          // a live, immediately-applied world.
+          ctx.events.emit("damage", { entity: entity, amount: 3 });
+          var after = ctx.world.get(entity, "Health");
+          if (after.hp !== 7) throw new Error("expected hp 7 after damage, got " + after.hp);
+        }
+        __forge_registerModule({ setup: setup });
+      })();
+    `);
+    expect(outcome.ok).toBe(true);
   });
 });
 

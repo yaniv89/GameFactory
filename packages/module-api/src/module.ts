@@ -3,6 +3,7 @@ import type { ComponentHandle, ComponentJsonSchema, ComponentShape } from "./com
 import type { EventBus } from "./events";
 import type { InterceptorContext, InterceptorMap } from "./interceptors";
 import type { SystemDefinition } from "./scheduler";
+import type { WorldApi } from "./world";
 
 /**
  * The complete public surface a runtime module sees. Per CLAUDE.md
@@ -33,6 +34,16 @@ export interface SetupContext {
   readonly config: Readonly<Record<string, unknown>>;
   readonly engineVersion: string;
   readonly moduleName: string;
+  /**
+   * A live `WorldApi`, per docs/adr/0006 — available from `setup()` itself
+   * and, via closure over `ctx`, from any `events.on()` handler. Each
+   * method here is one immediate host round trip (like
+   * `InterceptorContext.world`), not the per-tick batched view
+   * `TickContext.world` gives a running system (docs/adr/0005) — neither
+   * `setup()` nor an event handler runs at per-entity, per-tick
+   * frequency, so there's no batching win to chase here.
+   */
+  readonly world: WorldApi;
 
   defineComponent<T extends ComponentShape>(name: string, schema: ComponentJsonSchema, defaults: T): ComponentHandle<T>;
   /**
@@ -53,6 +64,30 @@ export interface SetupContext {
     priority: number,
     fn: (value: InterceptorMap[K], ctx: InterceptorContext) => InterceptorMap[K],
   ): void;
+  /**
+   * Triggers the shared filter chain for `point` — the counterpart to
+   * `addInterceptor`, per docs/adr/0006. Use this when your module *owns*
+   * a named interception point (e.g. `@forge/dialogue` computing a line
+   * to show, then giving every other module's registered `dialogue:line`
+   * filter a chance to transform it before displaying it):
+   *
+   * ```ts
+   * const line = ctx.runInterceptor("dialogue:line", {
+   *   speaker: "Shopkeeper",
+   *   text: "Welcome to my shop.",
+   *   locale: "en",
+   * });
+   * // line.text may have been rewritten by a translation module's filter.
+   * ```
+   *
+   * Runs every module's registered filter for `point`, in priority order,
+   * including filters registered by modules other than the caller. Your
+   * module does not need to have called `addInterceptor` for `point`
+   * itself — in the common case (you own the point, another module
+   * filters it) it won't have. Returns `value` unchanged if no filter is
+   * registered for `point`.
+   */
+  runInterceptor<K extends keyof InterceptorMap>(point: K, value: InterceptorMap[K]): InterceptorMap[K];
 
   /** Namespaced key-value store, persisted into the save file. Always present — `storage:local` is implicit-consent (docs/SPEC.md Section 10.3). */
   readonly storage: StorageApi;

@@ -281,7 +281,9 @@ export interface SetupContext {
     // (undocumented)
     readonly moduleName: string;
     readonly net?: NetApi;
+    runInterceptor<K extends keyof InterceptorMap>(point: K, value: InterceptorMap[K]): InterceptorMap[K];
     readonly storage: StorageApi;
+    readonly world: WorldApi;
 }
 
 // @public

@@ -330,6 +330,13 @@ export class ModuleBridge {
       this.options.interceptors.add(point, priority, (value) => this.runGuestInterceptor(point, fn, value), moduleName);
     });
 
+    this.installFn("__forge_runInterceptor", (pointHandle, valueJsonHandle) => {
+      const point = context.getString(pointHandle);
+      const value = JSON.parse(context.getString(valueJsonHandle));
+      const result = this.options.interceptors.run(point, value, { world: this.options.world });
+      return context.newString(JSON.stringify(result));
+    });
+
     this.installFn("__forge_eventsOn", (eventHandle, handlerFnHandle) => {
       const event = context.getString(eventHandle);
       const handlerFn = handlerFnHandle.dup();
@@ -388,17 +395,28 @@ export class ModuleBridge {
           result = ids;
           break;
         }
+        // create/destroy/add/remove are deferred in @forge/core (World's own
+        // doc comment: "applied by World.flush() at a phase boundary") —
+        // but ctx.world's whole point (docs/adr/0006) is a live, immediately-
+        // visible view, unlike a system's snapshot-batched WorldApi. There's
+        // no cross-system-ordering hazard in flushing eagerly here (unlike
+        // inside a system's write-batch apply): these calls only ever happen
+        // from setup() or an event handler, never mid-tick inside a phase.
         case "create":
           result = world.create(args[0] as Record<string, Record<string, number>>);
+          world.flush();
           break;
         case "destroy":
           world.destroy(args[0] as EntityId);
+          world.flush();
           break;
         case "add":
           world.add(args[0] as EntityId, args[1] as string, args[2] as Record<string, number>);
+          world.flush();
           break;
         case "remove":
           world.remove(args[0] as EntityId, args[1] as string);
+          world.flush();
           break;
         case "set":
           world.set(args[0] as EntityId, args[1] as string, args[2] as Record<string, number>);

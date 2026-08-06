@@ -136,6 +136,48 @@ export function buildModulePrelude(
     };
   }
 
+  // The live, per-call WorldApi seen by a registered interceptor's callback
+  // and by ctx.runInterceptor's own filter chain -- every method is one
+  // direct, synchronous __forge_world host call (JSON in, JSON out),
+  // unlike a system's snapshot-backed WorldApi (makeSnapshotWorld) which
+  // never round-trips during run(). Interceptors aren't a hot per-entity
+  // path (docs/adr/0005), so paying one host call per method here is the
+  // right tradeoff, not the batched one systems need.
+  function makeLiveWorld() {
+    return {
+      get: function (id, component) {
+        return JSON.parse(__forge_world("get", JSON.stringify([id, component])));
+      },
+      has: function (id, component) {
+        return JSON.parse(__forge_world("has", JSON.stringify([id, component])));
+      },
+      query: function (components) {
+        var ids = JSON.parse(__forge_world("query", JSON.stringify([components])));
+        return {
+          count: ids.length,
+          forEach: function (fn) {
+            for (var i = 0; i < ids.length; i++) fn(ids[i]);
+          }
+        };
+      },
+      create: function (components) {
+        return JSON.parse(__forge_world("create", JSON.stringify([components || {}])));
+      },
+      destroy: function (id) {
+        __forge_world("destroy", JSON.stringify([id]));
+      },
+      add: function (id, component, value) {
+        __forge_world("add", JSON.stringify([id, component, value]));
+      },
+      remove: function (id, component) {
+        __forge_world("remove", JSON.stringify([id, component]));
+      },
+      set: function (id, component, value) {
+        __forge_world("set", JSON.stringify([id, component, value]));
+      }
+    };
+  }
+
   function flattenForRead(components) {
     var flat = {};
     for (var name in components) {
@@ -218,44 +260,14 @@ export function buildModulePrelude(
     addInterceptor: function (point, priority, fn) {
       var wrappedFn = function (valueJson) {
         var value = JSON.parse(valueJson);
-        var ctx = {
-          world: {
-            get: function (id, component) {
-              return JSON.parse(__forge_world("get", JSON.stringify([id, component])));
-            },
-            has: function (id, component) {
-              return JSON.parse(__forge_world("has", JSON.stringify([id, component])));
-            },
-            query: function (components) {
-              var ids = JSON.parse(__forge_world("query", JSON.stringify([components])));
-              return {
-                count: ids.length,
-                forEach: function (fn2) {
-                  for (var i2 = 0; i2 < ids.length; i2++) fn2(ids[i2]);
-                }
-              };
-            },
-            create: function (components) {
-              return JSON.parse(__forge_world("create", JSON.stringify([components || {}])));
-            },
-            destroy: function (id) {
-              __forge_world("destroy", JSON.stringify([id]));
-            },
-            add: function (id, component, value2) {
-              __forge_world("add", JSON.stringify([id, component, value2]));
-            },
-            remove: function (id, component) {
-              __forge_world("remove", JSON.stringify([id, component]));
-            },
-            set: function (id, component, value2) {
-              __forge_world("set", JSON.stringify([id, component, value2]));
-            }
-          }
-        };
-        var result = fn(value, ctx);
+        var result = fn(value, { world: makeLiveWorld() });
         return JSON.stringify(result === undefined ? value : result);
       };
       __forge_addInterceptor(point, priority, wrappedFn);
+    },
+
+    runInterceptor: function (point, value) {
+      return JSON.parse(__forge_runInterceptor(point, JSON.stringify(value)));
     },
 
     events: {
@@ -278,6 +290,8 @@ export function buildModulePrelude(
         __forge_eventsEmit(event, JSON.stringify(payload));
       }
     },
+
+    world: makeLiveWorld(),
 
     storage: globalThis.storage,
     net: globalThis.network,

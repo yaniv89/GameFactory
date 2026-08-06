@@ -74,12 +74,18 @@ importers:
       '@forge/ds':
         specifier: workspace:*
         version: link:../design-system
+      '@forge/render-2d':
+        specifier: workspace:*
+        version: link:../render-2d
       dockview:
         specifier: ^7.0.4
         version: 7.0.4
       dockview-react:
         specifier: ^7.0.4
         version: 7.0.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      pixi.js:
+        specifier: ^8.19.0
+        version: 8.19.0
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -87,6 +93,9 @@ importers:
         specifier: ^18.3.1
         version: 18.3.1(react@18.3.1)
     devDependencies:
+      '@playwright/test':
+        specifier: 1.62.0
+        version: 1.62.0
       '@storybook/addon-a11y':
         specifier: ^8.6.18
         version: 8.6.18(storybook@8.6.18)

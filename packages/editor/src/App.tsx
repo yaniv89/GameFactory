@@ -2,7 +2,7 @@ import { DockviewReact, type DockviewReadyEvent, type IDockviewPanelProps } from
 import "dockview/dist/styles/dockview.css";
 import "./styles/dockview-theme.css";
 import type { FC } from "react";
-import { CanvasPlaceholder } from "./shell/CanvasPlaceholder";
+import { SceneCanvas } from "./canvas/SceneCanvas";
 import { InspectorPanelContainer, ModulesPanelContainer, ScenesPanelContainer } from "./shell/DockviewPanels";
 import "./App.css";
 
@@ -10,7 +10,7 @@ const COMPONENTS: Record<string, FC<IDockviewPanelProps>> = {
   scenes: ScenesPanelContainer,
   modules: ModulesPanelContainer,
   inspector: InspectorPanelContainer,
-  canvas: CanvasPlaceholder,
+  canvas: SceneCanvas,
 };
 
 function onReady(event: DockviewReadyEvent): void {

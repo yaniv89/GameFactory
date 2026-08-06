@@ -22,6 +22,12 @@
  * ARE the final number already — a WASM binary doesn't get smaller by
  * bundling — so they're not a proxy metric the way the JS packages are.
  *
+ * And `appBundles`: real Vite production builds (`vite build`, minified
+ * and tree-shaken) of a full application, as opposed to `packages`'
+ * unbundled `tsc` library output. Also a real number already, not a proxy
+ * — this is what CLAUDE.md Section 7's "Editor JS, gzipped, initial
+ * route" budget actually measures.
+ *
  * Usage: node tools/bench/check-bundle-size.mjs
  */
 import { execFileSync } from "node:child_process";
@@ -31,7 +37,7 @@ import { join, extname } from "node:path";
 import { createRequire } from "node:module";
 
 const ROOT = new URL("../../", import.meta.url).pathname;
-const { packages, wasmPayloads = [] } = JSON.parse(
+const { packages, wasmPayloads = [], appBundles = [] } = JSON.parse(
   readFileSync(new URL("./budgets.json", import.meta.url), "utf8"),
 );
 // pnpm's strict node_modules isolation means a transitive dependency like
@@ -129,6 +135,37 @@ for (const asset of wasmPayloads) {
     warnings++;
   } else {
     console.log(`check-bundle-size: ${asset.name} is ${sizeStr} KB gzipped (target ${asset.targetKB} KB). OK.`);
+  }
+}
+
+for (const app of appBundles) {
+  const appDir = join(ROOT, app.path);
+  try {
+    execFileSync("pnpm", ["--filter", app.packageName, "run", "build"], {
+      cwd: ROOT,
+      stdio: "inherit",
+    });
+  } catch (err) {
+    console.error(`check-bundle-size: build failed for ${app.name}`);
+    process.exit(1);
+  }
+
+  const jsFiles = collectJsFiles(join(appDir, app.buildDir));
+  const sizeKB = gzippedSizeKB(jsFiles);
+  const sizeStr = sizeKB.toFixed(2);
+
+  if (sizeKB > app.hardFailKB) {
+    console.error(
+      `check-bundle-size: ${app.name} is ${sizeStr} KB gzipped — exceeds the hard-fail budget of ${app.hardFailKB} KB.`,
+    );
+    hardFailures++;
+  } else if (sizeKB > app.targetKB) {
+    console.warn(
+      `check-bundle-size: ${app.name} is ${sizeStr} KB gzipped — over target (${app.targetKB} KB) but under hard-fail (${app.hardFailKB} KB).`,
+    );
+    warnings++;
+  } else {
+    console.log(`check-bundle-size: ${app.name} is ${sizeStr} KB gzipped (target ${app.targetKB} KB). OK.`);
   }
 }
 

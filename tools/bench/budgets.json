@@ -12,5 +12,15 @@
       "targetKB": 250,
       "hardFailKB": 320
     }
+  ],
+  "appBundles": [
+    {
+      "name": "forge-editor (initial route)",
+      "packageName": "forge-editor",
+      "path": "packages/editor",
+      "buildDir": "dist-app",
+      "targetKB": 400,
+      "hardFailKB": 550
+    }
   ]
 }

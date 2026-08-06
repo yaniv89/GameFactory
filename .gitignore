@@ -1,6 +1,7 @@
 # --- JS / TS / pnpm ---
 node_modules/
 dist/
+dist-app/
 .vite/
 .turbo/
 *.tsbuildinfo

@@ -35,6 +35,8 @@ jobs:
       - run: pnpm -r run build
       - name: Build Storybook (design-system)
         run: pnpm --filter @forge/ds run build-storybook
+      - name: Build Storybook (editor)
+        run: pnpm --filter forge-editor run build-storybook
 
   # ── Gate: pnpm dependency vulnerability scan ──────────────────────────
   js-audit:

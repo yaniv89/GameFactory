@@ -1,0 +1,53 @@
+/*
+ * Dockview's structural CSS (dockview/dist/styles/dockview.css) ships
+ * several bundled color presets (abyss, gh, mocha, monokai, nord, sol...).
+ * We don't use any of them — CLAUDE.md 5.2: "Every color, space, and type
+ * value in the product comes from [tokens.css]." This file maps dockview's
+ * own semantic `--dv-*` custom properties onto our tokens instead, applied
+ * via the `.fg-dockview` class (see App.tsx's `className` on DockviewReact)
+ * so nothing here depends on any of dockview's preset theme classes.
+ */
+.fg-dockview {
+  --dv-group-view-background-color: var(--surface-canvas);
+  --dv-tabs-and-actions-container-background-color: var(--surface-chrome);
+  --dv-tabs-and-actions-container-font-size: var(--text-xs);
+  --dv-tabs-and-actions-container-height: var(--toolbar-height);
+  --dv-tab-font-size: var(--text-xs);
+  --dv-tab-divider-color: var(--line-subtle);
+  --dv-tab-border-radius: var(--radius-sm);
+  --dv-tab-margin: var(--space-1);
+
+  --dv-activegroup-visiblepanel-tab-background-color: var(--surface-canvas);
+  --dv-activegroup-visiblepanel-tab-color: var(--text-primary);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--surface-chrome);
+  --dv-activegroup-hiddenpanel-tab-color: var(--text-secondary);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--surface-chrome);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--text-secondary);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--surface-chrome);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--text-tertiary);
+
+  --dv-tab-group-line-height: 2px;
+  --dv-tab-group-color: var(--accent-select);
+
+  --dv-sash-color: var(--line-default);
+  --dv-active-sash-color: var(--accent-select);
+  --dv-active-sash-transition-duration: var(--dur-quick);
+  --dv-separator-border: 1px solid var(--line-subtle);
+
+  --dv-drag-over-background-color: color-mix(in srgb, var(--accent-select) 15%, transparent);
+  --dv-drag-over-border-color: var(--accent-select);
+
+  --dv-icon-hover-background-color: var(--surface-raised);
+  --dv-border-radius: var(--radius-sm);
+  --dv-transition-duration: var(--dur-quick);
+
+  --dv-floating-titlebar-background-color: var(--surface-chrome);
+  --dv-floating-border: 1px solid var(--line-default);
+  --dv-floating-box-shadow: var(--shadow-menu);
+
+  --dv-context-menu-background-color: var(--surface-overlay);
+  --dv-context-menu-color: var(--text-primary);
+
+  --dv-scrollbar-background-color: var(--surface-chrome);
+  --dv-paneview-header-border-color: var(--line-subtle);
+}

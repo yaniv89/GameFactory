@@ -21,9 +21,11 @@
     "@forge/render-2d": "workspace:*",
     "dockview": "^7.0.4",
     "dockview-react": "^7.0.4",
+    "immer": "^11.1.16",
     "pixi.js": "^8.19.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@playwright/test": "1.62.0",

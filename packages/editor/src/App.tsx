@@ -4,6 +4,7 @@ import "./styles/dockview-theme.css";
 import type { FC } from "react";
 import { SceneCanvas } from "./canvas/SceneCanvas";
 import { InspectorPanelContainer, ModulesPanelContainer, ScenesPanelContainer } from "./shell/DockviewPanels";
+import { UndoRedoControls } from "./shell/UndoRedoControls";
 import "./App.css";
 
 const COMPONENTS: Record<string, FC<IDockviewPanelProps>> = {
@@ -43,6 +44,7 @@ export function App() {
       <header className="fg-app__toolbar">
         <span className="fg-app__title">Forge</span>
         <span className="fg-app__project-name">Untitled Project</span>
+        <UndoRedoControls />
       </header>
       <div className="fg-app__dock">
         <DockviewReact components={COMPONENTS} onReady={onReady} className="fg-dockview" />

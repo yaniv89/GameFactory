@@ -4,7 +4,7 @@ Date: 2026-08-06
 
 ## Status
 
-Proposed — not yet agreed. Per CLAUDE.md Section 11's "Adding to the Module API" template: `packages/module-api` is not touched until this is agreed.
+Accepted.
 
 ## Context
 

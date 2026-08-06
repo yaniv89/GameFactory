@@ -5,3 +5,4 @@ export * from "./sandbox/capabilities/network";
 export * from "./module/moduleBridge";
 export * from "./module/snapshot";
 export * from "./module/writeBatch";
+export * from "./save/saveCoordinator";

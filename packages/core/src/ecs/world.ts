@@ -57,6 +57,11 @@ export class World {
     return this.commandBuffer.length;
   }
 
+  /** Highest entity index ever allocated + 1 — save/load's `SavedWorld.nextEntityId` (packages/core/src/save/serialize.ts). */
+  get entityIndexBound(): number {
+    return this.allocator.indexBound;
+  }
+
   defineComponent<S extends ComponentSchema>(
     name: string,
     schema: S,
@@ -116,6 +121,34 @@ export class World {
     this.commandBuffer.destroy(entity);
   }
 
+  /**
+   * Places `entity` directly into its archetype at exactly the given id,
+   * bypassing the CommandBuffer — save/load only, never called mid-tick.
+   * Applies immediately (no flush needed) since it's meant to run in a
+   * tight loop reconstructing a whole world from a save file, where
+   * deferring to a later flush() would serve no purpose. The world this
+   * is called on is expected to be freshly constructed (no pre-existing
+   * entities) — restoring into a live world isn't a supported use case.
+   */
+  restoreEntity(entity: EntityId, components: Readonly<Record<string, ComponentFieldValues>>): void {
+    this.allocator.restore(entity);
+    const mask = createMask();
+    const componentIds: number[] = [];
+    for (const name of Object.keys(components)) {
+      const id = this.components.getByName(name).id;
+      setBit(mask, id);
+      componentIds.push(id);
+    }
+    componentIds.sort((a, b) => a - b);
+
+    const archetype = componentIds.length === 0 ? this.emptyArchetype : this.getOrCreateArchetype(mask, componentIds);
+    const row = archetype.addEntity(entity);
+    for (const name of Object.keys(components)) {
+      this.writeValues(archetype, this.components.getByName(name).id, row, components[name]!);
+    }
+    this.setLocation(entity, { archetype, row });
+  }
+
   add(entity: EntityId, componentName: string, value: ComponentFieldValues): void {
     this.commandBuffer.add(entity, this.components.getByName(componentName).id, { ...value });
   }
@@ -132,6 +165,13 @@ export class World {
     const location = this.locationOf(entity);
     if (!location) return false;
     return location.archetype.hasComponent(this.components.getByName(componentName).id);
+  }
+
+  /** Every component name `entity` currently carries. Empty array for a dead or componentless entity. Used by save/load to enumerate what to serialize without the caller having to already know an entity's shape. */
+  componentsOf(entity: EntityId): readonly string[] {
+    const location = this.locationOf(entity);
+    if (!location) return [];
+    return location.archetype.componentIds.map((id) => this.components.getById(id).name);
   }
 
   get<S extends ComponentSchema>(

@@ -23,6 +23,8 @@ const VALID_PHASES = new Set<string>(PHASE_ORDER);
 
 export interface ModuleBridgeOptions {
   readonly moduleName: string;
+  /** The module's own declared version (manifest `version`, docs/SPEC.md Section 9.2) — save/load's `moduleVersions`/`migrateSave` bookkeeping (packages/runtime-host/src/save/saveCoordinator.ts) keys off this, not off `engineVersion`. */
+  readonly version: string;
   readonly engineVersion: string;
   readonly config: Readonly<Record<string, unknown>>;
   readonly world: World;
@@ -92,10 +94,20 @@ export class ModuleBridge {
   private constructor(
     private readonly runtime: ModuleRuntime,
     private readonly options: ModuleBridgeOptions,
+    private readonly storageHandler: LocalStorageHandler,
   ) {}
 
+  get moduleName(): string {
+    return this.options.moduleName;
+  }
+
+  get moduleVersion(): string {
+    return this.options.version;
+  }
+
   static async create(options: ModuleBridgeOptions): Promise<ModuleBridge> {
-    const capabilities: CapabilityHandler[] = [new LocalStorageHandler()];
+    const storageHandler = new LocalStorageHandler();
+    const capabilities: CapabilityHandler[] = [storageHandler];
     if (options.networkAllowedOrigins) {
       capabilities.push(new NetworkHandler({ allowedOrigins: options.networkAllowedOrigins }));
     }
@@ -105,7 +117,7 @@ export class ModuleBridge {
       computeBudgetMs: options.computeBudgetMs,
       capabilities,
     });
-    const bridge = new ModuleBridge(runtime, options);
+    const bridge = new ModuleBridge(runtime, options, storageHandler);
     bridge.installNativeFunctions();
     const preludeOutcome = bridge.runtime.eval(
       buildModulePrelude(options.moduleName, options.engineVersion, options.config),
@@ -157,6 +169,44 @@ export class ModuleBridge {
     const outcome = this.runtime.callFunction(this.teardownHandle, [teardownCtxHandle]);
     teardownCtxHandle.dispose();
     return outcome;
+  }
+
+  /** This module's `storage:local` contents — the save system's source for `SaveFile.globals[moduleName]` (docs/SPEC.md Section 8.5). Empty object if the module never wrote anything. */
+  snapshotStorage(): Record<string, unknown> {
+    return this.storageHandler.snapshot();
+  }
+
+  /** Replaces this module's `storage:local` contents wholesale — save-load only. */
+  restoreStorage(data: Readonly<Record<string, unknown>>): void {
+    this.storageHandler.restore(data);
+  }
+
+  /**
+   * Calls the module's `migrateSave(from, to, data)` if it declared one.
+   * Returns `undefined` if it didn't — the save coordinator
+   * (packages/runtime-host/src/save/saveCoordinator.ts) is the one that
+   * decides whether that's fine (no migration needed) or a hard refusal
+   * (a major version bump with no migration path, per docs/SPEC.md
+   * Section 8.5 point 1) — this method just reports what happened.
+   * Throws if the guest's `migrateSave` itself throws or exceeds its
+   * compute budget: a failed migration must not silently drop data.
+   */
+  migrateSave(from: number, to: number, data: unknown): unknown {
+    if (!this.migrateSaveHandle) return undefined;
+    const context = this.runtime.context;
+    const fromHandle = context.newNumber(from);
+    const toHandle = context.newNumber(to);
+    const dataHandle = context.newString(JSON.stringify(data === undefined ? null : data));
+    const outcome = this.runtime.callFunction(this.migrateSaveHandle, [fromHandle, toHandle, dataHandle]);
+    fromHandle.dispose();
+    toHandle.dispose();
+    dataHandle.dispose();
+    if (!outcome.ok) {
+      throw new Error(
+        `Module "${this.options.moduleName}" migrateSave(${from} -> ${to}) failed: ${outcome.error.message}`,
+      );
+    }
+    return JSON.parse(outcome.value as string);
   }
 
   dispose(): void {
@@ -359,7 +409,7 @@ export class ModuleBridge {
       return context.newString(JSON.stringify(result === undefined ? null : result));
     });
 
-    this.installFn("__forge_registerModule", (moduleHandle) => {
+    this.installFn("__forge_registerModuleNative", (moduleHandle) => {
       const setupProp = context.getProp(moduleHandle, "setup");
       if (context.typeof(setupProp) !== "function") {
         setupProp.dispose();

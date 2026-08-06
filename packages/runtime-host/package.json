@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@forge/core": "workspace:*",
+    "@forge/module-api": "workspace:*",
     "quickjs-emscripten": "^0.32.0"
   },
   "devDependencies": {

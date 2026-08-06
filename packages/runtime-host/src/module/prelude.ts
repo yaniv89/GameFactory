@@ -14,9 +14,17 @@
  * - `__forge_eventsEmit` / `__forge_defineComponent` / `__forge_log` /
  *   `__forge_world` are plain JSON-in/JSON-out calls, same shape as
  *   `__hostCall`.
- * - `__forge_registerModule` is how the module's own top-level script hands
- *   its `{setup, teardown?, migrateSave?}` object back to the host — see
- *   moduleBridge.ts's `setup()` doc comment for the exact convention.
+ * - `__forge_registerModule` (guest-visible, defined below — NOT the native
+ *   `__forge_registerModuleNative`) is how the module's own top-level
+ *   script hands its `{setup, teardown?, migrateSave?}` object back to the
+ *   host — see moduleBridge.ts's `setup()` doc comment for the exact
+ *   convention. It exists as a guest-side wrapper (rather than calling the
+ *   native function directly) specifically to JSON-wrap `migrateSave`:
+ *   every other native bridge function speaks JSON on the wire, but a
+ *   module author's own `migrateSave(from, to, data)` is written against
+ *   `@forge/module-api`'s real signature (`data: unknown`, a deserialized
+ *   value) — the wrapper is what reconciles the two without leaking the
+ *   wire format into the public-facing contract.
  *
  * A system's `run(ctx, entities)` is itself wrapped here (`addSystem`
  * below) so the *actual* per-tick call the host makes
@@ -141,6 +149,17 @@ export function buildModulePrelude(
       __forge_log(level, message, JSON.stringify(data === undefined ? null : data));
     };
   }
+
+  globalThis.__forge_registerModule = function (moduleObj) {
+    var wrapped = { setup: moduleObj.setup, teardown: moduleObj.teardown };
+    if (typeof moduleObj.migrateSave === "function") {
+      wrapped.migrateSave = function (from, to, dataJson) {
+        var result = moduleObj.migrateSave(from, to, JSON.parse(dataJson));
+        return JSON.stringify(result === undefined ? null : result);
+      };
+    }
+    __forge_registerModuleNative(wrapped);
+  };
 
   globalThis.__forge_setupContext = {
     moduleName: MODULE_NAME,

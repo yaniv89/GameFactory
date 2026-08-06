@@ -109,6 +109,9 @@ importers:
       '@forge/core':
         specifier: workspace:*
         version: link:../core
+      '@forge/module-api':
+        specifier: workspace:*
+        version: link:../module-api
       quickjs-emscripten:
         specifier: ^0.32.0
         version: 0.32.0

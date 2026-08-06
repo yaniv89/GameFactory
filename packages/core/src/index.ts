@@ -15,3 +15,4 @@ export * from "./events/interceptors";
 export * from "./physics/aabb";
 export * from "./physics/spatialHash";
 export * from "./physics/collisionSystem";
+export * from "./save/serialize";

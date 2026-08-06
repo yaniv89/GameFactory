@@ -15,6 +15,17 @@ export class LocalStorageHandler implements CapabilityHandler {
 
   private readonly store = new Map<string, unknown>();
 
+  /** Full-store dump for the save system (`packages/runtime-host/src/save/saveCoordinator.ts`) — never exposed to the guest, host-side use only. */
+  snapshot(): Record<string, unknown> {
+    return Object.fromEntries(this.store);
+  }
+
+  /** Replaces the entire store — save-load only. Not guest-visible. */
+  restore(data: Readonly<Record<string, unknown>>): void {
+    this.store.clear();
+    for (const [key, value] of Object.entries(data)) this.store.set(key, value);
+  }
+
   call(method: string, args: readonly unknown[]): unknown {
     switch (method) {
       case "get": {

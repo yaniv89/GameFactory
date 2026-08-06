@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ModuleBridge } from "../src/module/moduleBridge";
 
 const BASE_OPTIONS = {
+  version: "1.0.0",
   engineVersion: "0.0.0-test",
   config: {},
   memoryLimitBytes: 16 * 1024 * 1024,

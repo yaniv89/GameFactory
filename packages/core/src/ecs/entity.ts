@@ -89,4 +89,36 @@ export class EntityAllocator {
   get indexBound(): number {
     return this.nextIndex;
   }
+
+  /**
+   * Re-marks a specific packed id as alive — used by save/load
+   * (`packages/core/src/save/serialize.ts`) to restore entities at their
+   * exact saved ids instead of allocating fresh ones, which a save file's
+   * component data (namespaced by the original ids) depends on. Any
+   * indices between the previous `nextIndex` and this one are pushed onto
+   * the free list so they stay reachable by future `create()` calls
+   * rather than being silently stranded — this is the mechanism that
+   * makes restoring entities in an arbitrary order (not sorted by index)
+   * safe. Throws on an index below `nextIndex` that isn't currently free,
+   * which is what a save file with a duplicate entity id would produce —
+   * callers validate that ahead of time (`loadSave`), so reaching this
+   * throw means a genuinely corrupt save slipped through.
+   */
+  restore(id: EntityId): void {
+    const index = entityIndex(id);
+    const generation = entityGeneration(id);
+    this.ensureCapacity(index);
+    if (index >= this.nextIndex) {
+      for (let i = this.nextIndex; i < index; i++) this.freeList.push(i);
+      this.nextIndex = index + 1;
+    } else {
+      const pos = this.freeList.indexOf(index);
+      if (pos === -1) {
+        throw new Error(`EntityAllocator.restore: index ${index} is not free (duplicate entity id in save data?)`);
+      }
+      this.freeList.splice(pos, 1);
+    }
+    this.generations[index] = generation;
+    this.aliveCount++;
+  }
 }

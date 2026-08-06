@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { EventBusImpl } from "../src/events/eventBus";
 
-interface TestEvents {
+type TestEvents = {
   "combat:hit": { attacker: number; target: number; amount: number };
   "score:changed": { value: number };
-}
+};
 
 describe("EventBusImpl", () => {
   it("calls a subscribed handler with the emitted payload", () => {

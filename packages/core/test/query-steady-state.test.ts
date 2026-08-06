@@ -3,15 +3,16 @@ import { registerCoreComponents } from "../src/components/core";
 import { World } from "../src/ecs/world";
 
 /**
- * A true heap-allocation proof (CLAUDE.md 1.3 guardrail 14 / docs/SPEC.md
- * 8.4's "proven by a heap-profile assertion in CI") needs a real browser
- * heap snapshot — that's M1 Phase 5's Playwright benchmark harness, not a
- * Vitest unit test. What IS provable here, in plain Node: once no new
- * archetype shapes appear, Query.forEach/forEachChunk must not recompute
- * or reallocate their matched-archetype list on every call — that cache is
+ * The actual heap-growth proof (CLAUDE.md 1.3 guardrail 14) lives in
+ * `steady-state-heap.test.ts` — it turned out `--expose-gc` plus plain
+ * Node's `process.memoryUsage()` is enough for that; no browser needed,
+ * a plan floated here before M1 Phase 5 actually built it. What THIS
+ * test covers is narrower and complementary: once no new archetype
+ * shapes appear, Query.forEach/forEachChunk must not recompute or
+ * reallocate their matched-archetype list on every call — that cache is
  * the specific mechanism this package uses to keep steady-state iteration
  * allocation-free, so a regression in it is exactly the kind of bug this
- * test should catch.
+ * test should catch even before it shows up as heap growth.
  */
 describe("Query: steady-state caching", () => {
   it("does not recompute matched archetypes across repeated calls once shapes stabilize", () => {

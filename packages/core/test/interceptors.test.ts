@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { World } from "../src/ecs/world";
 import { InterceptorRegistry } from "../src/events/interceptors";
 
-interface TestInterceptorMap {
+type TestInterceptorMap = {
   "movement:speed": { entity: number; speed: number };
-}
+};
 
 function makeCtx() {
   return { world: new World() };

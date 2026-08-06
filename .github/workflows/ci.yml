@@ -97,6 +97,55 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: node tools/bench/check-bundle-size.mjs
 
+  # ── Gate: @forge/render-2d real-browser tests (M1 Phase 3/5) ───────────
+  # Verifies real Pixi behavior (WebGPU/WebGL2 boot, actual rendered pixel
+  # output, render-throughput/heap sanity) in headless Chromium — this
+  # sandbox's pre-installed browser doesn't exist on a GH runner, so CI
+  # installs its own via `playwright install` rather than relying on the
+  # sandbox-path fallback in playwright.config.ts (see that file's doc
+  # comment). Correctness assertions here block merge same as any other
+  # test; the frame-time/heap numbers it also prints are informational —
+  # see runtime-benchmark below for why those aren't a hard gate yet.
+  render-2d-browser-tests:
+    name: JS/TS — @forge/render-2d real-browser (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @forge/render-2d exec playwright install --with-deps chromium
+      - run: pnpm --filter @forge/render-2d run test:browser
+
+  # ── Informational: runtime simulation benchmark (M1 Phase 5) ──────────
+  # Runs @forge/core's headless ECS+collision throughput bench and
+  # steady-state heap check (part of its normal `test` script, already
+  # covered by js-build-test) and prints the numbers. Deliberately NOT a
+  # pass/fail gate against docs/SPEC.md Section 18.1's ms budgets: those
+  # budgets are defined against Section 18.3's reference device matrix
+  # (Moto G Power 2021, Pixel 6a, 2019 MacBook Air, Ryzen 5/GTX 1660),
+  # and GitHub Actions' shared runners are none of those — gating on them
+  # here would be comparing incomparable hardware and could pass or fail
+  # for reasons that have nothing to do with the code. See
+  # tools/bench/README.md. This job exists so the numbers are visible in
+  # every PR (regression-by-eyeball) until a real device farm exists to
+  # gate on for real.
+  runtime-benchmark:
+    name: Performance (informational) — runtime simulation benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @forge/core run bench
+
   # ── Gate: Semgrep (custom rules + OWASP Top 10 pack) ──────────────────
   semgrep:
     name: Security gate — Semgrep

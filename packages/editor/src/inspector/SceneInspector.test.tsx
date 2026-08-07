@@ -5,13 +5,13 @@ import { SceneInspector } from "./SceneInspector";
 
 describe("SceneInspector", () => {
   it("shows the scene's current name", () => {
-    render(<SceneInspector scene={{ id: "s1", name: "Village" }} onRename={() => {}} />);
+    render(<SceneInspector scene={{ id: "s1", name: "Village", entities: [] }} onRename={() => {}} />);
     expect(screen.getByLabelText("Name")).toHaveValue("Village");
   });
 
   it("calls onRename with the scene id and the new name once the field is blurred", async () => {
     const onRename = vi.fn();
-    render(<SceneInspector scene={{ id: "s1", name: "Village" }} onRename={onRename} />);
+    render(<SceneInspector scene={{ id: "s1", name: "Village", entities: [] }} onRename={onRename} />);
 
     const nameField = screen.getByLabelText("Name");
     await userEvent.clear(nameField);
@@ -23,7 +23,7 @@ describe("SceneInspector", () => {
 
   it("does not call onRename when the field is blurred with an empty name", async () => {
     const onRename = vi.fn();
-    render(<SceneInspector scene={{ id: "s1", name: "Village" }} onRename={onRename} />);
+    render(<SceneInspector scene={{ id: "s1", name: "Village", entities: [] }} onRename={onRename} />);
 
     const nameField = screen.getByLabelText("Name");
     await userEvent.clear(nameField);

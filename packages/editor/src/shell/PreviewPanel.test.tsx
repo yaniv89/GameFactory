@@ -1,6 +1,7 @@
 import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useCanvasPreviewStore } from "../canvas/canvasPreviewStore";
+import { useProjectStore } from "../store/projectStore";
 import { PreviewPanel } from "./PreviewPanel";
 
 function getIframe(): HTMLIFrameElement {
@@ -18,6 +19,12 @@ function dispatchFromIframe(data: unknown, options: { origin?: string; sourceIsI
 describe("PreviewPanel", () => {
   beforeEach(() => {
     useCanvasPreviewStore.setState({ tiles: undefined });
+    useProjectStore.setState({
+      document: { scenes: [], installedModules: {} },
+      past: [],
+      future: [],
+      selection: undefined,
+    });
   });
 
   it("shows the loading overlay before the iframe reports ready", () => {
@@ -55,14 +62,19 @@ describe("PreviewPanel", () => {
     expect(screen.getByRole("status")).toBeInTheDocument();
   });
 
-  it("posts the current tile snapshot to the iframe once it reports ready", () => {
+  it("posts the current tile snapshot and this scene's entities once the iframe reports ready", () => {
     useCanvasPreviewStore.setState({ tiles: [1, 2, 3] });
+    act(() => useProjectStore.getState().createScene());
+    const sceneId = useProjectStore.getState().document.scenes[0]!.id;
+    act(() => useProjectStore.getState().placeNpc(sceneId, 2, 2));
+    const entities = useProjectStore.getState().document.scenes[0]!.entities;
+
     render(<PreviewPanel />);
     const postMessageSpy = vi.spyOn(getIframe().contentWindow as Window, "postMessage");
 
     dispatchFromIframe({ type: "forge:preview:ready" });
 
-    expect(postMessageSpy).toHaveBeenCalledWith({ type: "forge:preview:tiles", tiles: [1, 2, 3] }, "*");
+    expect(postMessageSpy).toHaveBeenCalledWith({ type: "forge:preview:scene", tiles: [1, 2, 3], entities }, "*");
   });
 
   it("does not post tiles before the iframe has reported ready", () => {

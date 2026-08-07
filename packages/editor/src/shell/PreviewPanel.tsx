@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useCanvasPreviewStore } from "../canvas/canvasPreviewStore";
 import { isPreviewToEditorMessage, type EditorToPreviewMessage } from "../preview/protocol";
+import { useProjectStore } from "../store/projectStore";
 import "./PreviewPanel.css";
 
 type PreviewPanelStatus = "loading" | "ready" | "error";
@@ -34,6 +35,12 @@ export function PreviewPanel() {
   const [status, setStatus] = useState<PreviewPanelStatus>("loading");
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const tiles = useCanvasPreviewStore((state) => state.tiles);
+  // Entities are already real projectStore state (unlike tiles, which
+  // live inside an imperative TilemapLayer — see canvasPreviewStore's
+  // doc comment) — read directly rather than bouncing through a second
+  // bridge store. Scoped to scenes[0]: SceneCanvas doesn't have a
+  // scene-tab/"active scene" concept yet (Phase 7's documented gap).
+  const entities = useProjectStore((state) => state.document.scenes[0]?.entities);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent): void => {
@@ -52,14 +59,14 @@ export function PreviewPanel() {
     return () => window.removeEventListener("message", onMessage);
   }, []);
 
-  // Pushes the latest tile snapshot once the preview has confirmed it's
+  // Pushes the latest scene snapshot once the preview has confirmed it's
   // ready to receive one — sending earlier would race the preview's own
   // RenderHost boot.
   useEffect(() => {
     if (status !== "ready" || !tiles) return;
-    const message: EditorToPreviewMessage = { type: "forge:preview:tiles", tiles };
+    const message: EditorToPreviewMessage = { type: "forge:preview:scene", tiles, entities: entities ?? [] };
     iframeRef.current?.contentWindow?.postMessage(message, "*");
-  }, [status, tiles]);
+  }, [status, tiles, entities]);
 
   return (
     <div className="fg-preview-panel">

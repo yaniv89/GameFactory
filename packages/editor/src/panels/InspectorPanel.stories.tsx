@@ -23,7 +23,7 @@ export const Populated: Story = {
 export const PopulatedWithSceneInspector: Story = {
   render: () => (
     <InspectorPanel state="populated" selectionLabel="Scene: Village">
-      <SceneInspector scene={{ id: "s1", name: "Village" }} onRename={() => {}} />
+      <SceneInspector scene={{ id: "s1", name: "Village", entities: [] }} onRename={() => {}} />
     </InspectorPanel>
   ),
 };

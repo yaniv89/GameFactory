@@ -22,6 +22,9 @@ export const TILE_PALETTE: readonly PaletteEntry[] = [
   { id: 4, label: "Wall", color: 0x6b6b6b },
 ];
 
+/** The one tile id the walkable preview (Phase 7) treats as solid. */
+export const WALL_TILE_ID = 4;
+
 /**
  * One real Pixi Texture per palette color, generated once via a GPU
  * render pass (`renderer.generateTexture`) — not a data: URI or canvas

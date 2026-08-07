@@ -36,3 +36,28 @@
   font-size: var(--text-xs);
   font-family: var(--font-mono);
 }
+
+.fg-preview-app__dialogue {
+  position: absolute;
+  inset-block-end: var(--space-4);
+  inset-inline: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background: var(--surface-chrome);
+  border: 1px solid var(--line-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-menu);
+}
+
+.fg-preview-app__dialogue-speaker {
+  font-weight: var(--weight-bold);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.fg-preview-app__dialogue-text {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}

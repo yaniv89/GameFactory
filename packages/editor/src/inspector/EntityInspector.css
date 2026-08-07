@@ -1,0 +1,11 @@
+.fg-entity-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.fg-entity-inspector__hint {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  margin: 0;
+}

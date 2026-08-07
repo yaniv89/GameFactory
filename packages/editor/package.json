@@ -17,7 +17,10 @@
     "build-storybook": "storybook build"
   },
   "dependencies": {
+    "@forge/core": "workspace:*",
+    "@forge/dialogue": "workspace:*",
     "@forge/ds": "workspace:*",
+    "@forge/module-api": "workspace:*",
     "@forge/render-2d": "workspace:*",
     "dockview": "^7.0.4",
     "dockview-react": "^7.0.4",

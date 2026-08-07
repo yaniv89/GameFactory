@@ -52,7 +52,29 @@ test.describe("cross-origin preview bridge, in a real browser", () => {
     await canvasSurface.waitFor({ state: "visible" });
     const box = await canvasSurface.boundingBox();
     if (!box) throw new Error("SceneCanvas: canvas element has no bounding box");
-    await canvasSurface.click({ position: { x: Math.floor(box.width / 2), y: Math.floor(box.height / 2) } });
+    // Not the panel's literal center: the camera fits the whole grid into
+    // the canvas on boot, which at this panel's aspect ratio letterboxes
+    // it horizontally, and the floating tool toolbar + tile palette
+    // (.fg-scene-canvas__controls, anchored top-left) covers most of that
+    // letterboxed strip's height at the default docked panel size. The
+    // grid's own bottom-right corner tile is guaranteed clear of both
+    // (same reasoning and technique as sceneCanvas.spec.ts's real-browser
+    // paint test, which hit this exact overlap first).
+    const paintPoint = await page.evaluate(() => {
+      const debug = (
+        window as unknown as {
+          __forgeSceneCanvasDebug: {
+            camera: { worldToScreen(x: number, y: number): { x: number; y: number } };
+            layer: { gridWidth: number; gridHeight: number; tileSize: number };
+          };
+        }
+      ).__forgeSceneCanvasDebug;
+      const { gridWidth, gridHeight, tileSize } = debug.layer;
+      const worldX = (gridWidth - 1) * tileSize + tileSize / 2;
+      const worldY = (gridHeight - 1) * tileSize + tileSize / 2;
+      return debug.camera.worldToScreen(worldX, worldY);
+    });
+    await canvasSurface.click({ position: { x: Math.floor(paintPoint.x), y: Math.floor(paintPoint.y) } });
 
     // 4. Read the actual pixel inside the preview iframe's own canvas —
     // reached via Playwright's frame API (which isn't subject to the
@@ -74,17 +96,30 @@ test.describe("cross-origin preview bridge, in a real browser", () => {
       // debug hook pattern).
       const debug = (
         window as unknown as {
-          __forgePreviewDebug?: { host: { app: { renderer: { render(target: unknown): void }; stage: unknown } } };
+          __forgePreviewDebug?: {
+            host: { app: { renderer: { render(target: unknown): void }; stage: unknown } };
+            camera: { worldToScreen(x: number, y: number): { x: number; y: number } };
+            layer: { gridWidth: number; gridHeight: number; tileSize: number };
+          };
         }
       ).__forgePreviewDebug;
       debug?.host.app.renderer.render(debug.host.app.stage);
+
+      // Sample the same grid tile that was painted (the grid's bottom-right
+      // corner) — the preview has its own independent camera/layer, fitted
+      // to its own panel size, so this is not necessarily the same pixel
+      // as the editor canvas's click point.
+      const { gridWidth, gridHeight, tileSize } = debug!.layer;
+      const worldX = (gridWidth - 1) * tileSize + tileSize / 2;
+      const worldY = (gridHeight - 1) * tileSize + tileSize / 2;
+      const screen = debug!.camera.worldToScreen(worldX, worldY);
 
       const canvas = canvasEl as HTMLCanvasElement;
       const probe = document.createElement("canvas");
       probe.width = 1;
       probe.height = 1;
       const ctx = probe.getContext("2d")!;
-      ctx.drawImage(canvas, Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1, 0, 0, 1, 1);
+      ctx.drawImage(canvas, Math.floor(screen.x), Math.floor(screen.y), 1, 1, 0, 0, 1, 1);
       return Array.from(ctx.getImageData(0, 0, 1, 1).data);
     });
 

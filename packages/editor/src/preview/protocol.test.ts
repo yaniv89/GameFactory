@@ -1,39 +1,66 @@
 import { describe, expect, it } from "vitest";
 import { GRID_HEIGHT, GRID_WIDTH } from "../canvas/gridConstants";
-import { isPreviewTilesMessage, isPreviewToEditorMessage } from "./protocol";
+import type { EntityPlacement } from "../store/projectStore";
+import { isPreviewSceneMessage, isPreviewToEditorMessage } from "./protocol";
 
 const VALID_TILES = new Array(GRID_WIDTH * GRID_HEIGHT).fill(0);
+const NPC: EntityPlacement = { id: "e1", kind: "npc", tileX: 3, tileY: 4, dialogue: { speaker: "NPC", text: "Hi" } };
+const PLAYER_START: EntityPlacement = { id: "e2", kind: "player-start", tileX: 1, tileY: 1 };
 
-describe("isPreviewTilesMessage", () => {
-  it("accepts a well-formed tiles message", () => {
-    expect(isPreviewTilesMessage({ type: "forge:preview:tiles", tiles: VALID_TILES })).toBe(true);
+describe("isPreviewSceneMessage", () => {
+  it("accepts a well-formed scene message with entities", () => {
+    expect(
+      isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [NPC, PLAYER_START] }),
+    ).toBe(true);
+  });
+
+  it("accepts an entity with no dialogue (player-start)", () => {
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [PLAYER_START] })).toBe(
+      true,
+    );
+  });
+
+  it("accepts an empty entities array", () => {
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [] })).toBe(true);
   });
 
   it("rejects a wrong type discriminant", () => {
-    expect(isPreviewTilesMessage({ type: "forge:preview:ready" })).toBe(false);
+    expect(isPreviewSceneMessage({ type: "forge:preview:ready" })).toBe(false);
   });
 
   it("rejects a tiles array of the wrong length", () => {
-    expect(isPreviewTilesMessage({ type: "forge:preview:tiles", tiles: [1, 2, 3] })).toBe(false);
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: [1, 2, 3], entities: [] })).toBe(false);
   });
 
   it("rejects a tiles array containing a non-finite value", () => {
     const bad = [...VALID_TILES];
     bad[5] = Number.NaN;
-    expect(isPreviewTilesMessage({ type: "forge:preview:tiles", tiles: bad })).toBe(false);
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: bad, entities: [] })).toBe(false);
   });
 
-  it("rejects a tiles array containing a non-number", () => {
-    const bad: unknown[] = [...VALID_TILES];
-    bad[5] = "3";
-    expect(isPreviewTilesMessage({ type: "forge:preview:tiles", tiles: bad })).toBe(false);
+  it("rejects a missing entities field", () => {
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES })).toBe(false);
+  });
+
+  it("rejects an entity with an invalid kind", () => {
+    const bad = { ...NPC, kind: "dragon" };
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [bad] })).toBe(false);
+  });
+
+  it("rejects an entity with a non-numeric tileX", () => {
+    const bad = { ...NPC, tileX: "3" };
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [bad] })).toBe(false);
+  });
+
+  it("rejects an entity whose dialogue is missing a text field", () => {
+    const bad = { ...NPC, dialogue: { speaker: "NPC" } };
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [bad] })).toBe(false);
   });
 
   it("rejects null, primitives, and objects missing fields", () => {
-    expect(isPreviewTilesMessage(null)).toBe(false);
-    expect(isPreviewTilesMessage("forge:preview:tiles")).toBe(false);
-    expect(isPreviewTilesMessage({})).toBe(false);
-    expect(isPreviewTilesMessage({ type: "forge:preview:tiles" })).toBe(false);
+    expect(isPreviewSceneMessage(null)).toBe(false);
+    expect(isPreviewSceneMessage("forge:preview:scene")).toBe(false);
+    expect(isPreviewSceneMessage({})).toBe(false);
   });
 });
 
@@ -51,7 +78,7 @@ describe("isPreviewToEditorMessage", () => {
   });
 
   it("rejects an unrecognized type and non-objects", () => {
-    expect(isPreviewToEditorMessage({ type: "forge:preview:tiles", tiles: [] })).toBe(false);
+    expect(isPreviewToEditorMessage({ type: "forge:preview:scene", tiles: [], entities: [] })).toBe(false);
     expect(isPreviewToEditorMessage(undefined)).toBe(false);
     expect(isPreviewToEditorMessage(42)).toBe(false);
   });

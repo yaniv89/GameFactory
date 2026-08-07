@@ -3,9 +3,30 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 import type { FormValues } from "../inspector/jsonSchema";
 
+export interface EntityDialogue {
+  readonly speaker: string;
+  readonly text: string;
+}
+
+export interface EntityPlacement {
+  readonly id: string;
+  readonly kind: "player-start" | "npc";
+  readonly tileX: number;
+  readonly tileY: number;
+  /** Only meaningful for `kind: "npc"` — the one-line dialogue it says on interact (Phase 7). */
+  readonly dialogue?: EntityDialogue;
+}
+
 export interface SceneSummary {
   readonly id: string;
   readonly name: string;
+  /**
+   * Not `readonly EntityPlacement[]`: mirrors `ProjectDocument.scenes`
+   * itself, a plain mutable array holding readonly-fielded objects —
+   * applyCommand mutates the array in place (push/splice), while
+   * individual entities are replaced wholesale on change, never patched.
+   */
+  entities: EntityPlacement[];
 }
 
 interface ProjectDocument {
@@ -29,7 +50,14 @@ type ProjectCommand =
   // upserts unconditionally, so installing and reconfiguring are the same
   // primitive operation.
   | { readonly type: "module/install"; readonly moduleName: string; readonly config: FormValues }
-  | { readonly type: "module/uninstall"; readonly moduleName: string };
+  | { readonly type: "module/uninstall"; readonly moduleName: string }
+  | { readonly type: "entity/add"; readonly sceneId: string; readonly entity: EntityPlacement }
+  | { readonly type: "entity/delete"; readonly sceneId: string; readonly entityId: string }
+  | { readonly type: "entity/configure"; readonly sceneId: string; readonly entityId: string; readonly dialogue: EntityDialogue | undefined }
+  // Only one player-start per scene: `entity` undefined means "no player
+  // start". Self-inverse-shaped like scene/rename — the inverse just
+  // carries whatever the previous value was, including undefined.
+  | { readonly type: "entity/set-player-start"; readonly sceneId: string; readonly entity: EntityPlacement | undefined };
 
 interface HistoryEntry {
   readonly forward: ProjectCommand;
@@ -45,7 +73,7 @@ interface HistoryEntry {
 function applyCommand(document: ProjectDocument, command: ProjectCommand): void {
   switch (command.type) {
     case "scene/create":
-      document.scenes.push({ id: command.sceneId, name: command.name });
+      document.scenes.push({ id: command.sceneId, name: command.name, entities: [] });
       return;
     case "scene/delete": {
       const index = document.scenes.findIndex((scene) => scene.id === command.sceneId);
@@ -58,7 +86,7 @@ function applyCommand(document: ProjectDocument, command: ProjectCommand): void 
       // Replaces the element rather than assigning `.name` in place:
       // SceneSummary's fields are readonly by design (Section 3), so a
       // rename is "swap in a new value", not a mutation of the old one.
-      if (scene) document.scenes[index] = { id: scene.id, name: command.name };
+      if (scene) document.scenes[index] = { id: scene.id, name: command.name, entities: scene.entities };
       return;
     }
     case "module/install":
@@ -67,13 +95,47 @@ function applyCommand(document: ProjectDocument, command: ProjectCommand): void 
     case "module/uninstall":
       delete document.installedModules[command.moduleName];
       return;
+    case "entity/add": {
+      const scene = document.scenes.find((candidate) => candidate.id === command.sceneId);
+      if (scene) scene.entities.push(command.entity);
+      return;
+    }
+    case "entity/delete": {
+      const scene = document.scenes.find((candidate) => candidate.id === command.sceneId);
+      if (!scene) return;
+      const index = scene.entities.findIndex((entity) => entity.id === command.entityId);
+      if (index !== -1) scene.entities.splice(index, 1);
+      return;
+    }
+    case "entity/configure": {
+      const scene = document.scenes.find((candidate) => candidate.id === command.sceneId);
+      if (!scene) return;
+      const index = scene.entities.findIndex((entity) => entity.id === command.entityId);
+      const entity = scene.entities[index];
+      if (!entity) return;
+      // exactOptionalPropertyTypes: an optional field can't be assigned
+      // `undefined` explicitly — omit the key entirely to clear it.
+      const { dialogue: _currentDialogue, ...withoutDialogue } = entity;
+      scene.entities[index] =
+        command.dialogue !== undefined ? { ...withoutDialogue, dialogue: command.dialogue } : withoutDialogue;
+      return;
+    }
+    case "entity/set-player-start": {
+      const scene = document.scenes.find((candidate) => candidate.id === command.sceneId);
+      if (!scene) return;
+      const index = scene.entities.findIndex((entity) => entity.kind === "player-start");
+      if (index !== -1) scene.entities.splice(index, 1);
+      if (command.entity) scene.entities.push(command.entity);
+      return;
+    }
   }
 }
 
-/** What the Inspector shows. Scenes and modules are both selectable, but only one at a time. */
+/** What the Inspector shows. Scenes, modules, and entities are all selectable, but only one at a time. */
 export type Selection =
   | { readonly kind: "scene"; readonly sceneId: string }
-  | { readonly kind: "module"; readonly moduleName: string };
+  | { readonly kind: "module"; readonly moduleName: string }
+  | { readonly kind: "entity"; readonly sceneId: string; readonly entityId: string };
 
 interface ProjectStoreState {
   document: ProjectDocument;
@@ -93,6 +155,11 @@ interface ProjectStoreState {
   uninstallModule: (moduleName: string) => void;
   configureModule: (moduleName: string, config: FormValues) => void;
   selectModule: (moduleName: string | undefined) => void;
+  placePlayerStart: (sceneId: string, tileX: number, tileY: number) => void;
+  placeNpc: (sceneId: string, tileX: number, tileY: number) => void;
+  removeEntity: (sceneId: string, entityId: string) => void;
+  configureEntityDialogue: (sceneId: string, entityId: string, dialogue: EntityDialogue) => void;
+  selectEntity: (sceneId: string, entityId: string | undefined) => void;
   undo: () => void;
   redo: () => void;
 }
@@ -173,6 +240,67 @@ export const useProjectStore = create<ProjectStoreState>()(
       selectModule: (moduleName) =>
         set((state) => {
           state.selection = moduleName === undefined ? undefined : { kind: "module", moduleName };
+        }),
+
+      placePlayerStart: (sceneId, tileX, tileY) =>
+        set((state) => {
+          const scene = state.document.scenes.find((candidate) => candidate.id === sceneId);
+          if (!scene) return;
+          const existing = scene.entities.find((entity) => entity.kind === "player-start");
+          const entity: EntityPlacement = { id: crypto.randomUUID(), kind: "player-start", tileX, tileY };
+          const forward: ProjectCommand = { type: "entity/set-player-start", sceneId, entity };
+          const inverse: ProjectCommand = { type: "entity/set-player-start", sceneId, entity: existing };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        }),
+
+      placeNpc: (sceneId, tileX, tileY) =>
+        set((state) => {
+          const scene = state.document.scenes.find((candidate) => candidate.id === sceneId);
+          if (!scene) return;
+          const entity: EntityPlacement = { id: crypto.randomUUID(), kind: "npc", tileX, tileY };
+          const forward: ProjectCommand = { type: "entity/add", sceneId, entity };
+          const inverse: ProjectCommand = { type: "entity/delete", sceneId, entityId: entity.id };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+          // Immediately selecting the new NPC lets the Inspector's
+          // dialogue form show up right away — placing and configuring an
+          // NPC is meant to feel like one motion, not two.
+          state.selection = { kind: "entity", sceneId, entityId: entity.id };
+        }),
+
+      removeEntity: (sceneId, entityId) =>
+        set((state) => {
+          const scene = state.document.scenes.find((candidate) => candidate.id === sceneId);
+          const entity = scene?.entities.find((candidate) => candidate.id === entityId);
+          if (!scene || !entity) return;
+          const forward: ProjectCommand = { type: "entity/delete", sceneId, entityId };
+          const inverse: ProjectCommand = { type: "entity/add", sceneId, entity };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+          if (state.selection?.kind === "entity" && state.selection.entityId === entityId) {
+            state.selection = undefined;
+          }
+        }),
+
+      configureEntityDialogue: (sceneId, entityId, dialogue) =>
+        set((state) => {
+          const scene = state.document.scenes.find((candidate) => candidate.id === sceneId);
+          const entity = scene?.entities.find((candidate) => candidate.id === entityId);
+          if (!scene || !entity || JSON.stringify(entity.dialogue) === JSON.stringify(dialogue)) return;
+          const forward: ProjectCommand = { type: "entity/configure", sceneId, entityId, dialogue };
+          const inverse: ProjectCommand = { type: "entity/configure", sceneId, entityId, dialogue: entity.dialogue };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        }),
+
+      selectEntity: (sceneId, entityId) =>
+        set((state) => {
+          state.selection = entityId === undefined ? undefined : { kind: "entity", sceneId, entityId };
         }),
 
       undo: () =>

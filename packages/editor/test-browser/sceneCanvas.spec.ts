@@ -32,8 +32,32 @@ test.describe("SceneCanvas, in a real browser", () => {
     const canvas = page.locator(".fg-scene-canvas__surface");
     const box = await canvas.boundingBox();
     if (!box) throw new Error("SceneCanvas: canvas element has no bounding box");
-    const clickX = Math.floor(box.width / 2);
-    const clickY = Math.floor(box.height / 2);
+
+    // Not the panel's literal center: the camera fits the whole 20x15 grid
+    // into the canvas on boot, and at the default docked panel's aspect
+    // ratio that letterboxes the grid horizontally (only the visible
+    // grid's own screen rect is paintable, which is narrower than the
+    // panel) while the floating tool toolbar + tile palette
+    // (.fg-scene-canvas__controls) sits over the canvas's top-left corner
+    // and, at this panel size, covers most of that letterboxed strip's
+    // height too. The grid's own bottom-right corner tile is the one
+    // point guaranteed to be both inside the grid and below that chrome.
+    const point = await page.evaluate(() => {
+      const debug = (
+        window as unknown as {
+          __forgeSceneCanvasDebug: {
+            camera: { worldToScreen(x: number, y: number): { x: number; y: number } };
+            layer: { gridWidth: number; gridHeight: number; tileSize: number };
+          };
+        }
+      ).__forgeSceneCanvasDebug;
+      const { gridWidth, gridHeight, tileSize } = debug.layer;
+      const worldX = (gridWidth - 1) * tileSize + tileSize / 2;
+      const worldY = (gridHeight - 1) * tileSize + tileSize / 2;
+      return debug.camera.worldToScreen(worldX, worldY);
+    });
+    const clickX = Math.floor(point.x);
+    const clickY = Math.floor(point.y);
 
     // Minimal shape of what's actually used — declared here (not imported)
     // since this callback runs inside page.evaluate() in the browser and

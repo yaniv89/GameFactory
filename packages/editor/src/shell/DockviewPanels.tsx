@@ -1,3 +1,4 @@
+import { EntityInspector } from "../inspector/EntityInspector";
 import { defaultsFromSchema } from "../inspector/jsonSchema";
 import { ModuleInspector } from "../inspector/ModuleInspector";
 import { SceneInspector } from "../inspector/SceneInspector";
@@ -70,11 +71,12 @@ export function ModulesPanelContainer() {
 
 /**
  * Renders the JSON-Schema-driven inspector for whatever's selected — a
- * scene (Phase 4) or, as of Phase 5, an installed module. If the
- * selection points at something that no longer exists — e.g. its
- * creation/install was undone while it was selected, or a module was
- * uninstalled elsewhere — "empty" is still the honest state, not a crash
- * or a stale form.
+ * scene (Phase 4), an installed module (Phase 5), or, as of Phase 7, an
+ * entity placed on the canvas (a player start or an NPC's one-line
+ * dialogue). If the selection points at something that no longer
+ * exists — e.g. its creation/install/placement was undone while it was
+ * selected, or it was removed elsewhere — "empty" is still the honest
+ * state, not a crash or a stale form.
  */
 export function InspectorPanelContainer() {
   const scenes = useProjectStore((state) => state.document.scenes);
@@ -82,6 +84,8 @@ export function InspectorPanelContainer() {
   const selection = useProjectStore((state) => state.selection);
   const renameScene = useProjectStore((state) => state.renameScene);
   const configureModule = useProjectStore((state) => state.configureModule);
+  const configureEntityDialogue = useProjectStore((state) => state.configureEntityDialogue);
+  const removeEntity = useProjectStore((state) => state.removeEntity);
 
   if (selection?.kind === "scene") {
     const scene = scenes.find((candidate) => candidate.id === selection.sceneId);
@@ -101,6 +105,23 @@ export function InspectorPanelContainer() {
       return (
         <InspectorPanel state="populated" selectionLabel={`Module: ${manifest.name}`}>
           <ModuleInspector manifest={manifest} config={config} onConfigure={configureModule} />
+        </InspectorPanel>
+      );
+    }
+  }
+
+  if (selection?.kind === "entity") {
+    const scene = scenes.find((candidate) => candidate.id === selection.sceneId);
+    const entity = scene?.entities.find((candidate) => candidate.id === selection.entityId);
+    if (entity) {
+      const label = entity.kind === "npc" ? "NPC" : "Player start";
+      return (
+        <InspectorPanel state="populated" selectionLabel={label}>
+          <EntityInspector
+            entity={entity}
+            onConfigureDialogue={(entityId, dialogue) => configureEntityDialogue(selection.sceneId, entityId, dialogue)}
+            onRemove={(entityId) => removeEntity(selection.sceneId, entityId)}
+          />
         </InspectorPanel>
       );
     }

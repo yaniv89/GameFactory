@@ -1,4 +1,5 @@
 import { GRID_HEIGHT, GRID_WIDTH } from "../canvas/gridConstants";
+import type { EntityPlacement } from "../store/projectStore";
 
 /**
  * The entire wire protocol between the editor (app.forge.dev, in
@@ -8,10 +9,16 @@ import { GRID_HEIGHT, GRID_WIDTH } from "../canvas/gridConstants";
  * validated before use, never `eval`'d or otherwise trusted blindly
  * (CLAUDE.md 1.1.2). No secrets or tokens ever belong in these messages
  * (CLAUDE.md 4.7) — only project content, same as what a save file holds.
+ *
+ * `entities` reuses projectStore's `EntityPlacement` type directly (a
+ * type-only import — no runtime coupling to Zustand) rather than
+ * declaring a parallel shape: it's already exactly the wire-safe,
+ * serializable data the message needs to carry.
  */
-export interface PreviewTilesMessage {
-  readonly type: "forge:preview:tiles";
+export interface PreviewSceneMessage {
+  readonly type: "forge:preview:scene";
   readonly tiles: readonly number[];
+  readonly entities: readonly EntityPlacement[];
 }
 
 export interface PreviewReadyMessage {
@@ -24,19 +31,36 @@ export interface PreviewErrorMessage {
 }
 
 /** Editor -> preview. */
-export type EditorToPreviewMessage = PreviewTilesMessage;
+export type EditorToPreviewMessage = PreviewSceneMessage;
 
 /** Preview -> editor. */
 export type PreviewToEditorMessage = PreviewReadyMessage | PreviewErrorMessage;
 
 const EXPECTED_TILE_COUNT = GRID_WIDTH * GRID_HEIGHT;
 
-export function isPreviewTilesMessage(data: unknown): data is PreviewTilesMessage {
+function isValidEntity(value: unknown): value is EntityPlacement {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.id !== "string") return false;
+  if (candidate.kind !== "player-start" && candidate.kind !== "npc") return false;
+  if (typeof candidate.tileX !== "number" || !Number.isFinite(candidate.tileX)) return false;
+  if (typeof candidate.tileY !== "number" || !Number.isFinite(candidate.tileY)) return false;
+  if (candidate.dialogue !== undefined) {
+    if (typeof candidate.dialogue !== "object" || candidate.dialogue === null) return false;
+    const dialogue = candidate.dialogue as Record<string, unknown>;
+    if (typeof dialogue.speaker !== "string" || typeof dialogue.text !== "string") return false;
+  }
+  return true;
+}
+
+export function isPreviewSceneMessage(data: unknown): data is PreviewSceneMessage {
   if (typeof data !== "object" || data === null) return false;
-  const candidate = data as { type?: unknown; tiles?: unknown };
-  if (candidate.type !== "forge:preview:tiles") return false;
+  const candidate = data as { type?: unknown; tiles?: unknown; entities?: unknown };
+  if (candidate.type !== "forge:preview:scene") return false;
   if (!Array.isArray(candidate.tiles) || candidate.tiles.length !== EXPECTED_TILE_COUNT) return false;
-  return candidate.tiles.every((tile) => typeof tile === "number" && Number.isFinite(tile));
+  if (!candidate.tiles.every((tile) => typeof tile === "number" && Number.isFinite(tile))) return false;
+  if (!Array.isArray(candidate.entities)) return false;
+  return candidate.entities.every(isValidEntity);
 }
 
 export function isPreviewToEditorMessage(data: unknown): data is PreviewToEditorMessage {

@@ -1,4 +1,5 @@
 using Forge.Infrastructure.Identity;
+using Microsoft.AspNetCore; // GetOpenIddictServerRequest() — OpenIddictServerAspNetCoreHelpers lives here, not in OpenIddict.Server.AspNetCore.
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using OpenIddict.Abstractions;

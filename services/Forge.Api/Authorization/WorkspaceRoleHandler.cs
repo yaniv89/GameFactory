@@ -2,7 +2,7 @@ using Forge.Domain.Entities;
 using Forge.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
+using OpenIddict.Abstractions;
 
 namespace Forge.Api.Authorization;
 
@@ -11,6 +11,21 @@ namespace Forge.Api.Authorization;
 /// database — the route value names a resource, the resource's
 /// workspace is looked up, and the current user's own membership row on
 /// that workspace (never a client-supplied role) decides the outcome.
+///
+/// Resolves the domain user directly from <see cref="AuthorizationHandlerContext.User"/>'s
+/// Subject claim, the same lookup <see cref="CurrentUserMiddleware"/> does
+/// — deliberately NOT via <see cref="ICurrentUser"/>. A real CI run
+/// caught why: this handler runs as part of the authorization middleware
+/// itself, which executes before <c>CurrentUserMiddleware</c> (placed
+/// after <c>UseAuthorization()</c> so it can see a policy's own
+/// scheme-specific re-authenticated <c>HttpContext.User</c>). Reading
+/// <see cref="ICurrentUser"/> here always saw <c>IsAuthenticated == false</c>
+/// and every <see cref="WorkspaceRoleRequirement"/>-gated request 404'd —
+/// invisible in Phase 2's unit tests, which called this handler directly
+/// with a hand-built <c>ICurrentUser</c> rather than through the real
+/// pipeline. <c>context.User</c>, unlike <c>ICurrentUser</c>, is exactly
+/// that policy's own re-authenticated principal, already correct by the
+/// time this handler runs.
 ///
 /// Deliberately does not distinguish "resource doesn't exist" from
 /// "resource exists but you have no access to it" — both just fail the
@@ -33,8 +48,8 @@ public sealed class WorkspaceRoleHandler(ForgeDbContext db) : AuthorizationHandl
     {
         if (context.Resource is not HttpContext httpContext) return;
 
-        var currentUser = httpContext.RequestServices.GetRequiredService<ICurrentUser>();
-        if (!currentUser.IsAuthenticated) return;
+        var subjectClaim = context.User.FindFirst(OpenIddictConstants.Claims.Subject)?.Value;
+        if (subjectClaim is null) return;
 
         var routeValue = httpContext.GetRouteValue(requirement.RouteParameterName)?.ToString();
         if (!Guid.TryParse(routeValue, out var resourceId)) return;
@@ -51,8 +66,14 @@ public sealed class WorkspaceRoleHandler(ForgeDbContext db) : AuthorizationHandl
         };
         if (workspaceId is not { } resolvedWorkspaceId) return;
 
+        var userId = await db.DomainUsers
+            .Where(u => u.IdentitySubjectId == subjectClaim && u.DeletedAt == null)
+            .Select(u => (Guid?)u.Id)
+            .SingleOrDefaultAsync(ct);
+        if (userId is null) return;
+
         var role = await db.WorkspaceMembers
-            .Where(m => m.WorkspaceId == resolvedWorkspaceId && m.UserId == currentUser.UserId)
+            .Where(m => m.WorkspaceId == resolvedWorkspaceId && m.UserId == userId)
             .Select(m => m.Role)
             .SingleOrDefaultAsync(ct);
 

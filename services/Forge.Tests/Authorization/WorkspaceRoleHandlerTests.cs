@@ -1,10 +1,11 @@
+using System.Security.Claims;
 using Forge.Api.Authorization;
 using Forge.Domain.Entities;
 using Forge.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
+using OpenIddict.Abstractions;
 using Xunit;
 
 namespace Forge.Tests.Authorization;
@@ -16,9 +17,19 @@ namespace Forge.Tests.Authorization;
 /// custom <see cref="AuthorizationHandler{TRequirement}"/> in isolation:
 /// build a real <see cref="AuthorizationHandlerContext"/> and call the
 /// handler's public <see cref="IAuthorizationHandler.HandleAsync"/> entry
-/// point directly, rather than routing through an HTTP endpoint that
-/// doesn't exist until M5 Phase 3 wires <c>project:read</c>/
-/// <c>project:write</c> onto real routes.
+/// point directly, rather than routing through an HTTP endpoint.
+///
+/// Builds a real authenticated <see cref="ClaimsPrincipal"/> carrying the
+/// target user's Subject claim, matching exactly what ASP.NET Core's
+/// authorization middleware hands a handler in production — an earlier
+/// version of this file instead wired a hand-built <see cref="ICurrentUser"/>
+/// into <c>HttpContext.RequestServices</c>, which made these tests pass
+/// while masking a real bug: <see cref="WorkspaceRoleHandler"/> used to
+/// read <c>ICurrentUser</c>, populated only by <c>CurrentUserMiddleware</c>
+/// — which runs after <c>UseAuthorization()</c>, i.e. after this handler
+/// already ran. Every real HTTP request hit that ordering; these tests,
+/// calling the handler directly, never did. Caught by ProjectsEndpointsTests
+/// (M5 Phase 3) failing over real HTTP where this suite stayed green.
 ///
 /// ⚠ Not run in this sandbox: no .NET SDK here. Verified when CI runs on
 /// a GitHub-hosted runner.
@@ -65,17 +76,21 @@ public sealed class WorkspaceRoleHandlerTests : IClassFixture<ForgeWebApplicatio
 
     private static async Task<bool> EvaluateAsync(ForgeDbContext db, Guid resourceId, string routeParam, WorkspaceResourceKind kind, string minimumRole, Guid userId)
     {
-        var currentUser = new CurrentUser { IsAuthenticated = true, UserId = userId, IdentitySubjectId = Guid.NewGuid() };
+        var identitySubjectId = await db.DomainUsers
+            .Where(u => u.Id == userId)
+            .Select(u => u.IdentitySubjectId)
+            .SingleAsync();
 
-        var services = new ServiceCollection();
-        services.AddSingleton<ICurrentUser>(currentUser);
-        await using var provider = services.BuildServiceProvider();
+        var identity = new ClaimsIdentity(
+            [new Claim(OpenIddictConstants.Claims.Subject, identitySubjectId)],
+            authenticationType: "TestAuth");
+        var principal = new ClaimsPrincipal(identity);
 
-        var httpContext = new DefaultHttpContext { RequestServices = provider };
+        var httpContext = new DefaultHttpContext();
         httpContext.Request.RouteValues[routeParam] = resourceId.ToString();
 
         var requirement = new WorkspaceRoleRequirement(minimumRole, kind, routeParam);
-        var authContext = new AuthorizationHandlerContext([requirement], new System.Security.Claims.ClaimsPrincipal(), httpContext);
+        var authContext = new AuthorizationHandlerContext([requirement], principal, httpContext);
 
         var handler = new WorkspaceRoleHandler(db);
         await ((IAuthorizationHandler)handler).HandleAsync(authContext);

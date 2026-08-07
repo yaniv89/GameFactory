@@ -82,7 +82,14 @@ let warnings = 0;
 for (const pkg of packages) {
   const pkgDir = join(ROOT, pkg.path);
   try {
-    execFileSync("pnpm", ["--filter", pkg.name, "run", "build"], {
+    // `${pkg.name}...` (pnpm's "package plus its dependencies" filter
+    // selector), not a bare `pkg.name` filter: @forge/runtime-host
+    // depends on @forge/module-api, whose package.json "types"/"main"
+    // point at compiled dist/ output — a bare single-package filter never
+    // builds that dependency first, so runtime-host's own build fails
+    // with "Cannot find module '@forge/module-api'" against a clean
+    // checkout with no pre-existing dist/ anywhere.
+    execFileSync("pnpm", ["--filter", `${pkg.name}...`, "run", "build"], {
       cwd: ROOT,
       stdio: "inherit",
     });
@@ -141,7 +148,9 @@ for (const asset of wasmPayloads) {
 for (const app of appBundles) {
   const appDir = join(ROOT, app.path);
   try {
-    execFileSync("pnpm", ["--filter", app.packageName, "run", "build"], {
+    // Same dependency-inclusive filter as the packages loop above, and
+    // for the same reason: forge-editor depends on @forge/module-api too.
+    execFileSync("pnpm", ["--filter", `${app.packageName}...`, "run", "build"], {
       cwd: ROOT,
       stdio: "inherit",
     });

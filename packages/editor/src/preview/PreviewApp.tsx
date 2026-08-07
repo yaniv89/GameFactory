@@ -165,7 +165,7 @@ export function PreviewApp() {
         host.app.ticker.add(onTick);
 
         setStatus("ready");
-        window.parent.postMessage({ type: "forge:preview:ready" }, "*");
+        window.parent.postMessage({ type: "forge:preview:ready" }, TRUSTED_EDITOR_ORIGIN);
 
         if (import.meta.env.DEV) {
           (window as unknown as { __forgePreviewDebug?: RenderRig & { gameWorld: GameWorld | null } }).__forgePreviewDebug = {
@@ -181,7 +181,7 @@ export function PreviewApp() {
         console.error("[forge:preview] failed to start the renderer", err);
         setErrorMessage(message);
         setStatus("error");
-        window.parent.postMessage({ type: "forge:preview:error", message }, "*");
+        window.parent.postMessage({ type: "forge:preview:error", message }, TRUSTED_EDITOR_ORIGIN);
       }
     });
     lifecycleRef.current = bootPromise;

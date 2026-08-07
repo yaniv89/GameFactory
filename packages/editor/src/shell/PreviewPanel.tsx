@@ -65,6 +65,16 @@ export function PreviewPanel() {
   useEffect(() => {
     if (status !== "ready" || !tiles) return;
     const message: EditorToPreviewMessage = { type: "forge:preview:scene", tiles, entities: entities ?? [] };
+    // "*" is the only valid targetOrigin here, not a lazy default: the
+    // iframe is sandbox="allow-scripts" with no allow-same-origin, so its
+    // origin is browser-opaque — no literal origin string (including
+    // "null") is ever accepted as a postMessage targetOrigin match for an
+    // opaque destination, per spec. Trust instead comes from holding the
+    // exact contentWindow reference this component created (see the
+    // class doc comment above). Flagged by Semgrep's wildcard-postmessage
+    // rule, which doesn't know about this architecture — real finding in
+    // general, false positive for this specific, structurally-safe case.
+    // nosemgrep: javascript.browser.security.wildcard-postmessage-configuration.wildcard-postmessage-configuration
     iframeRef.current?.contentWindow?.postMessage(message, "*");
   }, [status, tiles, entities]);
 

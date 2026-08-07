@@ -21,6 +21,18 @@ public sealed class ProjectRevisionConfiguration : IEntityTypeConfiguration<Proj
             .HasDatabaseName("ix_revisions_project_created")
             .IsDescending(false, true);
 
+        // Backs ListRevisionsEndpoint's keyset pagination (M5 Phase 3):
+        // WHERE project_id = X [AND id < cursor] ORDER BY id DESC. Ids are
+        // a monotonic BIGSERIAL assigned inside RevisionCommitService's
+        // own transaction, so id order is commit order — a separate
+        // timestamp-based index isn't needed for this access pattern, but
+        // the composite above doesn't help ORDER BY id, only ORDER BY
+        // created_at, so this ships alongside the query that needs it
+        // (CLAUDE.md Section 1.5 guardrail 19).
+        builder.HasIndex(r => new { r.ProjectId, r.Id })
+            .HasDatabaseName("ix_revisions_project_id")
+            .IsDescending(false, true);
+
         builder.HasOne<ProjectRevision>()
             .WithMany()
             .HasForeignKey(r => r.ParentId)

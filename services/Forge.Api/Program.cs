@@ -1,11 +1,12 @@
 // Minimal API host. Endpoint surface (docs/SPEC.md Section 13) is built out
 // starting in Milestone M5. Auth (Identity + OpenIddict), the EF Core data
-// layer, and workspace-scoped authorization policies exist so far —
-// project CRUD, billing, marketplace, and publish are still scaffolded,
-// not faked.
+// layer, workspace-scoped authorization policies, and Projects CRUD +
+// CommitRevision exist so far — billing, marketplace, and publish are
+// still scaffolded, not faked.
 using Forge.Api;
 using Forge.Api.Authorization;
 using Forge.Api.Features.Auth;
+using Forge.Api.Features.Projects;
 using Forge.Api.Security;
 using Forge.Infrastructure;
 
@@ -36,6 +37,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
    .WithName("HealthCheck");
 
 app.MapAuthEndpoints();
+app.MapProjectEndpoints();
 
 await OpenIddictSeeding.SeedAsync(app);
 

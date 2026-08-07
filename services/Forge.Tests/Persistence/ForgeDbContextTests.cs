@@ -80,6 +80,13 @@ public sealed class ForgeDbContextTests : IAsyncLifetime
         await using var db = NewContext();
 
         var workspace = NewWorkspace(slug);
+        db.Workspaces.Add(workspace);
+        await db.SaveChangesAsync();
+
+        // workspace.Id is only real after the save above (it's Postgres-
+        // generated, gen_random_uuid()) — building the Project before that
+        // point would bake in Guid.Empty, not a deferred/tracked
+        // reference, since the FK is set by value rather than navigation.
         var project = new Project
         {
             WorkspaceId = workspace.Id,
@@ -89,7 +96,6 @@ public sealed class ForgeDbContextTests : IAsyncLifetime
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         };
-        db.Workspaces.Add(workspace);
         db.Projects.Add(project);
         await db.SaveChangesAsync();
 

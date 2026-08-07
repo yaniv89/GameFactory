@@ -1,4 +1,7 @@
 using Forge.Domain.Entities;
+using Forge.Infrastructure.Identity;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace Forge.Infrastructure.Persistence;
@@ -9,12 +12,23 @@ namespace Forge.Infrastructure.Persistence;
 /// against a read replica, when they land in a later milestone, are a
 /// separate connection string entirely, never this one.
 ///
-/// Only the M5 subset of the Section 6.2 schema is modeled here: identity,
-/// workspaces, subscriptions, and projects/revisions. Registry, commerce,
-/// and asset tables (packages, listings, purchases, assets,
+/// Extends <see cref="IdentityDbContext{TUser,TRole,TKey}"/> and also
+/// hosts OpenIddict's EF Core stores (<c>UseOpenIddict()</c> below): one
+/// physical database, three logically distinct schemas sharing it —
+/// ASP.NET Core Identity's own tables (password hashes, security stamps),
+/// OpenIddict's own tables (applications, authorizations, tokens), and
+/// the hand-modeled domain schema from Section 6.2 below. Identity and
+/// OpenIddict's tables are never referenced directly by domain code —
+/// docs/SPEC.md Section 23.1 is explicit that <see cref="Domain.Entities.User"/>
+/// is a projection linked by <c>IdentitySubjectId</c>, not the same row.
+///
+/// Only the M5 subset of the Section 6.2 domain schema is modeled here:
+/// identity, workspaces, subscriptions, and projects/revisions. Registry,
+/// commerce, and asset tables (packages, listings, purchases, assets,
 /// published_builds) are M6/M7 scope and land in a later migration.
 /// </summary>
-public sealed class ForgeDbContext(DbContextOptions<ForgeDbContext> options) : DbContext(options)
+public sealed class ForgeDbContext(DbContextOptions<ForgeDbContext> options)
+    : IdentityDbContext<ForgeIdentityUser, IdentityRole<Guid>, Guid>(options)
 {
     public DbSet<User> Users => Set<User>();
 
@@ -30,6 +44,9 @@ public sealed class ForgeDbContext(DbContextOptions<ForgeDbContext> options) : D
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        base.OnModelCreating(modelBuilder); // Identity's own AspNetUsers/AspNetRoles/etc. tables.
+        modelBuilder.UseOpenIddict(); // OpenIddictApplications/Authorizations/Scopes/Tokens tables.
+
         // Matches the extensions the raw DDL in docs/SPEC.md Section 6.2
         // requires: pgcrypto for gen_random_uuid() defaults, citext for
         // case-insensitive email uniqueness. pg_trgm (trigram search) backs

@@ -8,6 +8,16 @@
   </PropertyGroup>
 
   <!--
+    Plain Microsoft.NET.Sdk (not .Sdk.Web) doesn't reference the ASP.NET
+    Core shared framework by default. Needed here for real: cookie
+    authentication options, StatusCodes, and OpenIddict.AspNetCore's own
+    ASP.NET Core integration (M5 Phase 2) all live in it.
+  -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!--
     Package versions confirmed to exist on nuget.org at scaffold time (this
     environment has no .NET SDK, so `dotnet restore` itself is unverified —
     see the CI workflow, which runs the real restore/build/test on a
@@ -24,6 +34,15 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <!--
+      Identity + OpenIddict (M5 Phase 2, docs/SPEC.md Section 23.1,
+      CLAUDE.md Section 2.1's pinned auth stack). OpenIddict is on its 7.x
+      line — no 8.0.x-specific build, it multi-targets across EF Core/ASP.NET
+      Core versions within one package version.
+    -->
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.29" />
+    <PackageReference Include="OpenIddict.AspNetCore" Version="7.6.0" />
+    <PackageReference Include="OpenIddict.EntityFrameworkCore" Version="7.6.0" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,5 +1,4 @@
 using Forge.Api.Security;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
 
 namespace Forge.Tests.Security;
@@ -15,11 +14,11 @@ namespace Forge.Tests.Security;
 /// ⚠ Not run in this sandbox: no .NET SDK is installed here to execute
 /// `dotnet test`. Verified when CI runs on a GitHub-hosted runner.
 /// </summary>
-public class HeaderTests : IClassFixture<WebApplicationFactory<Program>>
+public class HeaderTests : IClassFixture<ForgeWebApplicationFactory>
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly ForgeWebApplicationFactory _factory;
 
-    public HeaderTests(WebApplicationFactory<Program> factory)
+    public HeaderTests(ForgeWebApplicationFactory factory)
     {
         _factory = factory;
     }

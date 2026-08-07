@@ -13,4 +13,15 @@
     <ProjectReference Include="..\Forge.Infrastructure\Forge.Infrastructure.csproj" />
   </ItemGroup>
 
+  <!--
+    Lets Forge.Tests construct a CurrentUser with known values directly
+    (its setters are internal on purpose — only CurrentUserMiddleware
+    should write them at runtime; this is a compile-time-only visibility
+    grant for testing WorkspaceRoleHandler in isolation, not a runtime
+    security boundary CLAUDE.md Section 1.1 would apply to).
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Forge.Tests" />
+  </ItemGroup>
+
 </Project>

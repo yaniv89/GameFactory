@@ -161,6 +161,15 @@ jobs:
           node-version: "22"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # forge-editor's dev server (which these Playwright tests drive)
+      # resolves its workspace dependencies (@forge/ds, @forge/module-api,
+      # @forge/render-2d, @forge/dialogue, @forge/core) against their
+      # compiled dist/ output, same as the js-build-test job's own
+      # build-before-typecheck fix — `^...` builds forge-editor's
+      # dependencies without also running editor's own tsc/vite build,
+      # which this job doesn't need (Vite serves editor's source directly
+      # in dev mode).
+      - run: pnpm --filter "forge-editor^..." run build
       - run: pnpm --filter forge-editor exec playwright install --with-deps chromium
       - run: pnpm --filter forge-editor run test:browser
 

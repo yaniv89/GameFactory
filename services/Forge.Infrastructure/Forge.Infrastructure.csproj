@@ -7,6 +7,25 @@
     <RootNamespace>Forge.Infrastructure</RootNamespace>
   </PropertyGroup>
 
+  <!--
+    Package versions confirmed to exist on nuget.org at scaffold time (this
+    environment has no .NET SDK, so `dotnet restore` itself is unverified —
+    see the CI workflow, which runs the real restore/build/test on a
+    GitHub-hosted runner that has the SDK). EFCore.NamingConventions maps
+    C# PascalCase properties to the snake_case columns docs/SPEC.md Section
+    6.2's DDL uses, since Dapper reporting queries (M6+) will target those
+    same physical column names directly.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.29" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
+    <PackageReference Include="EFCore.NamingConventions" Version="8.0.3" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.29">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Forge.Domain\Forge.Domain.csproj" />
   </ItemGroup>

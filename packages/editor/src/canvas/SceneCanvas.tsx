@@ -1,12 +1,11 @@
 import { Camera, RenderHost, TilemapLayer } from "@forge/render-2d";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { Sprite } from "pixi.js";
+import { useCanvasPreviewStore } from "./canvasPreviewStore";
+import { GRID_HEIGHT, GRID_WIDTH, TILE_SIZE } from "./gridConstants";
 import { buildPaletteTextures, TILE_PALETTE } from "./tilePalette";
 import "./SceneCanvas.css";
 
-const GRID_WIDTH = 20;
-const GRID_HEIGHT = 15;
-const TILE_SIZE = 32;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
 /** --surface-canvas from tokens.css, as a Pixi-friendly hex number (Pixi doesn't read CSS custom properties). */
@@ -24,9 +23,23 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function snapshotTiles(layer: TilemapLayer<Sprite>): number[] {
+  const tiles = new Array<number>(layer.gridWidth * layer.gridHeight);
+  let index = 0;
+  for (let y = 0; y < layer.gridHeight; y++) {
+    for (let x = 0; x < layer.gridWidth; x++) {
+      tiles[index++] = layer.getTile(x, y);
+    }
+  }
+  return tiles;
+}
+
 /**
  * The real scene canvas: a live PixiJS surface via @forge/render-2d,
- * pan/zoom, and a tile-paint tool backed by a real TilemapLayer.
+ * pan/zoom, and a tile-paint tool backed by a real TilemapLayer. Every
+ * paint publishes a tile snapshot to canvasPreviewStore (Phase 6), which
+ * the Preview panel's sandboxed iframe renders — the cross-origin preview
+ * bridge's actual content, not a synthetic demo payload.
  *
  * State coverage (CLAUDE.md 5.4): this view only has an honest Loading
  * and Error — "the renderer is booting" and "it failed to boot" are the
@@ -43,6 +56,20 @@ export function SceneCanvas() {
   const rigRef = useRef<RenderRig | null>(null);
   const paintingRef = useRef(false);
   const panningRef = useRef<{ lastX: number; lastY: number } | null>(null);
+  // rAF-coalesced: a paint drag fires many setTile calls per frame, but the
+  // Preview panel only needs the latest snapshot once per frame, not one
+  // postMessage per pointermove.
+  const previewSyncScheduledRef = useRef(false);
+
+  const scheduleSyncPreview = (): void => {
+    if (previewSyncScheduledRef.current) return;
+    previewSyncScheduledRef.current = true;
+    requestAnimationFrame(() => {
+      previewSyncScheduledRef.current = false;
+      const rig = rigRef.current;
+      if (rig) useCanvasPreviewStore.getState().setTiles(snapshotTiles(rig.layer));
+    });
+  };
 
   const [status, setStatus] = useState<CanvasStatus>("loading");
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
@@ -101,6 +128,7 @@ export function SceneCanvas() {
 
         rigRef.current = { host, camera, layer };
         setStatus("ready");
+        scheduleSyncPreview();
 
         // Dev/test-only hook so a real-browser Playwright test can reach
         // the live renderer and assert on actual pixel output (the same
@@ -162,6 +190,7 @@ export function SceneCanvas() {
     const tileY = Math.floor(worldY / TILE_SIZE);
     if (tileX < 0 || tileY < 0 || tileX >= rig.layer.gridWidth || tileY >= rig.layer.gridHeight) return;
     rig.layer.setTile(tileX, tileY, selectedTileId);
+    scheduleSyncPreview();
   };
 
   const onPointerDown = (e: ReactPointerEvent<HTMLCanvasElement>): void => {

@@ -4,6 +4,7 @@ import "./styles/dockview-theme.css";
 import type { FC } from "react";
 import { SceneCanvas } from "./canvas/SceneCanvas";
 import { InspectorPanelContainer, ModulesPanelContainer, ScenesPanelContainer } from "./shell/DockviewPanels";
+import { PreviewPanel } from "./shell/PreviewPanel";
 import { UndoRedoControls } from "./shell/UndoRedoControls";
 import "./App.css";
 
@@ -12,6 +13,7 @@ const COMPONENTS: Record<string, FC<IDockviewPanelProps>> = {
   modules: ModulesPanelContainer,
   inspector: InspectorPanelContainer,
   canvas: SceneCanvas,
+  preview: PreviewPanel,
 };
 
 function onReady(event: DockviewReadyEvent): void {
@@ -35,6 +37,12 @@ function onReady(event: DockviewReadyEvent): void {
     component: "inspector",
     title: "Inspector",
     position: { direction: "right", referencePanel: canvas.id },
+  });
+  api.addPanel({
+    id: "preview",
+    component: "preview",
+    title: "Preview",
+    position: { direction: "below", referencePanel: canvas.id },
   });
 }
 

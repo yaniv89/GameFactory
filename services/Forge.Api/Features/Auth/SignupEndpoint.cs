@@ -62,7 +62,7 @@ public static class SignupEndpoint
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         };
-        db.Users.Add(domainUser);
+        db.DomainUsers.Add(domainUser);
         await db.SaveChangesAsync(ct); // domainUser.Id must be real before the member row below.
 
         var workspace = new Workspace

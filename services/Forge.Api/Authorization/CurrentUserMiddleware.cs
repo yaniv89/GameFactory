@@ -29,7 +29,7 @@ public sealed class CurrentUserMiddleware(RequestDelegate next)
             var subjectClaim = context.User.FindFirst(OpenIddictConstants.Claims.Subject)?.Value;
             if (Guid.TryParse(subjectClaim, out var identitySubjectId))
             {
-                var domainUserId = await db.Users
+                var domainUserId = await db.DomainUsers
                     .Where(u => u.IdentitySubjectId == subjectClaim && u.DeletedAt == null)
                     .Select(u => (Guid?)u.Id)
                     .SingleOrDefaultAsync(context.RequestAborted);

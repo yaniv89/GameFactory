@@ -4,7 +4,13 @@ using OpenIddict.Validation.AspNetCore;
 
 namespace Forge.Api.Authorization;
 
-public static class AuthorizationServiceCollectionExtensions
+// Not AuthorizationServiceCollectionExtensions: that exact name already
+// exists in Microsoft.Extensions.DependencyInjection (a real, built-in
+// ASP.NET Core class providing AddAuthorization(...)), which
+// Microsoft.NET.Sdk.Web's implicit global usings pull into every file in
+// this project — an identically-named class here is ambiguous at every
+// call site, not just a style clash.
+public static class ForgeAuthorizationExtensions
 {
     /// <summary>Every resource API endpoint (as opposed to /connect/authorize, which needs the Identity cookie scheme specifically) authenticates via the OpenIddict-issued Bearer access token.</summary>
     public const string BearerPolicy = "Bearer";

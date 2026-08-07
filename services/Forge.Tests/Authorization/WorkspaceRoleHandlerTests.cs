@@ -41,7 +41,7 @@ public sealed class WorkspaceRoleHandlerTests : IClassFixture<ForgeWebApplicatio
         var viewer = new User { IdentitySubjectId = Guid.NewGuid().ToString(), Email = $"viewer-{Guid.NewGuid():N}@example.com", DisplayName = "Viewer", CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow };
         var outsider = new User { IdentitySubjectId = Guid.NewGuid().ToString(), Email = $"outsider-{Guid.NewGuid():N}@example.com", DisplayName = "Outsider", CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow };
         db.Workspaces.Add(workspace);
-        db.Users.AddRange(owner, viewer, outsider);
+        db.DomainUsers.AddRange(owner, viewer, outsider);
         await db.SaveChangesAsync(CancellationToken.None);
 
         db.WorkspaceMembers.AddRange(

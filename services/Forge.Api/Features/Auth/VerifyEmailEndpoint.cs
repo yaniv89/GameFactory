@@ -44,7 +44,7 @@ public static class VerifyEmailEndpoint
             return InvalidTokenProblem();
         }
 
-        await db.Users
+        await db.DomainUsers
             .Where(u => u.IdentitySubjectId == identityUser.Id.ToString())
             .ExecuteUpdateAsync(s => s
                 .SetProperty(u => u.EmailVerifiedAt, DateTimeOffset.UtcNow)

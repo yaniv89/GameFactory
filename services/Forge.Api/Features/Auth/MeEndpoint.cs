@@ -16,12 +16,12 @@ public static class MeEndpoint
     public static IEndpointRouteBuilder MapMe(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/v1/me", HandleGet)
-            .RequireAuthorization(AuthorizationServiceCollectionExtensions.BearerPolicy)
+            .RequireAuthorization(ForgeAuthorizationExtensions.BearerPolicy)
             .WithName("GetMe")
             .Produces<MeResponse>();
 
         app.MapPatch("/api/v1/me", HandlePatch)
-            .RequireAuthorization(AuthorizationServiceCollectionExtensions.BearerPolicy)
+            .RequireAuthorization(ForgeAuthorizationExtensions.BearerPolicy)
             .WithName("UpdateMe")
             .Produces<MeResponse>()
             .ProducesValidationProblem();
@@ -37,7 +37,7 @@ public static class MeEndpoint
 
     private static async Task<IResult> HandlePatch(UpdateMeRequest req, ICurrentUser currentUser, ForgeDbContext db, CancellationToken ct)
     {
-        var user = await db.Users.SingleOrDefaultAsync(u => u.Id == currentUser.UserId && u.DeletedAt == null, ct);
+        var user = await db.DomainUsers.SingleOrDefaultAsync(u => u.Id == currentUser.UserId && u.DeletedAt == null, ct);
         if (user is null) return TypedResults.Unauthorized();
 
         if (!string.IsNullOrWhiteSpace(req.DisplayName))
@@ -56,7 +56,7 @@ public static class MeEndpoint
 
     private static async Task<MeResponse?> LoadMeAsync(ForgeDbContext db, Guid userId, CancellationToken ct)
     {
-        var user = await db.Users.SingleOrDefaultAsync(u => u.Id == userId && u.DeletedAt == null, ct);
+        var user = await db.DomainUsers.SingleOrDefaultAsync(u => u.Id == userId && u.DeletedAt == null, ct);
         if (user is null) return null;
 
         var workspaces = await db.WorkspaceMembers

@@ -30,7 +30,15 @@ namespace Forge.Infrastructure.Persistence;
 public sealed class ForgeDbContext(DbContextOptions<ForgeDbContext> options)
     : IdentityDbContext<ForgeIdentityUser, IdentityRole<Guid>, Guid>(options)
 {
-    public DbSet<User> Users => Set<User>();
+    // Not "Users": IdentityDbContext<...> already defines a public Users
+    // property (DbSet<ForgeIdentityUser> — Identity's own account rows).
+    // Naming this one the same would compile with a "hides inherited
+    // member" warning under `new`, but the real problem it papers over is
+    // conceptual: this table and Identity's are genuinely different
+    // things (docs/SPEC.md Section 23.1), and giving them the same short
+    // name invites exactly the kind of "which Users am I looking at"
+    // mistake that comment's warning exists to prevent.
+    public DbSet<User> DomainUsers => Set<User>();
 
     public DbSet<Workspace> Workspaces => Set<Workspace>();
 

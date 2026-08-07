@@ -127,7 +127,7 @@ public sealed class ForgeDbContextTests : IAsyncLifetime
     {
         var localPart = $"dup-{Guid.NewGuid():N}";
         await using var db = NewContext();
-        db.Users.Add(NewUser($"{localPart}@example.com"));
+        db.DomainUsers.Add(NewUser($"{localPart}@example.com"));
         await db.SaveChangesAsync();
 
         await using var db2 = NewContext();
@@ -135,7 +135,7 @@ public sealed class ForgeDbContextTests : IAsyncLifetime
         // actually applied, not just a plain text column with a unique
         // index that Postgres would still let two different-cased
         // duplicates through.
-        db2.Users.Add(NewUser($"{localPart.ToUpperInvariant()}@EXAMPLE.com"));
+        db2.DomainUsers.Add(NewUser($"{localPart.ToUpperInvariant()}@EXAMPLE.com"));
 
         await Assert.ThrowsAsync<DbUpdateException>(() => db2.SaveChangesAsync());
     }
@@ -244,7 +244,7 @@ public sealed class ForgeDbContextTests : IAsyncLifetime
         var workspace = NewWorkspace($"ws-cascade-{Guid.NewGuid():N}");
         var user = NewUser($"cascade-{Guid.NewGuid():N}@example.com");
         db.Workspaces.Add(workspace);
-        db.Users.Add(user);
+        db.DomainUsers.Add(user);
         await db.SaveChangesAsync();
 
         db.WorkspaceMembers.Add(new WorkspaceMember
@@ -273,6 +273,6 @@ public sealed class ForgeDbContextTests : IAsyncLifetime
         Assert.False(await readDb.WorkspaceMembers.AnyAsync(m => m.WorkspaceId == workspace.Id));
         Assert.False(await readDb.Projects.AnyAsync(p => p.Id == project.Id));
         // The user account itself is not workspace-owned — it survives.
-        Assert.True(await readDb.Users.AnyAsync(u => u.Id == user.Id));
+        Assert.True(await readDb.DomainUsers.AnyAsync(u => u.Id == user.Id));
     }
 }

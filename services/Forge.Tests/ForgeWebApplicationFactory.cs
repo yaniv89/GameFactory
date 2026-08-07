@@ -47,6 +47,15 @@ namespace Forge.Tests;
 ///    instead of the container's real mapped port. Overriding the
 ///    <see cref="IServiceCollection"/> registration directly sidesteps that
 ///    ordering entirely.
+///
+///    Schema creation (<c>EnsureCreated</c>) has to happen inside that same
+///    <c>ConfigureTestServices</c> delegate too, not after <c>base.CreateHost</c>
+///    returns as an earlier version of this class did: <c>Program.cs</c>
+///    calls <c>OpenIddictSeeding.SeedAsync</c> — which queries real tables
+///    — during host startup itself (before <c>app.Run()</c>, deep inside
+///    <c>base.CreateHost</c>'s call into <c>Program.Main</c>), so creating
+///    the schema afterward is too late; a real CI run confirmed this with
+///    <c>relation "OpenIddictApplications" does not exist</c>.
 /// </summary>
 public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
@@ -71,24 +80,23 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
             services.RemoveAll<IEmailSender>();
             services.AddSingleton<IEmailSender>(EmailSender);
 
+            var connectionString = _container.GetConnectionString();
             services.RemoveAll<DbContextOptions<ForgeDbContext>>();
             services.AddDbContext<ForgeDbContext>(options => options
-                .UseNpgsql(_container.GetConnectionString())
+                .UseNpgsql(connectionString)
                 .UseSnakeCaseNamingConvention());
+
+            using var db = new ForgeDbContext(new DbContextOptionsBuilder<ForgeDbContext>()
+                .UseNpgsql(connectionString)
+                .UseSnakeCaseNamingConvention()
+                .Options);
+            db.Database.EnsureCreated();
         });
     }
 
     protected override IHost CreateHost(IHostBuilder builder)
     {
         builder.UseEnvironment(Environments.Development);
-
-        var host = base.CreateHost(builder);
-
-        using (var scope = host.Services.CreateScope())
-        {
-            scope.ServiceProvider.GetRequiredService<ForgeDbContext>().Database.EnsureCreated();
-        }
-
-        return host;
+        return base.CreateHost(builder);
     }
 }

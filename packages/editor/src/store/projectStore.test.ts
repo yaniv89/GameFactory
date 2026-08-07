@@ -3,7 +3,12 @@ import { selectCanRedo, selectCanUndo, useProjectStore } from "./projectStore";
 
 function reset(): void {
   localStorage.clear();
-  useProjectStore.setState({ document: { scenes: [] }, past: [], future: [], selectedSceneId: undefined });
+  useProjectStore.setState({
+    document: { scenes: [], installedModules: {} },
+    past: [],
+    future: [],
+    selection: undefined,
+  });
 }
 
 describe("useProjectStore", () => {
@@ -92,11 +97,11 @@ describe("useProjectStore", () => {
     const sceneId = useProjectStore.getState().document.scenes[0]?.id as string;
 
     useProjectStore.getState().selectScene(sceneId);
-    expect(useProjectStore.getState().selectedSceneId).toBe(sceneId);
+    expect(useProjectStore.getState().selection).toEqual({ kind: "scene", sceneId });
     expect(selectCanUndo(useProjectStore.getState())).toBe(true);
 
     useProjectStore.getState().selectScene(undefined);
-    expect(useProjectStore.getState().selectedSceneId).toBeUndefined();
+    expect(useProjectStore.getState().selection).toBeUndefined();
   });
 
   it("does not persist the selection: a fresh session starts with nothing selected", () => {
@@ -106,7 +111,19 @@ describe("useProjectStore", () => {
 
     const raw = localStorage.getItem("forge:editor:project-document");
     const persisted = JSON.parse(raw as string);
-    expect(persisted.state.selectedSceneId).toBeUndefined();
+    expect(persisted.state.selection).toBeUndefined();
+  });
+
+  it("selecting a module clears a scene selection and vice versa — only one selection at a time", () => {
+    useProjectStore.getState().createScene();
+    const sceneId = useProjectStore.getState().document.scenes[0]?.id as string;
+    useProjectStore.getState().installModule("@forge/inventory", { defaultMaxSlots: 20 });
+
+    useProjectStore.getState().selectScene(sceneId);
+    expect(useProjectStore.getState().selection).toEqual({ kind: "scene", sceneId });
+
+    useProjectStore.getState().selectModule("@forge/inventory");
+    expect(useProjectStore.getState().selection).toEqual({ kind: "module", moduleName: "@forge/inventory" });
   });
 
   it("renameScene dispatches an undoable command that updates only the target scene", () => {
@@ -136,5 +153,73 @@ describe("useProjectStore", () => {
     useProjectStore.getState().renameScene(sceneId, "Scene 1");
     const state = useProjectStore.getState();
     expect(state.past).toHaveLength(1); // only the original createScene entry
+  });
+
+  it("installModule adds the module with its initial config and makes undo available", () => {
+    useProjectStore.getState().installModule("@forge/turn-battle", { baseHitChance: 0.9 });
+    const state = useProjectStore.getState();
+    expect(state.document.installedModules["@forge/turn-battle"]).toEqual({ baseHitChance: 0.9 });
+    expect(selectCanUndo(state)).toBe(true);
+  });
+
+  it("installModule on an already-installed module is a no-op that does not grow the undo log", () => {
+    useProjectStore.getState().installModule("@forge/turn-battle", { baseHitChance: 0.9 });
+    useProjectStore.getState().installModule("@forge/turn-battle", { baseHitChance: 0.1 });
+    const state = useProjectStore.getState();
+    expect(state.document.installedModules["@forge/turn-battle"]).toEqual({ baseHitChance: 0.9 });
+    expect(state.past).toHaveLength(1);
+  });
+
+  it("uninstallModule removes it, and undo restores it with its exact prior config", () => {
+    useProjectStore.getState().installModule("@forge/turn-battle", { baseHitChance: 0.9 });
+    useProjectStore.getState().configureModule("@forge/turn-battle", { baseHitChance: 0.75 });
+
+    useProjectStore.getState().uninstallModule("@forge/turn-battle");
+    expect(useProjectStore.getState().document.installedModules["@forge/turn-battle"]).toBeUndefined();
+
+    useProjectStore.getState().undo();
+    expect(useProjectStore.getState().document.installedModules["@forge/turn-battle"]).toEqual({
+      baseHitChance: 0.75,
+    });
+  });
+
+  it("uninstallModule on a module that isn't installed is a no-op that does not grow the undo log", () => {
+    useProjectStore.getState().uninstallModule("@forge/turn-battle");
+    expect(useProjectStore.getState().past).toHaveLength(0);
+  });
+
+  it("uninstallModule clears the selection if the uninstalled module was selected", () => {
+    useProjectStore.getState().installModule("@forge/turn-battle", { baseHitChance: 0.9 });
+    useProjectStore.getState().selectModule("@forge/turn-battle");
+    useProjectStore.getState().uninstallModule("@forge/turn-battle");
+    expect(useProjectStore.getState().selection).toBeUndefined();
+  });
+
+  it("configureModule dispatches an undoable command that updates only that module's config", () => {
+    useProjectStore.getState().installModule("@forge/turn-battle", { baseHitChance: 0.9 });
+    useProjectStore.getState().installModule("@forge/inventory", { defaultMaxSlots: 20 });
+
+    useProjectStore.getState().configureModule("@forge/turn-battle", { baseHitChance: 0.5 });
+    const state = useProjectStore.getState();
+    expect(state.document.installedModules["@forge/turn-battle"]).toEqual({ baseHitChance: 0.5 });
+    expect(state.document.installedModules["@forge/inventory"]).toEqual({ defaultMaxSlots: 20 });
+
+    useProjectStore.getState().undo();
+    expect(useProjectStore.getState().document.installedModules["@forge/turn-battle"]).toEqual({
+      baseHitChance: 0.9,
+    });
+  });
+
+  it("configureModule on a module that isn't installed is a no-op", () => {
+    useProjectStore.getState().configureModule("@forge/turn-battle", { baseHitChance: 0.5 });
+    const state = useProjectStore.getState();
+    expect(state.document.installedModules["@forge/turn-battle"]).toBeUndefined();
+    expect(state.past).toHaveLength(0);
+  });
+
+  it("configureModule with unchanged values is a no-op that does not grow the undo log", () => {
+    useProjectStore.getState().installModule("@forge/turn-battle", { baseHitChance: 0.9 });
+    useProjectStore.getState().configureModule("@forge/turn-battle", { baseHitChance: 0.9 });
+    expect(useProjectStore.getState().past).toHaveLength(1);
   });
 });

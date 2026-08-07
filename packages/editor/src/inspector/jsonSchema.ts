@@ -16,6 +16,7 @@ export interface StringFieldSchema {
   readonly minLength?: number;
   readonly maxLength?: number;
   readonly enum?: readonly string[];
+  readonly default?: string;
 }
 
 export interface NumberFieldSchema {
@@ -23,11 +24,13 @@ export interface NumberFieldSchema {
   readonly title?: string;
   readonly minimum?: number;
   readonly maximum?: number;
+  readonly default?: number;
 }
 
 export interface BooleanFieldSchema {
   readonly type: "boolean";
   readonly title?: string;
+  readonly default?: boolean;
 }
 
 export type FieldSchema = StringFieldSchema | NumberFieldSchema | BooleanFieldSchema;
@@ -90,6 +93,15 @@ export function compileJsonSchemaToZod(schema: ObjectSchema): z.ZodType<FormValu
     shape[key] = compileField(field, required.has(key));
   }
   return z.object(shape) as unknown as z.ZodType<FormValues>;
+}
+
+/** Pulls each property's declared `default` (docs/SPEC.md 9.2's `configSchema` example) into a fresh values object, e.g. for a module's initial config on install. Properties with no default are omitted, not set to `undefined`. */
+export function defaultsFromSchema(schema: ObjectSchema): FormValues {
+  const values: FormValues = {};
+  for (const [key, field] of Object.entries(schema.properties)) {
+    if (field.default !== undefined) values[key] = field.default;
+  }
+  return values;
 }
 
 /**

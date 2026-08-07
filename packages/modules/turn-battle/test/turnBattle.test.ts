@@ -11,10 +11,10 @@ import type {
 } from "@forge/module-api";
 import { beforeEach, describe, expect, it } from "vitest";
 import { turnBattleModule } from "../src/index";
-import { COMBATANT_COMPONENT, type CombatantShape } from "../src/types";
+import { COMBATANT_COMPONENT, DEFAULT_HIT_CHANCE, type CombatantShape } from "../src/types";
 
 /** Same fake-SetupContext shape as the dialogue/inventory module test suites. */
-function makeFakeContext() {
+function makeFakeContext(config: Record<string, unknown> = {}) {
   const worldData = new Map<EntityId, Record<string, Record<string, number>>>();
   let nextId = 1;
   const handlers = new Map<string, Array<(payload: unknown) => void>>();
@@ -70,7 +70,7 @@ function makeFakeContext() {
   };
 
   const ctx: SetupContext = {
-    config: {},
+    config,
     engineVersion: "0.0.0-test",
     moduleName: "@test/turn-battle",
     world,
@@ -228,5 +228,33 @@ describe("@forge/turn-battle", () => {
   it("battle:attack with no active battle logs a warning instead of throwing", () => {
     expect(() => harness.emit("battle:attack", { attacker: 1 })).not.toThrow();
     expect(harness.logs.some((l) => l.level === "warn" && l.message.includes("no active battle"))).toBe(true);
+  });
+
+  it("defaults the pre-interceptor hit chance to DEFAULT_HIT_CHANCE when config.baseHitChance is not set", () => {
+    let observedChance: number | undefined;
+    harness.ctx.addInterceptor("combat:hitChance", 0, (value) => {
+      observedChance = value.chance;
+      return value;
+    });
+    const a = makeCombatant(harness, {});
+    const b = makeCombatant(harness, {});
+    harness.emit("battle:start", { a, b });
+    harness.emit("battle:attack", { attacker: a });
+    expect(observedChance).toBe(DEFAULT_HIT_CHANCE);
+  });
+
+  it("reads config.baseHitChance as the pre-interceptor hit chance", () => {
+    const configured = makeFakeContext({ baseHitChance: 0.25 });
+    turnBattleModule.setup(configured.ctx);
+    let observedChance: number | undefined;
+    configured.ctx.addInterceptor("combat:hitChance", 0, (value) => {
+      observedChance = value.chance;
+      return { ...value, chance: 1 }; // force a hit so the attack completes deterministically
+    });
+    const a = makeCombatant(configured, {});
+    const b = makeCombatant(configured, {});
+    configured.emit("battle:start", { a, b });
+    configured.emit("battle:attack", { attacker: a });
+    expect(observedChance).toBe(0.25);
   });
 });

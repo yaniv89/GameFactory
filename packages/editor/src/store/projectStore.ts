@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
+import type { FormValues } from "../inspector/jsonSchema";
 
 export interface SceneSummary {
   readonly id: string;
@@ -9,6 +10,8 @@ export interface SceneSummary {
 
 interface ProjectDocument {
   scenes: SceneSummary[];
+  /** Installed module name -> its config values. Presence of the key is the install flag. */
+  installedModules: Record<string, FormValues>;
 }
 
 /**
@@ -21,7 +24,12 @@ interface ProjectDocument {
 type ProjectCommand =
   | { readonly type: "scene/create"; readonly sceneId: string; readonly name: string }
   | { readonly type: "scene/delete"; readonly sceneId: string; readonly name: string }
-  | { readonly type: "scene/rename"; readonly sceneId: string; readonly name: string };
+  | { readonly type: "scene/rename"; readonly sceneId: string; readonly name: string }
+  // Also doubles as "set this installed module's config": applying it
+  // upserts unconditionally, so installing and reconfiguring are the same
+  // primitive operation.
+  | { readonly type: "module/install"; readonly moduleName: string; readonly config: FormValues }
+  | { readonly type: "module/uninstall"; readonly moduleName: string };
 
 interface HistoryEntry {
   readonly forward: ProjectCommand;
@@ -53,23 +61,38 @@ function applyCommand(document: ProjectDocument, command: ProjectCommand): void 
       if (scene) document.scenes[index] = { id: scene.id, name: command.name };
       return;
     }
+    case "module/install":
+      document.installedModules[command.moduleName] = command.config;
+      return;
+    case "module/uninstall":
+      delete document.installedModules[command.moduleName];
+      return;
   }
 }
+
+/** What the Inspector shows. Scenes and modules are both selectable, but only one at a time. */
+export type Selection =
+  | { readonly kind: "scene"; readonly sceneId: string }
+  | { readonly kind: "module"; readonly moduleName: string };
 
 interface ProjectStoreState {
   document: ProjectDocument;
   past: HistoryEntry[];
   future: HistoryEntry[];
   /**
-   * Which scene the Scenes tree has selected. Transient UI focus, not
-   * document content — deliberately not part of the command log (selecting
+   * What the Inspector is showing. Transient UI focus, not document
+   * content — deliberately not part of the command log (selecting
    * something isn't a fact worth undoing) and not persisted (a reload
    * should land on "nothing selected", not resume an old focus target).
    */
-  selectedSceneId: string | undefined;
+  selection: Selection | undefined;
   createScene: () => void;
   renameScene: (sceneId: string, name: string) => void;
   selectScene: (sceneId: string | undefined) => void;
+  installModule: (moduleName: string, initialConfig: FormValues) => void;
+  uninstallModule: (moduleName: string) => void;
+  configureModule: (moduleName: string, config: FormValues) => void;
+  selectModule: (moduleName: string | undefined) => void;
   undo: () => void;
   redo: () => void;
 }
@@ -80,10 +103,10 @@ const PERSIST_VERSION = 1;
 export const useProjectStore = create<ProjectStoreState>()(
   persist(
     immer((set) => ({
-      document: { scenes: [] },
+      document: { scenes: [], installedModules: {} },
       past: [],
       future: [],
-      selectedSceneId: undefined,
+      selection: undefined,
 
       createScene: () =>
         set((state) => {
@@ -109,7 +132,47 @@ export const useProjectStore = create<ProjectStoreState>()(
 
       selectScene: (sceneId) =>
         set((state) => {
-          state.selectedSceneId = sceneId;
+          state.selection = sceneId === undefined ? undefined : { kind: "scene", sceneId };
+        }),
+
+      installModule: (moduleName, initialConfig) =>
+        set((state) => {
+          if (moduleName in state.document.installedModules) return; // already installed, no-op
+          const forward: ProjectCommand = { type: "module/install", moduleName, config: initialConfig };
+          const inverse: ProjectCommand = { type: "module/uninstall", moduleName };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        }),
+
+      uninstallModule: (moduleName) =>
+        set((state) => {
+          const config = state.document.installedModules[moduleName];
+          if (config === undefined) return; // not installed, no-op
+          const forward: ProjectCommand = { type: "module/uninstall", moduleName };
+          const inverse: ProjectCommand = { type: "module/install", moduleName, config };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+          if (state.selection?.kind === "module" && state.selection.moduleName === moduleName) {
+            state.selection = undefined;
+          }
+        }),
+
+      configureModule: (moduleName, config) =>
+        set((state) => {
+          const previous = state.document.installedModules[moduleName];
+          if (previous === undefined || JSON.stringify(previous) === JSON.stringify(config)) return;
+          const forward: ProjectCommand = { type: "module/install", moduleName, config };
+          const inverse: ProjectCommand = { type: "module/install", moduleName, config: previous };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        }),
+
+      selectModule: (moduleName) =>
+        set((state) => {
+          state.selection = moduleName === undefined ? undefined : { kind: "module", moduleName };
         }),
 
       undo: () =>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compileJsonSchemaToZod, zodResolver, type ObjectSchema } from "./jsonSchema";
+import { compileJsonSchemaToZod, defaultsFromSchema, zodResolver, type ObjectSchema } from "./jsonSchema";
 
 const SCHEMA: ObjectSchema = {
   type: "object",
@@ -85,5 +85,26 @@ describe("zodResolver", () => {
     });
     expect(result.values).toEqual({});
     expect(result.errors.name?.message).toBeTruthy();
+  });
+});
+
+describe("defaultsFromSchema", () => {
+  it("pulls each property's declared default into a values object", () => {
+    const schema: ObjectSchema = {
+      type: "object",
+      properties: {
+        baseHitChance: { type: "number", default: 0.9 },
+        startSeason: { type: "string", enum: ["spring", "summer"], default: "spring" },
+      },
+    };
+    expect(defaultsFromSchema(schema)).toEqual({ baseHitChance: 0.9, startSeason: "spring" });
+  });
+
+  it("omits properties with no declared default rather than setting them to undefined", () => {
+    const schema: ObjectSchema = {
+      type: "object",
+      properties: { name: { type: "string" } },
+    };
+    expect(defaultsFromSchema(schema)).toEqual({});
   });
 });

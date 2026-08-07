@@ -14,7 +14,7 @@ import { inventoryModule } from "../src/index";
 import { INVENTORY_CAPACITY_COMPONENT } from "../src/types";
 
 /** Same fake-SetupContext shape as packages/modules/dialogue/test/dialogue.test.ts — see that file's comment for why this isn't shared via a new package (CLAUDE.md's "three similar lines beats a premature abstraction"). */
-function makeFakeContext() {
+function makeFakeContext(config: Record<string, unknown> = {}) {
   const worldData = new Map<EntityId, Record<string, Record<string, number>>>();
   let nextId = 1;
   const handlers = new Map<string, Array<(payload: unknown) => void>>();
@@ -70,7 +70,7 @@ function makeFakeContext() {
   };
 
   const ctx: SetupContext = {
-    config: {},
+    config,
     engineVersion: "0.0.0-test",
     moduleName: "@test/inventory",
     world,
@@ -211,5 +211,18 @@ describe("@forge/inventory", () => {
     harness.ctx.events.on("inventory:queried", (p) => queried.push(p));
     harness.emit("inventory:query", { entity: 42 });
     expect(queried).toEqual([{ entity: 42, items: {} }]);
+  });
+
+  it("reads config.defaultMaxSlots as the capacity for entities with no InventoryCapacity override", () => {
+    const configured = makeFakeContext({ defaultMaxSlots: 1 });
+    inventoryModule.setup(configured.ctx);
+    const entity = configured.ctx.world.create({});
+
+    configured.emit("inventory:add", { entity, itemId: "sword", qty: 1 });
+    const rejected: unknown[] = [];
+    configured.ctx.events.on("inventory:rejected", (p) => rejected.push(p));
+    configured.emit("inventory:add", { entity, itemId: "shield", qty: 1 }); // 2nd distinct stack, over the configured capacity of 1
+
+    expect(rejected).toEqual([{ entity, itemId: "shield", qty: 1, reason: "capacity" }]);
   });
 });

@@ -8,6 +8,7 @@ import {
   type InventoryCapacityShape,
   type InventoryChangedEvent,
   type InventoryContents,
+  type InventoryModuleConfig,
   type InventoryQueriedEvent,
   type InventoryRejectedEvent,
   type PurchaseEvent,
@@ -36,10 +37,12 @@ export * from "./types";
  */
 export const inventoryModule: ForgeModule = {
   setup(ctx: SetupContext): void {
+    const defaultMaxSlots = (ctx.config as InventoryModuleConfig).defaultMaxSlots ?? DEFAULT_CAPACITY_SLOTS;
+
     ctx.defineComponent<InventoryCapacityShape>(
       INVENTORY_CAPACITY_COMPONENT,
       { maxSlots: { type: "number" } },
-      { maxSlots: DEFAULT_CAPACITY_SLOTS },
+      { maxSlots: defaultMaxSlots },
     );
 
     function getContents(entity: EntityId): Record<string, number> {
@@ -50,7 +53,7 @@ export const inventoryModule: ForgeModule = {
       if (ctx.world.has(entity, INVENTORY_CAPACITY_COMPONENT)) {
         return ctx.world.get<InventoryCapacityShape>(entity, INVENTORY_CAPACITY_COMPONENT)!.maxSlots;
       }
-      return DEFAULT_CAPACITY_SLOTS;
+      return defaultMaxSlots;
     }
 
     ctx.events.on("inventory:add", (payload) => {

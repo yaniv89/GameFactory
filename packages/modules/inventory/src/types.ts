@@ -3,6 +3,12 @@ import type { EntityId } from "@forge/module-api";
 export const DEFAULT_CAPACITY_SLOTS = 20;
 export const INVENTORY_CAPACITY_COMPONENT = "InventoryCapacity";
 
+/** Shape of `SetupContext.config` this module expects (docs/SPEC.md Section 9.2's `configSchema`, validated at install time by the registry — out of scope for this module itself). */
+export interface InventoryModuleConfig {
+  /** Slot limit for entities with no `InventoryCapacity` override. Defaults to `DEFAULT_CAPACITY_SLOTS`. */
+  readonly defaultMaxSlots?: number;
+}
+
 /** ECS component: only entities that need a non-default capacity carry this. */
 export interface InventoryCapacityShape extends Record<string, number | boolean> {
   maxSlots: number;

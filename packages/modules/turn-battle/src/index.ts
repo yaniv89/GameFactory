@@ -11,6 +11,7 @@ import {
   type DefeatedEvent,
   type MissedEvent,
   type StartBattleEvent,
+  type TurnBattleModuleConfig,
   type TurnStartedEvent,
 } from "./types";
 
@@ -29,6 +30,8 @@ export * from "./types";
  */
 export const turnBattleModule: ForgeModule = {
   setup(ctx: SetupContext): void {
+    const baseHitChance = (ctx.config as TurnBattleModuleConfig).baseHitChance ?? DEFAULT_HIT_CHANCE;
+
     ctx.defineComponent<CombatantShape>(
       COMBATANT_COMPONENT,
       {
@@ -81,7 +84,7 @@ export const turnBattleModule: ForgeModule = {
         return;
       }
 
-      const hitChance = ctx.runInterceptor("combat:hitChance", { attacker, target, chance: DEFAULT_HIT_CHANCE });
+      const hitChance = ctx.runInterceptor("combat:hitChance", { attacker, target, chance: baseHitChance });
       if (Math.random() >= hitChance.chance) {
         ctx.events.emit("battle:missed", { attacker, target } satisfies MissedEvent);
         advanceTurn(battle, target);

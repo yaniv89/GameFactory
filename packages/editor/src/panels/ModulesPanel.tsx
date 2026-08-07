@@ -1,23 +1,40 @@
-import { Panel, type ViewState } from "@forge/ds";
+import { Button, Panel, type ViewState } from "@forge/ds";
 
 export interface ModuleSummary {
   readonly name: string;
   readonly summary: string;
+  readonly installed: boolean;
+  /** Whether the module declares a `configSchema` — gates showing a "Configure" action. */
+  readonly configurable: boolean;
 }
 
 export interface ModulesPanelProps {
   state: ViewState;
   modules?: readonly ModuleSummary[];
+  onInstall: (name: string) => void;
+  onUninstall: (name: string) => void;
+  onConfigure?: (name: string) => void;
   onBrowseMarketplace: () => void;
   onRetry?: () => void;
 }
 
 /**
- * Lists modules installed in the current project. The marketplace browse
- * flow (registry search, install, capability consent) is M6/M7 — this
- * panel only renders what's already installed.
+ * The full module catalog available to this project — today, that's
+ * exactly the three first-party modules (`packages/modules/*`), since
+ * there is no registry to browse yet (M6/M7). Each row can be installed,
+ * uninstalled, or (if it declares a `configSchema`) sent to the Inspector
+ * to configure — all real, undoable project-document operations
+ * (projectStore's `installModule`/`uninstallModule`/`selectModule`).
  */
-export function ModulesPanel({ state, modules = [], onBrowseMarketplace, onRetry }: ModulesPanelProps) {
+export function ModulesPanel({
+  state,
+  modules = [],
+  onInstall,
+  onUninstall,
+  onConfigure,
+  onBrowseMarketplace,
+  onRetry,
+}: ModulesPanelProps) {
   return (
     <Panel
       title="Modules"
@@ -44,9 +61,27 @@ export function ModulesPanel({ state, modules = [], onBrowseMarketplace, onRetry
     >
       <ul className="fg-list">
         {modules.map((mod) => (
-          <li key={mod.name}>
-            <span className="fg-list__primary">{mod.name}</span>
-            <span className="fg-list__secondary">{mod.summary}</span>
+          <li key={mod.name} className="fg-modules-list__row">
+            <div>
+              <span className="fg-list__primary">{mod.name}</span>
+              <span className="fg-list__secondary">{mod.summary}</span>
+            </div>
+            <div className="fg-modules-list__actions">
+              {mod.installed && mod.configurable && (
+                <Button variant="secondary" onClick={() => onConfigure?.(mod.name)}>
+                  Configure
+                </Button>
+              )}
+              {mod.installed ? (
+                <Button variant="destructive" onClick={() => onUninstall(mod.name)}>
+                  Uninstall
+                </Button>
+              ) : (
+                <Button variant="primary" onClick={() => onInstall(mod.name)}>
+                  Install
+                </Button>
+              )}
+            </div>
           </li>
         ))}
       </ul>

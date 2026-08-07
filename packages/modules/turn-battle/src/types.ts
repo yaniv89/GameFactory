@@ -4,6 +4,12 @@ export const COMBATANT_COMPONENT = "Combatant";
 export const DEFAULT_HIT_CHANCE = 0.9;
 export const ACTIVE_BATTLE_STORAGE_KEY = "battle:active";
 
+/** Shape of `SetupContext.config` this module expects (docs/SPEC.md Section 9.2's `configSchema`, validated at install time by the registry — out of scope for this module itself). */
+export interface TurnBattleModuleConfig {
+  /** Base hit chance before `combat:hitChance` interceptors run. Defaults to `DEFAULT_HIT_CHANCE`. */
+  readonly baseHitChance?: number;
+}
+
 /** ECS component: one entity's combat stats. */
 export interface CombatantShape extends Record<string, number | boolean> {
   hp: number;

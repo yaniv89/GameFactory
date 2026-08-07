@@ -1,27 +1,18 @@
+import { defaultsFromSchema } from "../inspector/jsonSchema";
+import { ModuleInspector } from "../inspector/ModuleInspector";
 import { SceneInspector } from "../inspector/SceneInspector";
+import { FIRST_PARTY_MODULE_MANIFESTS } from "../modules/moduleManifests";
 import { InspectorPanel } from "../panels/InspectorPanel";
-import { ModulesPanel, type ModuleSummary } from "../panels/ModulesPanel";
+import { ModulesPanel } from "../panels/ModulesPanel";
 import { ScenesPanel } from "../panels/ScenesPanel";
 import { useProjectStore } from "../store/projectStore";
-
-/**
- * Real modules built in M3 (packages/modules/dialogue|inventory|turn-battle) —
- * this list is bundle-time-known fact, not placeholder data. The registry
- * (M6) replaces this with a real installed-modules query; until then this
- * IS what's installed, since these three ship with the platform.
- */
-const FIRST_PARTY_MODULES: readonly ModuleSummary[] = [
-  { name: "@forge/dialogue", summary: "Dialogue trees with translatable, filterable lines." },
-  { name: "@forge/inventory", summary: "Per-entity item stacks, capacity limits, and a shop flow." },
-  { name: "@forge/turn-battle", summary: "1v1 turn-based combat with hit chance and damage filters." },
-];
 
 /**
  * Scene creation now goes through the command-log undo store (Phase 3):
  * every click dispatches a real, undoable "scene/create" command and the
  * document persists to localStorage, so it survives a reload. There is
  * still no backend (M5) — persistence is local-only until then. Selecting
- * a scene (Phase 4) feeds the Inspector via the store's selectedSceneId.
+ * a scene (Phase 4) feeds the Inspector via the store's selection.
  */
 export function ScenesPanelContainer() {
   const scenes = useProjectStore((state) => state.document.scenes);
@@ -38,11 +29,37 @@ export function ScenesPanelContainer() {
   );
 }
 
+/**
+ * The module catalog (`moduleManifests.ts`) is always all three
+ * first-party modules — there's no registry to add or remove entries from
+ * yet (M6/M7) — but which ones are installed, and their config, is now
+ * real project-document state (Phase 5). Install/uninstall/configure are
+ * all undoable through the same command log as scenes.
+ */
 export function ModulesPanelContainer() {
+  const installedModules = useProjectStore((state) => state.document.installedModules);
+  const installModule = useProjectStore((state) => state.installModule);
+  const uninstallModule = useProjectStore((state) => state.uninstallModule);
+  const selectModule = useProjectStore((state) => state.selectModule);
+
+  const modules = FIRST_PARTY_MODULE_MANIFESTS.map((manifest) => ({
+    name: manifest.name,
+    summary: manifest.summary,
+    installed: manifest.name in installedModules,
+    configurable: manifest.configSchema !== undefined,
+  }));
+
   return (
     <ModulesPanel
       state="populated"
-      modules={FIRST_PARTY_MODULES}
+      modules={modules}
+      onInstall={(name) => {
+        const manifest = FIRST_PARTY_MODULE_MANIFESTS.find((candidate) => candidate.name === name);
+        const initialConfig = manifest?.configSchema ? defaultsFromSchema(manifest.configSchema) : {};
+        installModule(name, initialConfig);
+      }}
+      onUninstall={uninstallModule}
+      onConfigure={selectModule}
       onBrowseMarketplace={() => {
         // The marketplace (M6/M7) doesn't exist yet — logged rather than silently doing nothing.
         console.info("[forge:editor] marketplace browsing lands in M6/M7");
@@ -52,25 +69,42 @@ export function ModulesPanelContainer() {
 }
 
 /**
- * Renders the JSON-Schema-driven SceneInspector for the selected scene
- * (Phase 4). If the selection points at a scene that no longer exists —
- * e.g. its creation was undone while it was selected — "empty" is still
- * the honest state, not a crash or a stale form.
+ * Renders the JSON-Schema-driven inspector for whatever's selected — a
+ * scene (Phase 4) or, as of Phase 5, an installed module. If the
+ * selection points at something that no longer exists — e.g. its
+ * creation/install was undone while it was selected, or a module was
+ * uninstalled elsewhere — "empty" is still the honest state, not a crash
+ * or a stale form.
  */
 export function InspectorPanelContainer() {
   const scenes = useProjectStore((state) => state.document.scenes);
-  const selectedSceneId = useProjectStore((state) => state.selectedSceneId);
+  const installedModules = useProjectStore((state) => state.document.installedModules);
+  const selection = useProjectStore((state) => state.selection);
   const renameScene = useProjectStore((state) => state.renameScene);
+  const configureModule = useProjectStore((state) => state.configureModule);
 
-  const selectedScene = scenes.find((scene) => scene.id === selectedSceneId);
-
-  if (!selectedScene) {
-    return <InspectorPanel state="empty" />;
+  if (selection?.kind === "scene") {
+    const scene = scenes.find((candidate) => candidate.id === selection.sceneId);
+    if (scene) {
+      return (
+        <InspectorPanel state="populated" selectionLabel={`Scene: ${scene.name}`}>
+          <SceneInspector scene={scene} onRename={renameScene} />
+        </InspectorPanel>
+      );
+    }
   }
 
-  return (
-    <InspectorPanel state="populated" selectionLabel={`Scene: ${selectedScene.name}`}>
-      <SceneInspector scene={selectedScene} onRename={renameScene} />
-    </InspectorPanel>
-  );
+  if (selection?.kind === "module") {
+    const manifest = FIRST_PARTY_MODULE_MANIFESTS.find((candidate) => candidate.name === selection.moduleName);
+    const config = installedModules[selection.moduleName];
+    if (manifest && config) {
+      return (
+        <InspectorPanel state="populated" selectionLabel={`Module: ${manifest.name}`}>
+          <ModuleInspector manifest={manifest} config={config} onConfigure={configureModule} />
+        </InspectorPanel>
+      );
+    }
+  }
+
+  return <InspectorPanel state="empty" />;
 }

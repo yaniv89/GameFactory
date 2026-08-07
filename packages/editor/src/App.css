@@ -73,3 +73,16 @@
   font-weight: var(--weight-medium);
   margin-block-end: var(--space-3);
 }
+
+li.fg-modules-list__row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.fg-modules-list__actions {
+  display: flex;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}

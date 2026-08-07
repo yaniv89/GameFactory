@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
@@ -32,6 +31,22 @@ namespace Forge.Tests;
 ///    ForgeDbContextTests.cs) instead of appsettings.json's local-dev
 ///    placeholder, which points nowhere in CI, and creates the schema
 ///    via EnsureCreated before any test runs.
+///
+///    This is done by replacing the <c>DbContextOptions&lt;ForgeDbContext&gt;</c>
+///    service registration directly in <see cref="ConfigureWebHost"/>,
+///    not by pushing an override through <c>IHostBuilder.ConfigureAppConfiguration</c>.
+///    The latter was tried first and looked correct, but doesn't win: this
+///    app's entry point (<c>Program.cs</c> via <c>AddForgeInfrastructure</c>)
+///    reads <c>IConfiguration.GetConnectionString("Forge")</c> eagerly while
+///    building the <see cref="WebApplicationBuilder"/>, and confirmed by a
+///    real CI run, <c>appsettings.json</c>'s own connection-string source
+///    still wins that race against a queued <c>ConfigureAppConfiguration</c>
+///    delegate under <c>WebApplicationFactory</c>'s deferred-host mechanism
+///    for minimal-API entry points — every test hit the literal
+///    <c>appsettings.json</c> placeholder (<c>127.0.0.1:5432</c>, refused)
+///    instead of the container's real mapped port. Overriding the
+///    <see cref="IServiceCollection"/> registration directly sidesteps that
+///    ordering entirely.
 /// </summary>
 public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
@@ -55,19 +70,17 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
         {
             services.RemoveAll<IEmailSender>();
             services.AddSingleton<IEmailSender>(EmailSender);
+
+            services.RemoveAll<DbContextOptions<ForgeDbContext>>();
+            services.AddDbContext<ForgeDbContext>(options => options
+                .UseNpgsql(_container.GetConnectionString())
+                .UseSnakeCaseNamingConvention());
         });
     }
 
     protected override IHost CreateHost(IHostBuilder builder)
     {
         builder.UseEnvironment(Environments.Development);
-        builder.ConfigureAppConfiguration((_, configBuilder) =>
-        {
-            configBuilder.AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:Forge"] = _container.GetConnectionString(),
-            });
-        });
 
         var host = base.CreateHost(builder);
 

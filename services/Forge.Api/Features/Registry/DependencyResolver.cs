@@ -137,16 +137,37 @@ public sealed class DependencyResolver(ForgeDbContext db, IMemoryCache cache) : 
         return (await cache.GetOrCreateAsync($"pkgver:{name}", async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5);
-            return await db.PackageVersions
+
+            // Dictionary construction isn't translatable to SQL, so the
+            // dependency rows are projected as a plain list here and
+            // converted to a Dictionary afterward, in memory, once —
+            // doing the ToDictionary() inside this .Select() throws at
+            // query-translation time for every single request regardless
+            // of scenario, confirmed by a real CI run where it took down
+            // every resolver test uniformly, not just ones with
+            // dependencies to convert.
+            var rows = await db.PackageVersions
                 .Where(v => v.Package!.Name == name && v.ScanStatus == Domain.Entities.PackageScanStatus.Passed)
-                .Select(v => new PackageVersionDto(
+                .Select(v => new
+                {
                     v.Version,
                     v.EngineRange,
                     v.BundleUrl,
                     v.BundleSha256,
                     v.YankedAt,
-                    v.Dependencies.ToDictionary(d => d.DependsOnName, d => d.VersionRange)))
+                    Dependencies = v.Dependencies.Select(d => new { d.DependsOnName, d.VersionRange }).ToList(),
+                })
                 .ToListAsync(ct);
+
+            return rows
+                .Select(r => new PackageVersionDto(
+                    r.Version,
+                    r.EngineRange,
+                    r.BundleUrl,
+                    r.BundleSha256,
+                    r.YankedAt,
+                    r.Dependencies.ToDictionary(d => d.DependsOnName, d => d.VersionRange)))
+                .ToList();
         }))!;
     }
 }

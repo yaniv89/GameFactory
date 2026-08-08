@@ -112,7 +112,7 @@ public static class RevisionCommitService
             await tx.CommitAsync(ct);
             return new CommitResult(CommitResultKind.Committed, revision, revision.Id);
         }
-        catch (Exception ex) when (IsSerializationFailure(ex))
+        catch (Exception ex) when (IsRetryableSerializationConflict(ex))
         {
             // Deliberately not reading back the actual head revision to
             // populate ActualHeadRevision here (unlike the pre-commit
@@ -134,12 +134,37 @@ public static class RevisionCommitService
         }
     }
 
-    /// <summary>Walks the exception chain because EF Core's wrapping of a transient Postgres error depends on call shape (see the doc comment above) — matching a single exception type isn't reliable.</summary>
-    private static bool IsSerializationFailure(Exception ex)
+    /// <summary>
+    /// Walks the exception chain because EF Core's wrapping of a
+    /// transient Postgres error depends on call shape (see the doc
+    /// comment above) — matching a single exception type isn't reliable.
+    ///
+    /// Matches two distinct SqlStates, both confirmed against real
+    /// Postgres errors in CI, not just reasoned about:
+    /// <see cref="PostgresErrorCodes.SerializationFailure"/> (40001) is
+    /// the ordinary "another transaction's write actually conflicts with
+    /// this one" case. <see cref="PostgresErrorCodes.OutOfMemory"/>
+    /// (53200) is a different failure a real CI run at 200-way concurrent
+    /// Serializable transactions also produced: "not enough elements in
+    /// RWConflictPool to record a read/write conflict" — Postgres's
+    /// fixed-size predicate-lock tracking pool for Serializable Snapshot
+    /// Isolation, exhausted by tracking too many simultaneous
+    /// transactions' read/write dependencies at once, not a general
+    /// system out-of-memory condition (a real one would come from a
+    /// different code path than this transaction's own predicate-lock
+    /// bookkeeping). Safe to treat the same as a serialization conflict
+    /// here specifically because the only large-allocation structure this
+    /// method's own transaction touches is that predicate-lock pool — a
+    /// production Postgres under enough real concurrent load can hit the
+    /// same ceiling as this CI run did, and the correct response is the
+    /// same as an ordinary conflict: ask the caller to retry, not leak a
+    /// 500.
+    /// </summary>
+    private static bool IsRetryableSerializationConflict(Exception ex)
     {
         for (var current = ex; current is not null; current = current.InnerException)
         {
-            if (current is PostgresException { SqlState: PostgresErrorCodes.SerializationFailure })
+            if (current is PostgresException { SqlState: PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.OutOfMemory })
             {
                 return true;
             }

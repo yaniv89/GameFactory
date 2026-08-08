@@ -1,11 +1,13 @@
 // Minimal API host. Endpoint surface (docs/SPEC.md Section 13) is built out
 // starting in Milestone M5. Auth (Identity + OpenIddict), the EF Core data
 // layer, workspace-scoped authorization policies, Projects CRUD +
-// CommitRevision, and Redis-backed rate limiting exist so far — billing,
-// marketplace, and publish are still scaffolded, not faked.
+// CommitRevision, Redis-backed rate limiting, and Stripe billing + plan
+// gating exist so far — marketplace and publish are still scaffolded, not
+// faked.
 using Forge.Api;
 using Forge.Api.Authorization;
 using Forge.Api.Features.Auth;
+using Forge.Api.Features.Billing;
 using Forge.Api.Features.Projects;
 using Forge.Api.RateLimiting;
 using Forge.Api.Security;
@@ -18,6 +20,7 @@ builder.Services.AddForgeInfrastructure(builder.Configuration);
 builder.Services.AddForgeAuth(builder.Environment.IsDevelopment());
 builder.Services.AddForgeAuthorization();
 builder.Services.AddForgeRateLimiting(builder.Configuration);
+builder.Services.AddForgeBilling(builder.Configuration);
 
 var app = builder.Build();
 
@@ -55,6 +58,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
 
 app.MapAuthEndpoints();
 app.MapProjectEndpoints();
+app.MapBillingEndpoints();
 
 await OpenIddictSeeding.SeedAsync(app);
 

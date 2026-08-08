@@ -1,3 +1,4 @@
+using Forge.Infrastructure.Billing;
 using Forge.Infrastructure.Email;
 using Forge.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
@@ -66,6 +67,15 @@ namespace Forge.Tests;
 ///    <see cref="IConnectionMultiplexer"/> registration directly — rather
 ///    than a config-provider override that would lose the same ordering
 ///    race.
+///
+/// 4. No real Stripe test-mode API key exists in this environment (M5
+///    Phase 5) — <see cref="IStripeBillingClient"/> is swapped for
+///    <see cref="FakeStripeBillingClient"/> the same way <c>IEmailSender</c>
+///    is, since a real call would just fail against
+///    <c>appsettings.json</c>'s placeholder key. <c>StripeWebhookOptions</c>/
+///    <c>StripePriceOptions</c> are NOT overridden — their appsettings.json
+///    placeholder values are deterministic and known, so webhook tests
+///    reference them directly instead.
 /// </summary>
 public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
@@ -80,6 +90,9 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
     /// </summary>
     public CapturingEmailSender EmailSender { get; } = new();
 
+    /// <summary>No real Stripe API key exists in this environment (see class remarks) — this captures what would have been requested.</summary>
+    public FakeStripeBillingClient BillingClient { get; } = new();
+
     public async Task InitializeAsync() => await Task.WhenAll(_postgres.StartAsync(), _redis.StartAsync());
 
     async Task IAsyncLifetime.DisposeAsync() => await Task.WhenAll(_postgres.DisposeAsync().AsTask(), _redis.DisposeAsync().AsTask());
@@ -90,6 +103,9 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
         {
             services.RemoveAll<IEmailSender>();
             services.AddSingleton<IEmailSender>(EmailSender);
+
+            services.RemoveAll<IStripeBillingClient>();
+            services.AddSingleton<IStripeBillingClient>(BillingClient);
 
             var connectionString = _postgres.GetConnectionString();
             services.RemoveAll<DbContextOptions<ForgeDbContext>>();

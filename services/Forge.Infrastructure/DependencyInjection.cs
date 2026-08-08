@@ -1,3 +1,4 @@
+using Forge.Infrastructure.Billing;
 using Forge.Infrastructure.Email;
 using Forge.Infrastructure.Identity;
 using Forge.Infrastructure.Persistence;
@@ -9,6 +10,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenIddict.Abstractions;
 using StackExchange.Redis;
+using Stripe;
 
 namespace Forge.Infrastructure;
 
@@ -55,6 +57,31 @@ public static class DependencyInjection
 
         services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(connectionString));
         services.AddSingleton<IRateLimiter, RedisRateLimiter>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Stripe Checkout/Billing Portal (M5 Phase 5, docs/SPEC.md Section
+    /// 23.2/23.5). All four settings are secrets or environment-specific
+    /// identifiers — the appsettings.json values are local-dev/test-mode
+    /// placeholders (CLAUDE.md Section 4.7), never real production keys.
+    /// </summary>
+    public static IServiceCollection AddForgeBilling(this IServiceCollection services, IConfiguration configuration)
+    {
+        var secretKey = configuration["Stripe:SecretKey"]
+            ?? throw new InvalidOperationException("Missing Stripe:SecretKey configuration.");
+        var webhookSecret = configuration["Stripe:WebhookSecret"]
+            ?? throw new InvalidOperationException("Missing Stripe:WebhookSecret configuration.");
+        var proPriceId = configuration["Stripe:ProPriceId"]
+            ?? throw new InvalidOperationException("Missing Stripe:ProPriceId configuration.");
+        var studioPriceId = configuration["Stripe:StudioPriceId"]
+            ?? throw new InvalidOperationException("Missing Stripe:StudioPriceId configuration.");
+
+        var stripeClient = new StripeClient(secretKey);
+        services.AddSingleton<IStripeBillingClient>(_ => new StripeBillingClient(stripeClient, proPriceId, studioPriceId));
+        services.AddSingleton(new StripeWebhookOptions(webhookSecret));
+        services.AddSingleton(new StripePriceOptions(proPriceId, studioPriceId));
 
         return services;
     }

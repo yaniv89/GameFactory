@@ -45,6 +45,8 @@
     <PackageReference Include="OpenIddict.EntityFrameworkCore" Version="7.6.0" />
     <!-- M5 Phase 4: the Redis-backed rate limiter (docs/SPEC.md Section 5.5). -->
     <PackageReference Include="StackExchange.Redis" Version="2.8.16" />
+    <!-- M5 Phase 5: Stripe Checkout/portal/webhooks (docs/SPEC.md Section 23, CLAUDE.md Section 2.1's pinned payments stack). -->
+    <PackageReference Include="Stripe.net" Version="47.4.0" />
   </ItemGroup>
 
   <ItemGroup>

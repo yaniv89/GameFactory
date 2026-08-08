@@ -31,7 +31,11 @@ public static class ForgeAuthorizationExtensions
     /// <c>workspace:write</c> are the same idea keyed on a
     /// <c>workspaceId</c> route value instead, for the workspace-scoped
     /// project list/create endpoints where there's no project yet to
-    /// resolve a workspace from.
+    /// resolve a workspace from. <c>workspace:billing</c> requires Admin,
+    /// stricter than the other two — docs/SPEC.md Section 23.6: a viewer
+    /// reaching a billing page is a permission-denied state, not merely a
+    /// read-only one. <c>workspace:pro</c> is the plan gate itself
+    /// (Section 23.2/23.5) — registered here, consumed starting M6.
     /// </summary>
     public static IServiceCollection AddForgeAuthorization(this IServiceCollection services)
     {
@@ -39,7 +43,8 @@ public static class ForgeAuthorizationExtensions
         services.AddScoped<ICurrentUser>(sp => sp.GetRequiredService<CurrentUser>());
 
         services.AddScoped<IAuthorizationHandler, WorkspaceRoleHandler>();
-        services.AddSingleton<IAuthorizationMiddlewareResultHandler, NotFoundOnForbidAuthorizationMiddlewareResultHandler>();
+        services.AddScoped<IAuthorizationHandler, PlanGateHandler>();
+        services.AddSingleton<IAuthorizationMiddlewareResultHandler, WorkspaceAuthorizationMiddlewareResultHandler>();
         services.AddSingleton<IDocumentValidator, DocumentValidator>();
 
         services.AddAuthorizationBuilder()
@@ -61,7 +66,15 @@ public static class ForgeAuthorizationExtensions
             .AddPolicy("workspace:write", policy => policy
                 .AddAuthenticationSchemes(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)
                 .RequireAuthenticatedUser()
-                .Requirements.Add(new WorkspaceRoleRequirement(WorkspaceRole.Editor, WorkspaceResourceKind.Workspace, "workspaceId")));
+                .Requirements.Add(new WorkspaceRoleRequirement(WorkspaceRole.Editor, WorkspaceResourceKind.Workspace, "workspaceId")))
+            .AddPolicy("workspace:billing", policy => policy
+                .AddAuthenticationSchemes(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)
+                .RequireAuthenticatedUser()
+                .Requirements.Add(new WorkspaceRoleRequirement(WorkspaceRole.Admin, WorkspaceResourceKind.Workspace, "workspaceId")))
+            .AddPolicy("workspace:pro", policy => policy
+                .AddAuthenticationSchemes(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)
+                .RequireAuthenticatedUser()
+                .Requirements.Add(new PlanGateRequirement(WorkspaceResourceKind.Workspace, "workspaceId")));
 
         return services;
     }

@@ -30,3 +30,21 @@ public sealed class Workspace
 
     public ICollection<Project> Projects { get; set; } = new List<Project>();
 }
+
+/// <summary>
+/// The closed set of <see cref="Workspace.Plan"/> values. Denormalized
+/// onto <see cref="Workspace"/> for cheap reads (avoids a join everywhere
+/// a plan check is needed), but never the value plan-gate authorization
+/// checks are updated from directly — the <see cref="Subscription"/> row,
+/// itself written only by verified Stripe webhook events (docs/SPEC.md
+/// Section 23.5), is what keeps this field in sync.
+/// </summary>
+public static class WorkspacePlan
+{
+    public const string Free = "free";
+    public const string Pro = "pro";
+    public const string Studio = "studio";
+
+    /// <summary>Plans that pass a plan-gate check (docs/SPEC.md Section 23.2's export/publish wall).</summary>
+    public static readonly IReadOnlySet<string> GatesOpen = new HashSet<string>([Pro, Studio]);
+}

@@ -29,7 +29,7 @@ namespace Forge.Api.Authorization;
 ///
 /// Deliberately does not distinguish "resource doesn't exist" from
 /// "resource exists but you have no access to it" — both just fail the
-/// requirement. <see cref="NotFoundOnForbidAuthorizationMiddlewareResultHandler"/>
+/// requirement. <see cref="WorkspaceAuthorizationMiddlewareResultHandler"/>
 /// turns that failure into 404, not 403, which is what actually
 /// enforces docs/SPEC.md Section 4.5's "cross-tenant access returns 404,
 /// never 403": a 403 would itself leak that the resource exists.
@@ -51,19 +51,8 @@ public sealed class WorkspaceRoleHandler(ForgeDbContext db) : AuthorizationHandl
         var subjectClaim = context.User.FindFirst(OpenIddictConstants.Claims.Subject)?.Value;
         if (subjectClaim is null) return;
 
-        var routeValue = httpContext.GetRouteValue(requirement.RouteParameterName)?.ToString();
-        if (!Guid.TryParse(routeValue, out var resourceId)) return;
-
         var ct = httpContext.RequestAborted;
-        Guid? workspaceId = requirement.ResourceKind switch
-        {
-            WorkspaceResourceKind.Workspace => resourceId,
-            WorkspaceResourceKind.Project => await db.Projects
-                .Where(p => p.Id == resourceId && p.DeletedAt == null)
-                .Select(p => (Guid?)p.WorkspaceId)
-                .SingleOrDefaultAsync(ct),
-            _ => null,
-        };
+        var workspaceId = await WorkspaceResolver.ResolveWorkspaceIdAsync(db, httpContext, requirement.ResourceKind, requirement.RouteParameterName, ct);
         if (workspaceId is not { } resolvedWorkspaceId) return;
 
         var userId = await db.DomainUsers

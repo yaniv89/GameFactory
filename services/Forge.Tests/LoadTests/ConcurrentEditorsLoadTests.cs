@@ -233,12 +233,36 @@ public sealed class ConcurrentEditorsLoadTests : IClassFixture<ForgeWebApplicati
                 }
                 var project = (await createResponse.Content.ReadFromJsonAsync<ProjectDetailResponse>())!;
 
+                // Retried, not a single shot: even though every editor here
+                // owns a logically distinct project, 200 fully concurrent
+                // Serializable transactions hitting the same two tables
+                // (projects, project_revisions) can still produce a real
+                // 40001 between transactions that share no actual row —
+                // Postgres's Serializable Snapshot Isolation tracks
+                // dependencies through shared index structures, not with
+                // perfect per-row precision, and a real CI run at this
+                // concurrency proved it happens in practice. Retrying on
+                // 409 is exactly the client contract docs/SPEC.md Section
+                // 13.3 already specifies; a first commit against a still-
+                // untouched project has nothing to rebase, so this just
+                // resends the identical request rather than re-deriving
+                // expectedHeadRevision the way CommitOwnMarkerWithRetryAsync
+                // does for genuine content contention.
                 var doc = JsonSerializer.SerializeToElement(new { scenes = new[] { new { id = $"editor-{index}-scene" } }, installedModules = new { } });
-                var commitResponse = await editor.Client.PostAsJsonAsync(
-                    $"/api/v1/projects/{project.Id}/revisions",
-                    new { expectedHeadRevision = (long?)null, label = (string?)null, isCheckpoint = false, document = doc });
-                if (commitResponse.StatusCode != HttpStatusCode.Created)
+                HttpResponseMessage commitResponse;
+                var commitAttempts = 0;
+                while (true)
                 {
+                    commitAttempts++;
+                    commitResponse = await editor.Client.PostAsJsonAsync(
+                        $"/api/v1/projects/{project.Id}/revisions",
+                        new { expectedHeadRevision = (long?)null, label = (string?)null, isCheckpoint = false, document = doc });
+                    if (commitResponse.StatusCode == HttpStatusCode.Created) break;
+                    if (commitResponse.StatusCode == HttpStatusCode.Conflict && commitAttempts < 10)
+                    {
+                        await Task.Delay(Random.Shared.Next(5, 25));
+                        continue;
+                    }
                     return (false, $"CommitRevision: {(int)commitResponse.StatusCode} {await commitResponse.Content.ReadAsStringAsync()}");
                 }
 

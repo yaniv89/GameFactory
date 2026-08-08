@@ -8,7 +8,7 @@ namespace Forge.Infrastructure.Billing;
 /// The real Stripe.net-backed implementation. Checkout sessions carry the
 /// workspace id in <c>Metadata</c>, not just as an in-memory correlation —
 /// the webhook handler (the only place that ever writes a
-/// <see cref="Subscription"/> row) reads it back from the
+/// <see cref="Domain.Entities.Subscription"/> row) reads it back from the
 /// <c>checkout.session.completed</c> event, since the session response
 /// this class returns to its caller is never itself proof of payment
 /// (docs/SPEC.md Section 23.5, CLAUDE.md Section 1.1 guardrail 4).

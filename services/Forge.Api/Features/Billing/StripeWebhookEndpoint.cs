@@ -5,6 +5,11 @@ using Forge.Infrastructure.Billing;
 using Forge.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Stripe;
+// Stripe.net has its own Stripe.Subscription type — this alias, not a
+// fully-qualified name at each call site, since the domain entity is
+// what this file is overwhelmingly about; Stripe.net's own types
+// (Event, EventUtility, StripeException) are used unqualified instead.
+using Subscription = Forge.Domain.Entities.Subscription;
 
 namespace Forge.Api.Features.Billing;
 

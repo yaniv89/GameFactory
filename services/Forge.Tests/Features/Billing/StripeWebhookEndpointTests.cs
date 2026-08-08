@@ -28,7 +28,7 @@ public sealed class StripeWebhookEndpointTests : IClassFixture<ForgeWebApplicati
     // section — ForgeWebApplicationFactory deliberately doesn't override
     // these (see its own remarks: they're deterministic and known), so
     // this really is what the test host resolves.
-    private const string WebhookSecret = "whsec_placeholder";
+    private const string WebhookSecret = "local-dev-placeholder-not-a-real-stripe-webhook-secret";
     private const string StudioPriceId = "price_placeholder_studio";
 
     private readonly ForgeWebApplicationFactory _factory;

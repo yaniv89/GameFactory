@@ -22,10 +22,11 @@ namespace Forge.Infrastructure.Persistence;
 /// docs/SPEC.md Section 23.1 is explicit that <see cref="Domain.Entities.User"/>
 /// is a projection linked by <c>IdentitySubjectId</c>, not the same row.
 ///
-/// Only the M5 subset of the Section 6.2 domain schema is modeled here:
-/// identity, workspaces, subscriptions, and projects/revisions. Registry,
-/// commerce, and asset tables (packages, listings, purchases, assets,
-/// published_builds) are M6/M7 scope and land in a later migration.
+/// Models the M5 subset (identity, workspaces, subscriptions,
+/// projects/revisions) plus M6 Phase 1's registry tables (packages,
+/// package_versions, package_dependencies). Commerce and asset tables
+/// (listings, purchases, assets, published_builds) are still M6/M7 scope
+/// and land in a later phase.
 /// </summary>
 public sealed class ForgeDbContext(DbContextOptions<ForgeDbContext> options)
     : IdentityDbContext<ForgeIdentityUser, IdentityRole<Guid>, Guid>(options)
@@ -50,6 +51,12 @@ public sealed class ForgeDbContext(DbContextOptions<ForgeDbContext> options)
 
     public DbSet<ProjectRevision> ProjectRevisions => Set<ProjectRevision>();
 
+    public DbSet<Package> Packages => Set<Package>();
+
+    public DbSet<PackageVersion> PackageVersions => Set<PackageVersion>();
+
+    public DbSet<PackageDependency> PackageDependencies => Set<PackageDependency>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder); // Identity's own AspNetUsers/AspNetRoles/etc. tables.
@@ -57,10 +64,11 @@ public sealed class ForgeDbContext(DbContextOptions<ForgeDbContext> options)
 
         // Matches the extensions the raw DDL in docs/SPEC.md Section 6.2
         // requires: pgcrypto for gen_random_uuid() defaults, citext for
-        // case-insensitive email uniqueness. pg_trgm (trigram search) backs
-        // the packages table, which isn't modeled until M6 — added there.
+        // case-insensitive email uniqueness, pg_trgm for the packages
+        // table's fuzzy-search GIN index (PackageConfiguration).
         modelBuilder.HasPostgresExtension("pgcrypto");
         modelBuilder.HasPostgresExtension("citext");
+        modelBuilder.HasPostgresExtension("pg_trgm");
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ForgeDbContext).Assembly);
     }

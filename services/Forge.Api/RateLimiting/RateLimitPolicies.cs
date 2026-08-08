@@ -47,4 +47,15 @@ public static class RateLimitPolicies
     /// tighter budget rather than sharing <see cref="Api"/>'s.
     /// </summary>
     public static readonly RateLimitPolicy CommitRevision = new(Limit: 60, Window: TimeSpan.FromMinutes(1));
+
+    /// <summary>
+    /// The public registry browse surface (list/get packages and
+    /// versions, M6 Phase 1), IP-keyed since browsing the catalog doesn't
+    /// require authentication — anyone can look up a package the way
+    /// npm's registry API works. Generous like <see cref="Api"/>, but a
+    /// separate policy so a scraper hammering the catalog can't also cost
+    /// well-behaved anonymous browsers their own budget by sharing one
+    /// pool with something else IP-keyed.
+    /// </summary>
+    public static readonly RateLimitPolicy Registry = new(Limit: 300, Window: TimeSpan.FromMinutes(1));
 }

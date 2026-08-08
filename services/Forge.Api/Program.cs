@@ -1,14 +1,18 @@
 // Minimal API host. Endpoint surface (docs/SPEC.md Section 13) is built out
 // starting in Milestone M5. Auth (Identity + OpenIddict), the EF Core data
 // layer, workspace-scoped authorization policies, Projects CRUD +
-// CommitRevision, Redis-backed rate limiting, and Stripe billing + plan
-// gating exist so far — marketplace and publish are still scaffolded, not
-// faked.
+// CommitRevision, Redis-backed rate limiting, Stripe billing + plan gating,
+// and the registry's read surface + dependency resolution (M6 Phase 1)
+// exist so far — publishing (the write side of the registry) is still
+// scaffolded, not faked: it lands in M6 Phase 2 together with the
+// publish-pipeline security gates, deliberately never built separately
+// from them.
 using Forge.Api;
 using Forge.Api.Authorization;
 using Forge.Api.Features.Auth;
 using Forge.Api.Features.Billing;
 using Forge.Api.Features.Projects;
+using Forge.Api.Features.Registry;
 using Forge.Api.RateLimiting;
 using Forge.Api.Security;
 using Forge.Infrastructure;
@@ -21,6 +25,7 @@ builder.Services.AddForgeAuth(builder.Environment.IsDevelopment());
 builder.Services.AddForgeAuthorization();
 builder.Services.AddForgeRateLimiting(builder.Configuration);
 builder.Services.AddForgeBilling(builder.Configuration);
+builder.Services.AddForgeRegistry();
 
 var app = builder.Build();
 
@@ -59,6 +64,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
 app.MapAuthEndpoints();
 app.MapProjectEndpoints();
 app.MapBillingEndpoints();
+app.MapRegistryEndpoints();
 
 await OpenIddictSeeding.SeedAsync(app);
 

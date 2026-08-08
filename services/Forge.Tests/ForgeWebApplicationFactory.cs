@@ -1,3 +1,4 @@
+using Azure.Storage.Blobs;
 using Forge.Infrastructure.Billing;
 using Forge.Infrastructure.Email;
 using Forge.Infrastructure.Persistence;
@@ -9,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using StackExchange.Redis;
+using Testcontainers.Azurite;
 using Testcontainers.PostgreSql;
 using Testcontainers.Redis;
 using Xunit;
@@ -76,11 +78,23 @@ namespace Forge.Tests;
 ///    <c>StripePriceOptions</c> are NOT overridden — their appsettings.json
 ///    placeholder values are deterministic and known, so webhook tests
 ///    reference them directly instead.
+///
+/// 5. Same Testcontainers approach again for <c>ConnectionStrings:Blob</c>
+///    (M6 Phase 2): a real Azurite container, not a fake — publish-pipeline
+///    tests exercise the real <c>BlobContainerClient</c> and its
+///    create-only-if-not-exists immutability check, not a stand-in that
+///    would silently pass even if that check were broken.
 /// </summary>
 public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder().WithImage("postgres:16").Build();
     private readonly RedisContainer _redis = new RedisBuilder().WithImage("redis:7").Build();
+    // No explicit .WithImage() pin here unlike the two containers above:
+    // Testcontainers.Azurite's own default image tag is the one this
+    // package version was tested against, and this sandbox can't verify
+    // a hand-picked tag actually exists on the registry before a real CI
+    // run does — safer to trust the package's own default than guess.
+    private readonly AzuriteContainer _azurite = new AzuriteBuilder().Build();
 
     /// <summary>
     /// No real email provider is configured (IEmailSender's own doc
@@ -93,9 +107,10 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
     /// <summary>No real Stripe API key exists in this environment (see class remarks) — this captures what would have been requested.</summary>
     public FakeStripeBillingClient BillingClient { get; } = new();
 
-    public async Task InitializeAsync() => await Task.WhenAll(_postgres.StartAsync(), _redis.StartAsync());
+    public async Task InitializeAsync() => await Task.WhenAll(_postgres.StartAsync(), _redis.StartAsync(), _azurite.StartAsync());
 
-    async Task IAsyncLifetime.DisposeAsync() => await Task.WhenAll(_postgres.DisposeAsync().AsTask(), _redis.DisposeAsync().AsTask());
+    async Task IAsyncLifetime.DisposeAsync() => await Task.WhenAll(
+        _postgres.DisposeAsync().AsTask(), _redis.DisposeAsync().AsTask(), _azurite.DisposeAsync().AsTask());
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -122,6 +137,15 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
             var redisConnectionString = _redis.GetConnectionString();
             services.RemoveAll<IConnectionMultiplexer>();
             services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
+
+            var blobConnectionString = _azurite.GetConnectionString();
+            services.RemoveAll<BlobContainerClient>();
+            services.AddSingleton(_ =>
+            {
+                var container = new BlobContainerClient(blobConnectionString, "packages");
+                container.CreateIfNotExists();
+                return container;
+            });
         });
     }
 

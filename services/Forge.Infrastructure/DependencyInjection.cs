@@ -1,8 +1,10 @@
+using Azure.Storage.Blobs;
 using Forge.Infrastructure.Billing;
 using Forge.Infrastructure.Email;
 using Forge.Infrastructure.Identity;
 using Forge.Infrastructure.Persistence;
 using Forge.Infrastructure.RateLimiting;
+using Forge.Infrastructure.Storage;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -82,6 +84,32 @@ public static class DependencyInjection
         services.AddSingleton<IStripeBillingClient>(_ => new StripeBillingClient(stripeClient, proPriceId, studioPriceId));
         services.AddSingleton(new StripeWebhookOptions(webhookSecret));
         services.AddSingleton(new StripePriceOptions(proPriceId, studioPriceId));
+
+        return services;
+    }
+
+    /// <summary>
+    /// M6 Phase 2: where a published package version's bundle actually
+    /// lives (docs/SPEC.md Section 6.2, CLAUDE.md Section 2.1's pinned
+    /// Blob choice). The container is created eagerly, the same
+    /// fail-fast-at-startup posture as every other required-config check
+    /// in this file, rather than surfacing a missing-container error on
+    /// the first real publish attempt.
+    /// </summary>
+    public static IServiceCollection AddForgeBundleStorage(this IServiceCollection services, IConfiguration configuration)
+    {
+        var connectionString = configuration.GetConnectionString("Blob")
+            ?? throw new InvalidOperationException("Missing ConnectionStrings:Blob configuration.");
+        var containerName = configuration["Blob:PackagesContainer"]
+            ?? throw new InvalidOperationException("Missing Blob:PackagesContainer configuration.");
+
+        services.AddSingleton(_ =>
+        {
+            var container = new BlobContainerClient(connectionString, containerName);
+            container.CreateIfNotExists();
+            return container;
+        });
+        services.AddSingleton<IPackageBundleStorage, AzureBlobPackageBundleStorage>();
 
         return services;
     }

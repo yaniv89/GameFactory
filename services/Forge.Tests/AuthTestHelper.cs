@@ -24,7 +24,19 @@ public static class AuthTestHelper
 {
     private const string RedirectUri = "http://localhost:5190/auth/callback";
 
-    public static async Task<AuthenticatedTestUser> SignupAndAuthenticateAsync(ForgeWebApplicationFactory factory)
+    public static Task<AuthenticatedTestUser> SignupAndAuthenticateAsync(ForgeWebApplicationFactory factory) =>
+        SignupAndAuthenticateAsync(factory, verifyEmail: true);
+
+    /// <summary>
+    /// <paramref name="verifyEmail"/> defaults to true for every existing
+    /// caller — login itself doesn't require a verified email
+    /// (docs/SPEC.md Section 23.3: "the gate is at checkout/publish, not
+    /// login," AddForgeAuth's own <c>RequireConfirmedEmail = false</c>),
+    /// so the only reason to pass false is a test that specifically wants
+    /// an authenticated-but-unverified user (M6 Phase 2's publish-gate
+    /// tests).
+    /// </summary>
+    public static async Task<AuthenticatedTestUser> SignupAndAuthenticateAsync(ForgeWebApplicationFactory factory, bool verifyEmail)
     {
         var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
@@ -46,9 +58,12 @@ public static class AuthTestHelper
         await EnsureSuccessAsync(signupResponse);
         var signup = (await signupResponse.Content.ReadFromJsonAsync<SignupResponse>())!;
 
-        var verificationEmail = Assert.Single(factory.EmailSender.Sent, e => e.ToEmail == email && e.Subject.Contains("Verify"));
-        var verificationToken = verificationEmail.Body["Verification token: ".Length..];
-        await EnsureSuccessAsync(await client.PostAsJsonAsync("/api/v1/auth/verify-email", new { email, token = verificationToken }));
+        if (verifyEmail)
+        {
+            var verificationEmail = Assert.Single(factory.EmailSender.Sent, e => e.ToEmail == email && e.Subject.Contains("Verify"));
+            var verificationToken = verificationEmail.Body["Verification token: ".Length..];
+            await EnsureSuccessAsync(await client.PostAsJsonAsync("/api/v1/auth/verify-email", new { email, token = verificationToken }));
+        }
 
         await EnsureSuccessAsync(await client.PostAsJsonAsync("/api/v1/auth/login", new { email, password }));
 

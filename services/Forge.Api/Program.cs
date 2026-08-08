@@ -2,11 +2,13 @@
 // starting in Milestone M5. Auth (Identity + OpenIddict), the EF Core data
 // layer, workspace-scoped authorization policies, Projects CRUD +
 // CommitRevision, Redis-backed rate limiting, Stripe billing + plan gating,
-// and the registry's read surface + dependency resolution (M6 Phase 1)
-// exist so far — publishing (the write side of the registry) is still
-// scaffolded, not faked: it lands in M6 Phase 2 together with the
-// publish-pipeline security gates, deliberately never built separately
-// from them.
+// the registry's read surface + dependency resolution (M6 Phase 1), and
+// publishing through gates 1-3 of the Section 10.4 pipeline — manifest
+// validation, static analysis, dependency audit (M6 Phase 2) — exist so
+// far. Gate 4 (the sandboxed smoke run) and gate 5 (the reputation queue,
+// which needs Section 16.3's trust tiers, M7 scope) don't exist yet: a
+// published version stays scan_status=pending, never passed, until gate 4
+// lands in M6 Phase 3 — a stated gap, not a silently skipped one.
 using Forge.Api;
 using Forge.Api.Authorization;
 using Forge.Api.Features.Auth;
@@ -26,6 +28,7 @@ builder.Services.AddForgeAuthorization();
 builder.Services.AddForgeRateLimiting(builder.Configuration);
 builder.Services.AddForgeBilling(builder.Configuration);
 builder.Services.AddForgeRegistry();
+builder.Services.AddForgeBundleStorage(builder.Configuration);
 
 var app = builder.Build();
 

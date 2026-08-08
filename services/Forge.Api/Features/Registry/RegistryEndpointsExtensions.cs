@@ -1,3 +1,5 @@
+using Forge.Api.Features.Registry.Publishing;
+
 namespace Forge.Api.Features.Registry;
 
 public static class RegistryEndpointsExtensions
@@ -15,6 +17,7 @@ public static class RegistryEndpointsExtensions
         app.MapListPackages();
         app.MapPackageDetailAndVersions();
         app.MapResolveDependencies();
+        app.MapPublishVersion();
         return app;
     }
 }

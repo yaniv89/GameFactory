@@ -42,7 +42,11 @@ public sealed class CrossTenantAuthorizationTests : IClassFixture<ForgeWebApplic
         _factory = factory;
     }
 
-    private sealed record SharedState(AuthenticatedTestUser Owner, AuthenticatedTestUser Outsider, Guid ProjectId, long RevisionId);
+    // Public, not private: Outsider_Gets_404_Not_403 is a public [Theory]
+    // method taking Func<SharedState, HttpRequestMessage> as a parameter
+    // — a public member's signature can't reference a less-accessible
+    // type (CS0051), so this has to be at least as visible as that method.
+    public sealed record SharedState(AuthenticatedTestUser Owner, AuthenticatedTestUser Outsider, Guid ProjectId, long RevisionId);
 
     private async Task<SharedState> GetSharedStateAsync()
     {

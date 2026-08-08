@@ -1,3 +1,4 @@
+using System.Data;
 using System.Text.Json;
 using Forge.Domain.Entities;
 using Forge.Infrastructure.Persistence;
@@ -37,30 +38,57 @@ public sealed class PendingVersionScanner(ForgeDbContext db)
 {
     public async Task<ScannedVersion?> ClaimNextAsync(CancellationToken ct)
     {
-        var rows = await db.Database.SqlQueryRaw<ClaimedVersionRow>(
-            """
-            UPDATE package_versions
-            SET scan_status = {1}
-            WHERE id = (
-                SELECT id FROM package_versions
-                WHERE scan_status = {0}
-                ORDER BY published_at ASC
-                LIMIT 1
-                FOR UPDATE SKIP LOCKED
-            )
-            RETURNING
-                id AS "Id",
-                package_id AS "PackageId",
-                version AS "Version",
-                engine_range AS "EngineRange",
-                manifest::text AS "ManifestJson",
-                bundle_url AS "BundleUrl"
-            """,
-            PackageScanStatus.Pending, PackageScanStatus.Scanning)
-            .ToListAsync(ct);
+        // Raw ADO.NET via Database.GetDbConnection(), not
+        // Database.SqlQueryRaw<T> — confirmed by a real CI failure, not
+        // assumed: EF Core 8's SqlQueryRaw<T> threw
+        // IndexOutOfRangeException deep in its own query-compilation
+        // pipeline (NavigationExpandingExpressionVisitor) for this
+        // composite, multi-column, non-entity result shape. This escape
+        // hatch bypasses that pipeline entirely — it's EF Core's own
+        // documented way to run a command through the context's managed
+        // connection when the LINQ/SqlQuery surface doesn't fit, not a
+        // step outside EF Core's supported usage.
+        var connection = db.Database.GetDbConnection();
+        if (connection.State != ConnectionState.Open)
+        {
+            await connection.OpenAsync(ct);
+        }
 
-        var row = rows.SingleOrDefault();
-        if (row is null) return null;
+        Guid id, packageId;
+        string version, engineRange, manifestJson, bundleUrl;
+
+        // Sync `using`, not `await using`: DbCommand implements
+        // IDisposable but not IAsyncDisposable (unlike DbConnection and
+        // DbDataReader, which do) — it holds no async-disposable resource
+        // of its own.
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                UPDATE package_versions
+                SET scan_status = @scanning
+                WHERE id = (
+                    SELECT id FROM package_versions
+                    WHERE scan_status = @pending
+                    ORDER BY published_at ASC
+                    LIMIT 1
+                    FOR UPDATE SKIP LOCKED
+                )
+                RETURNING id, package_id, version, engine_range, manifest::text, bundle_url
+                """;
+            AddParameter(command, "pending", PackageScanStatus.Pending);
+            AddParameter(command, "scanning", PackageScanStatus.Scanning);
+
+            await using var reader = await command.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct)) return null;
+
+            id = reader.GetGuid(0);
+            packageId = reader.GetGuid(1);
+            version = reader.GetString(2);
+            engineRange = reader.GetString(3);
+            manifestJson = reader.GetString(4);
+            bundleUrl = reader.GetString(5);
+        }
 
         // A second round trip, not folded into the claim's own RETURNING:
         // package name lives on `packages`, not `package_versions`, and
@@ -70,13 +98,21 @@ public sealed class PendingVersionScanner(ForgeDbContext db)
         // and carries no correctness risk (the package row itself is
         // immutable identity, never renamed after creation).
         var packageName = await db.Packages
-            .Where(p => p.Id == row.PackageId)
+            .Where(p => p.Id == packageId)
             .Select(p => p.Name)
             .SingleAsync(ct);
 
         return new ScannedVersion(
-            row.Id, row.PackageId, packageName, row.Version, row.EngineRange,
-            JsonDocument.Parse(row.ManifestJson).RootElement, row.BundleUrl);
+            id, packageId, packageName, version, engineRange,
+            JsonDocument.Parse(manifestJson).RootElement, bundleUrl);
+    }
+
+    private static void AddParameter(IDbCommand command, string name, string value)
+    {
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = name;
+        parameter.Value = value;
+        command.Parameters.Add(parameter);
     }
 
     public Task MarkPassedAsync(Guid versionId, SmokeGate.SmokeRunReport report, CancellationToken ct) =>
@@ -95,14 +131,4 @@ public sealed class PendingVersionScanner(ForgeDbContext db)
             WHERE id = {versionId}
             """, ct);
     }
-}
-
-file sealed class ClaimedVersionRow
-{
-    public Guid Id { get; set; }
-    public Guid PackageId { get; set; }
-    public string Version { get; set; } = "";
-    public string EngineRange { get; set; } = "";
-    public string ManifestJson { get; set; } = "";
-    public string BundleUrl { get; set; } = "";
 }

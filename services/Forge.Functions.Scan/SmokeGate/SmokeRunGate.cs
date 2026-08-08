@@ -32,6 +32,16 @@ public sealed class SmokeRunGate(SmokeGateOptions options)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    // Encoding.UTF8 (the static singleton) writes a UTF-8 BOM preamble as
+    // the first bytes of anything it encodes — confirmed by a real CI
+    // failure, not assumed: it turned the very first character of the
+    // JSON this process writes to the CLI's stdin into U+FEFF, which
+    // Node's JSON.parse treats as a genuine syntax error rather than
+    // silently stripping, so every single run failed with "invalid JSON
+    // on stdin" regardless of the request. This variant is identical
+    // except for that preamble.
+    private static readonly Encoding Utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
     public async Task<SmokeRunReport> RunAsync(SmokeRunRequest request, CancellationToken ct)
     {
         using var process = new Process
@@ -43,9 +53,9 @@ public sealed class SmokeRunGate(SmokeGateOptions options)
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
-                StandardInputEncoding = Encoding.UTF8,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8,
+                StandardInputEncoding = Utf8NoBom,
+                StandardOutputEncoding = Utf8NoBom,
+                StandardErrorEncoding = Utf8NoBom,
                 UseShellExecute = false,
                 CreateNoWindow = true,
             },

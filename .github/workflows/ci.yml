@@ -272,28 +272,35 @@ jobs:
             exit 1
           fi
 
-      - name: Test (includes services/Forge.Tests/Security/HeaderTests.cs)
-        run: dotnet test Forge.sln --no-build --configuration Release
+      - name: Test (includes services/Forge.Tests/Security/HeaderTests.cs and Authorization/CrossTenantAuthorizationTests.cs)
+        run: dotnet test Forge.sln --no-build --configuration Release --filter "Category!=Load"
 
-  # ── Gates whose target code doesn't exist yet: log honestly, don't fake ─
-  future-milestone-gates:
-    name: Deferred gates (cross-tenant auth M5)
+  # ── Load test gate: docs/SPEC.md Section 18.4, M5 exit criterion ──────
+  # A separate job (not a step in dotnet-build-test above) specifically so
+  # this gate's run time — real concurrent HTTP load against a real
+  # Testcontainers Postgres/Redis pair — never slows down the fast
+  # unit-test feedback loop every other PR waits on. Runs
+  # services/Forge.Tests/LoadTests/ConcurrentEditorsLoadTests.cs, tagged
+  # Category=Load and excluded from the job above for exactly this reason.
+  #
+  # Formerly a tripwire job here ("Deferred gates (cross-tenant auth M5)")
+  # that deliberately failed the moment a *CrossTenant* test file showed
+  # up, so the gate could never be silently forgotten. That file now
+  # exists (services/Forge.Tests/Authorization/CrossTenantAuthorizationTests.cs)
+  # and runs for real in dotnet-build-test above — nothing left to defer
+  # there. This job is the other M5 Section 8 exit-criterion piece
+  # ("load test sustains 200 concurrent editors with zero lost writes")
+  # that tripwire was also standing in for.
+  load-test-gate:
+    name: Load test gate — 200 concurrent editors (Milestone M5 exit criterion)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      # Sandbox escape suite (Milestone M2) is no longer a tripwire here —
-      # packages/runtime-host/test/sandbox-escape.test.ts exists and runs
-      # for real via js-build-test's `pnpm -r run test` (runtime-host's
-      # own package.json `test` script is now `vitest run`, same as every
-      # other package). Its capability-bridge fixtures are still pending
-      # M2 Phase 4 — tracked in docs/security/SANDBOX-DESIGN.md Section 7,
-      # not hidden behind a CI tripwire that would otherwise never fire
-      # again once the file exists.
-      - name: Cross-tenant authorization suite (Milestone M5)
-        run: |
-          if find services/Forge.Tests -iname "*CrossTenant*" | grep -q .; then
-            echo "Cross-tenant test files found — this job needs updating to actually run them."
-            exit 1
-          else
-            echo "::notice::No cross-tenant authorization tests yet. Required before Milestone M5 exits (CLAUDE.md Section 8), not before M0."
-          fi
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet restore Forge.sln
+      - run: dotnet build Forge.sln --no-restore --configuration Release
+      - name: Load test — concurrent editors, zero lost writes (docs/SPEC.md Section 18.4)
+        run: dotnet test Forge.sln --no-build --configuration Release --filter "Category=Load"

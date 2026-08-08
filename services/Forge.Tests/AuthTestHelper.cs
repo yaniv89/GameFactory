@@ -27,6 +27,18 @@ public static class AuthTestHelper
     public static async Task<AuthenticatedTestUser> SignupAndAuthenticateAsync(ForgeWebApplicationFactory factory)
     {
         var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        // Every simulated user gets its own synthetic source address
+        // (RateLimitingMiddleware's IpAddress-keyed policies read
+        // Connection.RemoteIpAddress, which UseForwardedHeaders derives
+        // from this). Without it, every signup in a test run shares one
+        // identity against the 30-per-10-minute Auth policy — three
+        // Auth-surface calls per user (signup, verify-email, login) means
+        // as few as 10 simulated users in one test class would 429 each
+        // other, which is a test-harness artifact, not the real-world
+        // scenario a rate limit keyed on IP is meant to model.
+        client.DefaultRequestHeaders.Add("X-Forwarded-For", RandomPrivateIPv4());
+
         var email = $"user-{Guid.NewGuid():N}@example.com";
         const string password = "correct horse battery staple 42";
 
@@ -67,6 +79,12 @@ public static class AuthTestHelper
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
         return new AuthenticatedTestUser(client, signup.UserId, signup.WorkspaceId, email);
+    }
+
+    private static string RandomPrivateIPv4()
+    {
+        var octets = RandomNumberGenerator.GetBytes(3).Select(b => (byte)(1 + b % 254)).ToArray();
+        return $"10.{octets[0]}.{octets[1]}.{octets[2]}";
     }
 
     private static (string Verifier, string Challenge) CreatePkcePair()

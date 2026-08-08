@@ -34,5 +34,19 @@ public sealed class AzureBlobPackageBundleStorage(BlobContainerClient container)
         return blobClient.Uri.ToString();
     }
 
+    public async Task<byte[]> DownloadAsync(string packageName, string version, CancellationToken ct)
+    {
+        var blobClient = container.GetBlobClient(BlobPath(packageName, version));
+        try
+        {
+            var result = await blobClient.DownloadContentAsync(ct);
+            return result.Value.Content.ToArray();
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            throw new BundleNotFoundException(packageName, version);
+        }
+    }
+
     private static string BlobPath(string packageName, string version) => $"packages/{packageName}/{version}/bundle.js";
 }

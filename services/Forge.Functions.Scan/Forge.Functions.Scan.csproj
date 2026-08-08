@@ -8,15 +8,26 @@
   </PropertyGroup>
 
   <!--
-    Becomes an Azure Functions isolated-worker project running the module
-    security scan gates (docs/SPEC.md Section 10.4: static analysis,
-    dependency audit, sandboxed smoke run) when implemented in Milestone M6.
-    See Forge.Functions.Build's csproj comment for why package references
-    are deferred rather than guessed in this environment.
+    Gate 4 (docs/SPEC.md Section 10.4: sandboxed smoke run) is real as of
+    M6 Phase 3: SmokeRunGate.cs and PendingVersionScanner.cs, plain C#
+    with no Azure Functions Worker dependency, so they're fully
+    unit-testable in services/Forge.Tests against a real Postgres
+    Testcontainer and the real built packages/runtime-host smoke CLI —
+    see those tests for what's actually verified. The Azure Functions
+    Worker trigger wiring itself (the [Function]-attributed entry point
+    that actually calls these on a schedule) is a separate, deliberately
+    isolated follow-up: this environment has no .NET SDK to verify a
+    restore/build against the Functions Worker SDK's package surface
+    before pushing, so keeping it out of this change means a problem
+    there can't block or entangle with what's already verified here.
+    Gates 2/3 (static analysis, dependency audit) already run inline in
+    Forge.Api's PublishVersionEndpoint (M6 Phase 2), not here — see that
+    endpoint's own doc comment for why.
   -->
 
   <ItemGroup>
     <ProjectReference Include="..\Forge.Domain\Forge.Domain.csproj" />
+    <ProjectReference Include="..\Forge.Infrastructure\Forge.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

@@ -36,6 +36,7 @@
     <ProjectReference Include="..\Forge.Domain\Forge.Domain.csproj" />
     <ProjectReference Include="..\Forge.Infrastructure\Forge.Infrastructure.csproj" />
     <ProjectReference Include="..\Forge.Api\Forge.Api.csproj" />
+    <ProjectReference Include="..\Forge.Functions.Scan\Forge.Functions.Scan.csproj" />
   </ItemGroup>
 
 </Project>

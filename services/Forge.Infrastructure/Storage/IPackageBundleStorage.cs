@@ -24,8 +24,26 @@ public interface IPackageBundleStorage
     /// before either's database insert lands.
     /// </summary>
     Task<string> UploadAsync(string packageName, string version, byte[] content, string contentType, CancellationToken ct);
+
+    /// <summary>
+    /// Downloads a previously published bundle's raw content — gate 4's
+    /// own read side (docs/SPEC.md Section 10.4, services/Forge.Functions.Scan's
+    /// PendingVersionScanner), which needs the actual source text to run,
+    /// not the <c>bundle_url</c> string <c>package_versions</c> stores.
+    /// Takes <paramref name="packageName"/>/<paramref name="version"/>,
+    /// the same identity <see cref="UploadAsync"/> was called with —
+    /// re-derives the same content-addressed path rather than trusting a
+    /// caller-supplied URL, consistent with CLAUDE.md Section 1.1
+    /// guardrail 4's "never trust a client-supplied identifier" spirit
+    /// even though the caller here is an internal service, not a client.
+    /// </summary>
+    Task<byte[]> DownloadAsync(string packageName, string version, CancellationToken ct);
 }
 
 /// <summary>Thrown by <see cref="IPackageBundleStorage.UploadAsync"/> when the target path already has content.</summary>
 public sealed class BundleAlreadyExistsException(string packageName, string version)
     : Exception($"A bundle for '{packageName}'@'{version}' already exists.");
+
+/// <summary>Thrown by <see cref="IPackageBundleStorage.DownloadAsync"/> when the target path has no content.</summary>
+public sealed class BundleNotFoundException(string packageName, string version)
+    : Exception($"No bundle found for '{packageName}'@'{version}'.");

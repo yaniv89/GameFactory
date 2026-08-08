@@ -51,6 +51,8 @@ public sealed class PackageVersion
 public static class PackageScanStatus
 {
     public const string Pending = "pending";
+    /// <summary>Claimed by one gate 4 scanner instance (services/Forge.Functions.Scan) — the atomic claim transition that keeps two horizontally-scaled instances from picking up the same row (CLAUDE.md Section 1.5 guardrail 20).</summary>
+    public const string Scanning = "scanning";
     public const string Passed = "passed";
     public const string Flagged = "flagged";
     public const string Blocked = "blocked";

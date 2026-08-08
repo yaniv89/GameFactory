@@ -57,6 +57,8 @@ describe("diffPackSwap", () => {
       { severity: "ok", message: "3 tiles map by terrain tag" },
       { severity: "ok", message: "2 character sheets map by role tag" },
     ]);
+    expect(result.missingTerrains).toEqual([]);
+    expect(result.targetTerrains).toEqual(["dirt", "grass", "water"]);
   });
 
   it("mirrors docs/SPEC.md Section 11.5's own example: matched terrains/sheets, a missing terrain, a tile-size warning, a resampled animation, and a missing animation", () => {
@@ -115,6 +117,8 @@ describe("diffPackSwap", () => {
         detail: "Timing will be resampled.",
       },
     ]);
+    expect(result.missingTerrains).toEqual(["water"]);
+    expect(result.targetTerrains).toEqual(["dirt", "grass"]);
   });
 
   it("reports FAIL for a character sheet with no equivalent role in the target", () => {
@@ -181,5 +185,7 @@ describe("diffPackSwap", () => {
 
     expect(result.hasFailures).toBe(false);
     expect(result.findings).toEqual([]);
+    expect(result.missingTerrains).toEqual([]);
+    expect(result.targetTerrains).toEqual(["dirt", "grass", "water"]);
   });
 });

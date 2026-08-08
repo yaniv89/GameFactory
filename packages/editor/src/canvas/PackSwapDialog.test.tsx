@@ -23,6 +23,17 @@ describe("PackSwapDialog", () => {
         checkpoints={[]}
         onRestoreCheckpoint={NOOP}
         onDeleteCheckpoint={NOOP}
+        previewOpen={false}
+        onTogglePreview={NOOP}
+        sourceContext={undefined}
+        targetContext={undefined}
+        previewTiles={[]}
+        terrainRemap={{}}
+        remapOpen={false}
+        onToggleRemap={NOOP}
+        missingTerrains={[]}
+        targetTerrains={[]}
+        onSetTerrainRemap={NOOP}
       />,
     );
     expect(screen.getByText(/Choose a pack above/)).toBeInTheDocument();
@@ -47,6 +58,17 @@ describe("PackSwapDialog", () => {
         checkpoints={[]}
         onRestoreCheckpoint={NOOP}
         onDeleteCheckpoint={NOOP}
+        previewOpen={false}
+        onTogglePreview={NOOP}
+        sourceContext={undefined}
+        targetContext={undefined}
+        previewTiles={[]}
+        terrainRemap={{}}
+        remapOpen={false}
+        onToggleRemap={NOOP}
+        missingTerrains={[]}
+        targetTerrains={[]}
+        onSetTerrainRemap={NOOP}
       />,
     );
     expect(screen.queryByRole("option", { name: "@forge-fixtures/starter-pack" })).not.toBeInTheDocument();
@@ -71,6 +93,17 @@ describe("PackSwapDialog", () => {
         checkpoints={[]}
         onRestoreCheckpoint={NOOP}
         onDeleteCheckpoint={NOOP}
+        previewOpen={false}
+        onTogglePreview={NOOP}
+        sourceContext={undefined}
+        targetContext={undefined}
+        previewTiles={[]}
+        terrainRemap={{}}
+        remapOpen={false}
+        onToggleRemap={NOOP}
+        missingTerrains={[]}
+        targetTerrains={[]}
+        onSetTerrainRemap={NOOP}
       />,
     );
     await userEvent.selectOptions(screen.getByLabelText("Switch to"), "@forge-fixtures/starter-pack");
@@ -94,6 +127,17 @@ describe("PackSwapDialog", () => {
         checkpoints={[]}
         onRestoreCheckpoint={NOOP}
         onDeleteCheckpoint={NOOP}
+        previewOpen={false}
+        onTogglePreview={NOOP}
+        sourceContext={undefined}
+        targetContext={undefined}
+        previewTiles={[]}
+        terrainRemap={{}}
+        remapOpen={false}
+        onToggleRemap={NOOP}
+        missingTerrains={[]}
+        targetTerrains={[]}
+        onSetTerrainRemap={NOOP}
       />,
     );
     expect(screen.getByRole("status", { name: /Loading compatibility/i })).toBeInTheDocument();
@@ -119,6 +163,17 @@ describe("PackSwapDialog", () => {
         checkpoints={[]}
         onRestoreCheckpoint={NOOP}
         onDeleteCheckpoint={NOOP}
+        previewOpen={false}
+        onTogglePreview={NOOP}
+        sourceContext={undefined}
+        targetContext={undefined}
+        previewTiles={[]}
+        terrainRemap={{}}
+        remapOpen={false}
+        onToggleRemap={NOOP}
+        missingTerrains={[]}
+        targetTerrains={[]}
+        onSetTerrainRemap={NOOP}
       />,
     );
     expect(screen.getByText("This pack can't be compared")).toBeInTheDocument();
@@ -145,6 +200,17 @@ describe("PackSwapDialog", () => {
         checkpoints={[]}
         onRestoreCheckpoint={NOOP}
         onDeleteCheckpoint={NOOP}
+        previewOpen={false}
+        onTogglePreview={NOOP}
+        sourceContext={undefined}
+        targetContext={undefined}
+        previewTiles={[]}
+        terrainRemap={{}}
+        remapOpen={false}
+        onToggleRemap={NOOP}
+        missingTerrains={[]}
+        targetTerrains={[]}
+        onSetTerrainRemap={NOOP}
       />,
     );
     expect(screen.getByText("This pack can't be compared")).toBeInTheDocument();
@@ -172,6 +238,17 @@ describe("PackSwapDialog", () => {
         checkpoints={[]}
         onRestoreCheckpoint={NOOP}
         onDeleteCheckpoint={NOOP}
+        previewOpen={false}
+        onTogglePreview={NOOP}
+        sourceContext={undefined}
+        targetContext={undefined}
+        previewTiles={[]}
+        terrainRemap={{}}
+        remapOpen={false}
+        onToggleRemap={NOOP}
+        missingTerrains={[]}
+        targetTerrains={[]}
+        onSetTerrainRemap={NOOP}
       />,
     );
     expect(screen.getByText("OK")).toBeInTheDocument();
@@ -200,6 +277,17 @@ describe("PackSwapDialog", () => {
         checkpoints={[]}
         onRestoreCheckpoint={NOOP}
         onDeleteCheckpoint={NOOP}
+        previewOpen={false}
+        onTogglePreview={NOOP}
+        sourceContext={undefined}
+        targetContext={undefined}
+        previewTiles={[]}
+        terrainRemap={{}}
+        remapOpen={false}
+        onToggleRemap={NOOP}
+        missingTerrains={[]}
+        targetTerrains={[]}
+        onSetTerrainRemap={NOOP}
       />,
     );
     expect(screen.getByRole("button", { name: "Apply anyway" })).toBeEnabled();
@@ -223,6 +311,17 @@ describe("PackSwapDialog", () => {
         checkpoints={[]}
         onRestoreCheckpoint={NOOP}
         onDeleteCheckpoint={NOOP}
+        previewOpen={false}
+        onTogglePreview={NOOP}
+        sourceContext={undefined}
+        targetContext={undefined}
+        previewTiles={[]}
+        terrainRemap={{}}
+        remapOpen={false}
+        onToggleRemap={NOOP}
+        missingTerrains={[]}
+        targetTerrains={[]}
+        onSetTerrainRemap={NOOP}
       />,
     );
     await userEvent.click(screen.getByRole("button", { name: "Apply swap" }));
@@ -247,6 +346,17 @@ describe("PackSwapDialog", () => {
         checkpoints={[]}
         onRestoreCheckpoint={NOOP}
         onDeleteCheckpoint={NOOP}
+        previewOpen={false}
+        onTogglePreview={NOOP}
+        sourceContext={undefined}
+        targetContext={undefined}
+        previewTiles={[]}
+        terrainRemap={{}}
+        remapOpen={false}
+        onToggleRemap={NOOP}
+        missingTerrains={[]}
+        targetTerrains={[]}
+        onSetTerrainRemap={NOOP}
       />,
     );
     expect(screen.getByRole("button", { name: "Apply swap" })).toHaveAttribute("aria-busy", "true");
@@ -271,6 +381,17 @@ describe("PackSwapDialog", () => {
         checkpoints={[]}
         onRestoreCheckpoint={NOOP}
         onDeleteCheckpoint={NOOP}
+        previewOpen={false}
+        onTogglePreview={NOOP}
+        sourceContext={undefined}
+        targetContext={undefined}
+        previewTiles={[]}
+        terrainRemap={{}}
+        remapOpen={false}
+        onToggleRemap={NOOP}
+        missingTerrains={[]}
+        targetTerrains={[]}
+        onSetTerrainRemap={NOOP}
       />,
     );
     expect(screen.getByText(/No checkpoints yet/)).toBeInTheDocument();
@@ -297,6 +418,17 @@ describe("PackSwapDialog", () => {
         ]}
         onRestoreCheckpoint={onRestoreCheckpoint}
         onDeleteCheckpoint={onDeleteCheckpoint}
+        previewOpen={false}
+        onTogglePreview={NOOP}
+        sourceContext={undefined}
+        targetContext={undefined}
+        previewTiles={[]}
+        terrainRemap={{}}
+        remapOpen={false}
+        onToggleRemap={NOOP}
+        missingTerrains={[]}
+        targetTerrains={[]}
+        onSetTerrainRemap={NOOP}
       />,
     );
     expect(screen.getByText("Before switching to scifi-pack")).toBeInTheDocument();
@@ -306,5 +438,249 @@ describe("PackSwapDialog", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Delete checkpoint: Before switching to scifi-pack" }));
     expect(onDeleteCheckpoint).toHaveBeenCalledWith("c1");
+  });
+
+  it("shows no Preview/Remap controls until the diff is actually populated", () => {
+    render(
+      <PackSwapDialog
+        open
+        onClose={NOOP}
+        currentPackName="@pixelfoundry/fantasy-pack"
+        availablePackNames={["@pixelfoundry/fantasy-pack", "@moonlit/scifi-pack"]}
+        targetPackName="@moonlit/scifi-pack"
+        onSelectTarget={NOOP}
+        diffState="loading"
+        findings={[]}
+        onRetryDiff={NOOP}
+        applying={false}
+        onApply={NOOP}
+        checkpoints={[]}
+        onRestoreCheckpoint={NOOP}
+        onDeleteCheckpoint={NOOP}
+        previewOpen={false}
+        onTogglePreview={NOOP}
+        sourceContext={undefined}
+        targetContext={undefined}
+        previewTiles={[]}
+        terrainRemap={{}}
+        remapOpen={false}
+        onToggleRemap={NOOP}
+        missingTerrains={["water"]}
+        targetTerrains={["grass", "dirt"]}
+        onSetTerrainRemap={NOOP}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Preview changes" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remap manually" })).not.toBeInTheDocument();
+  });
+
+  it("shows a Preview changes toggle once populated, and fires onTogglePreview", async () => {
+    const onTogglePreview = vi.fn();
+    render(
+      <PackSwapDialog
+        open
+        onClose={NOOP}
+        currentPackName="@pixelfoundry/fantasy-pack"
+        availablePackNames={["@pixelfoundry/fantasy-pack", "@moonlit/scifi-pack"]}
+        targetPackName="@moonlit/scifi-pack"
+        onSelectTarget={NOOP}
+        diffState="populated"
+        findings={[{ severity: "ok", message: "3 tiles map by terrain tag" }]}
+        onRetryDiff={NOOP}
+        applying={false}
+        onApply={NOOP}
+        checkpoints={[]}
+        onRestoreCheckpoint={NOOP}
+        onDeleteCheckpoint={NOOP}
+        previewOpen={false}
+        onTogglePreview={onTogglePreview}
+        sourceContext={undefined}
+        targetContext={undefined}
+        previewTiles={[]}
+        terrainRemap={{}}
+        remapOpen={false}
+        onToggleRemap={NOOP}
+        missingTerrains={[]}
+        targetTerrains={[]}
+        onSetTerrainRemap={NOOP}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Preview changes" }));
+    expect(onTogglePreview).toHaveBeenCalledOnce();
+  });
+
+  it("renders the live side-by-side preview's own controls when previewOpen is true", () => {
+    render(
+      <PackSwapDialog
+        open
+        onClose={NOOP}
+        currentPackName="@pixelfoundry/fantasy-pack"
+        availablePackNames={["@pixelfoundry/fantasy-pack", "@moonlit/scifi-pack"]}
+        targetPackName="@moonlit/scifi-pack"
+        onSelectTarget={NOOP}
+        diffState="populated"
+        findings={[{ severity: "ok", message: "3 tiles map by terrain tag" }]}
+        onRetryDiff={NOOP}
+        applying={false}
+        onApply={NOOP}
+        checkpoints={[]}
+        onRestoreCheckpoint={NOOP}
+        onDeleteCheckpoint={NOOP}
+        previewOpen={true}
+        onTogglePreview={NOOP}
+        sourceContext={undefined}
+        targetContext={undefined}
+        previewTiles={new Array(20 * 15).fill(0)}
+        terrainRemap={{}}
+        remapOpen={false}
+        onToggleRemap={NOOP}
+        missingTerrains={[]}
+        targetTerrains={[]}
+        onSetTerrainRemap={NOOP}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Hide preview" })).toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "Comparison divider" })).toBeInTheDocument();
+    // Scoped to a <span>: "@moonlit/scifi-pack" is also the target
+    // picker's own selected <option> text, which getByText would
+    // otherwise match too and report as ambiguous.
+    expect(screen.getByText("@pixelfoundry/fantasy-pack", { selector: "span" })).toBeInTheDocument();
+    expect(screen.getByText("@moonlit/scifi-pack", { selector: "span" })).toBeInTheDocument();
+  });
+
+  it("hides Remap manually when there's nothing to remap, and shows it when there is", () => {
+    const { rerender } = render(
+      <PackSwapDialog
+        open
+        onClose={NOOP}
+        currentPackName="@pixelfoundry/fantasy-pack"
+        availablePackNames={["@pixelfoundry/fantasy-pack", "@moonlit/scifi-pack"]}
+        targetPackName="@moonlit/scifi-pack"
+        onSelectTarget={NOOP}
+        diffState="populated"
+        findings={[{ severity: "ok", message: "3 tiles map by terrain tag" }]}
+        onRetryDiff={NOOP}
+        applying={false}
+        onApply={NOOP}
+        checkpoints={[]}
+        onRestoreCheckpoint={NOOP}
+        onDeleteCheckpoint={NOOP}
+        previewOpen={false}
+        onTogglePreview={NOOP}
+        sourceContext={undefined}
+        targetContext={undefined}
+        previewTiles={[]}
+        terrainRemap={{}}
+        remapOpen={false}
+        onToggleRemap={NOOP}
+        missingTerrains={[]}
+        targetTerrains={["grass", "dirt"]}
+        onSetTerrainRemap={NOOP}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Remap manually" })).not.toBeInTheDocument();
+
+    rerender(
+      <PackSwapDialog
+        open
+        onClose={NOOP}
+        currentPackName="@pixelfoundry/fantasy-pack"
+        availablePackNames={["@pixelfoundry/fantasy-pack", "@moonlit/scifi-pack"]}
+        targetPackName="@moonlit/scifi-pack"
+        onSelectTarget={NOOP}
+        diffState="populated"
+        findings={[{ severity: "fail", message: "1 prop has no equivalent: 'water'" }]}
+        onRetryDiff={NOOP}
+        applying={false}
+        onApply={NOOP}
+        checkpoints={[]}
+        onRestoreCheckpoint={NOOP}
+        onDeleteCheckpoint={NOOP}
+        previewOpen={false}
+        onTogglePreview={NOOP}
+        sourceContext={undefined}
+        targetContext={undefined}
+        previewTiles={[]}
+        terrainRemap={{}}
+        remapOpen={false}
+        onToggleRemap={NOOP}
+        missingTerrains={["water"]}
+        targetTerrains={["grass", "dirt"]}
+        onSetTerrainRemap={NOOP}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Remap manually" })).toBeInTheDocument();
+  });
+
+  it("lists a Select per missing terrain and fires onSetTerrainRemap with the chosen substitute (or undefined for the placeholder)", async () => {
+    const onSetTerrainRemap = vi.fn();
+    render(
+      <PackSwapDialog
+        open
+        onClose={NOOP}
+        currentPackName="@pixelfoundry/fantasy-pack"
+        availablePackNames={["@pixelfoundry/fantasy-pack", "@moonlit/scifi-pack"]}
+        targetPackName="@moonlit/scifi-pack"
+        onSelectTarget={NOOP}
+        diffState="populated"
+        findings={[{ severity: "fail", message: "1 prop has no equivalent: 'water'" }]}
+        onRetryDiff={NOOP}
+        applying={false}
+        onApply={NOOP}
+        checkpoints={[]}
+        onRestoreCheckpoint={NOOP}
+        onDeleteCheckpoint={NOOP}
+        previewOpen={false}
+        onTogglePreview={NOOP}
+        sourceContext={undefined}
+        targetContext={undefined}
+        previewTiles={[]}
+        terrainRemap={{}}
+        remapOpen={true}
+        onToggleRemap={NOOP}
+        missingTerrains={["water"]}
+        targetTerrains={["grass", "dirt", "sand"]}
+        onSetTerrainRemap={onSetTerrainRemap}
+      />,
+    );
+    const remapSelect = screen.getByLabelText("'water' ->");
+    await userEvent.selectOptions(remapSelect, "sand");
+    expect(onSetTerrainRemap).toHaveBeenCalledWith("water", "sand");
+
+    await userEvent.selectOptions(remapSelect, "No substitute (placeholder)");
+    expect(onSetTerrainRemap).toHaveBeenCalledWith("water", undefined);
+  });
+
+  it("pre-selects the currently active remap for a missing terrain", () => {
+    render(
+      <PackSwapDialog
+        open
+        onClose={NOOP}
+        currentPackName="@pixelfoundry/fantasy-pack"
+        availablePackNames={["@pixelfoundry/fantasy-pack", "@moonlit/scifi-pack"]}
+        targetPackName="@moonlit/scifi-pack"
+        onSelectTarget={NOOP}
+        diffState="populated"
+        findings={[{ severity: "fail", message: "1 prop has no equivalent: 'water'" }]}
+        onRetryDiff={NOOP}
+        applying={false}
+        onApply={NOOP}
+        checkpoints={[]}
+        onRestoreCheckpoint={NOOP}
+        onDeleteCheckpoint={NOOP}
+        previewOpen={false}
+        onTogglePreview={NOOP}
+        sourceContext={undefined}
+        targetContext={undefined}
+        previewTiles={[]}
+        terrainRemap={{ water: "sand" }}
+        remapOpen={true}
+        onToggleRemap={NOOP}
+        missingTerrains={["water"]}
+        targetTerrains={["grass", "dirt", "sand"]}
+        onSetTerrainRemap={NOOP}
+      />,
+    );
+    expect(screen.getByLabelText("'water' ->")).toHaveValue("sand");
   });
 });

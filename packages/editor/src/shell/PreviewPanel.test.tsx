@@ -20,7 +20,7 @@ describe("PreviewPanel", () => {
   beforeEach(() => {
     useCanvasPreviewStore.setState({ tiles: undefined });
     useProjectStore.setState({
-      document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {} },
+      document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {} },
       past: [],
       future: [],
       checkpoints: [],

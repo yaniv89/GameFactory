@@ -101,6 +101,7 @@ export function SceneCanvas() {
   // one walkable map, not scene switching.
   const activeScene = useProjectStore((state) => state.document.scenes[0]);
   const activePack = useProjectStore((state) => state.document.activePack);
+  const packTerrainRemap = useProjectStore((state) => state.document.packTerrainRemap);
   const placePlayerStart = useProjectStore((state) => state.placePlayerStart);
   const placeNpc = useProjectStore((state) => state.placeNpc);
   const selectEntity = useProjectStore((state) => state.selectEntity);
@@ -164,7 +165,12 @@ export function SceneCanvas() {
           host.destroy();
           return;
         }
-        const paletteTextures = await buildPackAwarePaletteTextures(host.app.renderer, TILE_SIZE, activePackContext);
+        const paletteTextures = await buildPackAwarePaletteTextures(
+          host.app.renderer,
+          TILE_SIZE,
+          activePackContext,
+          useProjectStore.getState().document.packTerrainRemap,
+        );
         if (cancelled) {
           host.destroy();
           return;
@@ -230,16 +236,20 @@ export function SceneCanvas() {
 
   // The live half of the pack-swap dialog's Apply button (docs/SPEC.md
   // Section 11.5): re-slices the palette against whatever pack is active
-  // now and re-paints every already-placed tile sprite in place via
-  // TilemapLayer.refreshTextures — no reload required. Skips its first
-  // run (the `isFirstRun` guard): boot's own effect above already loads
-  // the palette for whatever pack was active at mount, so re-running the
-  // same load again on mount would be redundant, not wrong, but wasted
-  // work every time this component mounts. If a swap is dispatched while
-  // the canvas is still booting (`rigRef.current` not yet set), this
-  // effect no-ops rather than queuing — a narrow, accepted gap: the
-  // window is the renderer's own boot time, and the next real edit to
-  // `activePack` (or a reload) always catches it up.
+  // now — and whatever manual terrain remap is in effect — and
+  // re-paints every already-placed tile sprite in place via
+  // TilemapLayer.refreshTextures — no reload required. Also re-runs when
+  // `packTerrainRemap` alone changes (Apply hasn't happened again, but a
+  // "Remap manually" choice on the *currently* active pack should still
+  // show up immediately). Skips its first run (the `isFirstRun` guard):
+  // boot's own effect above already loads the palette for whatever pack
+  // was active at mount, so re-running the same load again on mount
+  // would be redundant, not wrong, but wasted work every time this
+  // component mounts. If a swap is dispatched while the canvas is still
+  // booting (`rigRef.current` not yet set), this effect no-ops rather
+  // than queuing — a narrow, accepted gap: the window is the renderer's
+  // own boot time, and the next real edit to `activePack` (or a reload)
+  // always catches it up.
   const isFirstActivePackRunRef = useRef(true);
   useEffect(() => {
     if (isFirstActivePackRunRef.current) {
@@ -252,14 +262,14 @@ export function SceneCanvas() {
     void (async () => {
       const activePackContext = await loadActivePackContext(activePack);
       if (cancelled) return;
-      const paletteTextures = await buildPackAwarePaletteTextures(rig.host.app.renderer, TILE_SIZE, activePackContext);
+      const paletteTextures = await buildPackAwarePaletteTextures(rig.host.app.renderer, TILE_SIZE, activePackContext, packTerrainRemap);
       if (cancelled) return;
       rig.layer.refreshTextures((tileId) => paletteTextures.get(tileId));
     })();
     return () => {
       cancelled = true;
     };
-  }, [activePack]);
+  }, [activePack, packTerrainRemap]);
 
   // Keeps the Pixi entity markers in sync with the store's reactive
   // entity list. Rebuilds the whole set on every change rather than

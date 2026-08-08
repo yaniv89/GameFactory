@@ -68,6 +68,17 @@
   color: var(--text-secondary);
 }
 
+.fg-pack-swap-dialog__toggle-row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.fg-pack-swap-dialog__remap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
 .fg-pack-swap-dialog__section-title {
   margin: 0 0 var(--space-2);
   color: var(--text-secondary);

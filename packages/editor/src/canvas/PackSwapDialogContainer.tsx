@@ -1,17 +1,30 @@
 import { diffPackSwap, type PackSwapFinding } from "@forge/art-pack";
 import type { ViewState } from "@forge/ds";
 import { useEffect, useState } from "react";
+import { useCanvasPreviewStore } from "./canvasPreviewStore";
+import { GRID_HEIGHT, GRID_WIDTH } from "./gridConstants";
 import { PackSwapDialog } from "./PackSwapDialog";
-import { listKnownPackNames, loadPackManifest } from "./packTiles";
+import { listKnownPackNames, loadPackManifest, type ActivePackContext } from "./packTiles";
 import { useProjectStore } from "../store/projectStore";
 
 interface DiffOutcome {
   readonly state: ViewState;
   readonly findings: readonly PackSwapFinding[];
   readonly errorMessage?: string;
+  readonly missingTerrains: readonly string[];
+  readonly targetTerrains: readonly string[];
+  /** Loaded alongside the diff so "Preview changes" never re-fetches what this already has. */
+  readonly sourceContext?: ActivePackContext;
+  readonly targetContext?: ActivePackContext;
 }
 
-const LOADING: DiffOutcome = { state: "loading", findings: [] };
+const LOADING: DiffOutcome = { state: "loading", findings: [], missingTerrains: [], targetTerrains: [] };
+// A stable reference, not `new Array(...).fill(0)` inline at the call
+// site: that would allocate a fresh array every render, and passing it
+// as PackSwapPreview's `tiles` prop would re-trigger its render effect
+// (whose deps include `tiles`) on every single parent re-render — an
+// unbounded loop — whenever nothing has been painted yet.
+const EMPTY_TILES: readonly number[] = new Array(GRID_WIDTH * GRID_HEIGHT).fill(0);
 
 async function computeDiff(currentPackName: string | undefined, targetPackName: string): Promise<DiffOutcome> {
   const target = await loadPackManifest(targetPackName);
@@ -22,8 +35,9 @@ async function computeDiff(currentPackName: string | undefined, targetPackName: 
     // "this specific request failed, try again" case. "error" (with its
     // Retry button) covers a network failure and an invalid/unknown pack
     // alike here; `errorMessage` still says which one happened.
-    return { state: "error", findings: [], errorMessage: target.message };
+    return { state: "error", findings: [], errorMessage: target.message, missingTerrains: [], targetTerrains: [] };
   }
+  const targetContext: ActivePackContext = { packName: target.packName, manifest: target.manifest, baseUrl: target.baseUrl };
 
   if (!currentPackName) {
     // Nothing active to compare against — this is a first install, not a
@@ -34,6 +48,9 @@ async function computeDiff(currentPackName: string | undefined, targetPackName: 
     return {
       state: "populated",
       findings: [{ severity: "ok", message: `No pack is currently active — this installs ${targetPackName} directly.` }],
+      missingTerrains: [],
+      targetTerrains: Array.from(new Set(Object.values(target.manifest.tilesets).flatMap((tileset) => tileset.terrains))).sort(),
+      targetContext,
     };
   }
 
@@ -43,10 +60,21 @@ async function computeDiff(currentPackName: string | undefined, targetPackName: 
       state: "error",
       findings: [],
       errorMessage: `The currently active pack ('${currentPackName}') failed to load: ${source.message}`,
+      missingTerrains: [],
+      targetTerrains: [],
     };
   }
+  const sourceContext: ActivePackContext = { packName: source.packName, manifest: source.manifest, baseUrl: source.baseUrl };
 
-  return { state: "populated", findings: diffPackSwap(source.manifest, target.manifest).findings };
+  const diff = diffPackSwap(source.manifest, target.manifest);
+  return {
+    state: "populated",
+    findings: diff.findings,
+    missingTerrains: diff.missingTerrains,
+    targetTerrains: diff.targetTerrains,
+    sourceContext,
+    targetContext,
+  };
 }
 
 export interface PackSwapDialogContainerProps {
@@ -67,11 +95,21 @@ export function PackSwapDialogContainer({ open, onClose }: PackSwapDialogContain
   const checkpoints = useProjectStore((state) => state.checkpoints);
   const restoreCheckpoint = useProjectStore((state) => state.restoreCheckpoint);
   const deleteCheckpoint = useProjectStore((state) => state.deleteCheckpoint);
+  const terrainRemap = useProjectStore((state) => state.document.packTerrainRemap);
+  const setTerrainRemap = useProjectStore((state) => state.setTerrainRemap);
+  // SceneCanvas publishes its live tile grid here on every paint (Phase 6's
+  // preview bridge) — reused as-is for the side-by-side preview's own tile
+  // data, rather than a second, duplicate source of truth. Falls back to
+  // an all-empty grid when nothing's been painted yet, matching
+  // TilemapLayer's own "no tiles painted" starting state.
+  const liveTiles = useCanvasPreviewStore((state) => state.tiles);
 
   const [targetPackName, setTargetPackName] = useState<string | undefined>(undefined);
   const [outcome, setOutcome] = useState<DiffOutcome>(LOADING);
   const [applying, setApplying] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [remapOpen, setRemapOpen] = useState(false);
 
   // Resets to a clean slate every time the dialog is (re)opened, rather
   // than carrying over whatever the last session picked — reopening
@@ -80,6 +118,8 @@ export function PackSwapDialogContainer({ open, onClose }: PackSwapDialogContain
     if (open) {
       setTargetPackName(undefined);
       setOutcome(LOADING);
+      setPreviewOpen(false);
+      setRemapOpen(false);
     }
   }, [open]);
 
@@ -115,7 +155,11 @@ export function PackSwapDialogContainer({ open, onClose }: PackSwapDialogContain
       currentPackName={currentPackName}
       availablePackNames={listKnownPackNames()}
       targetPackName={targetPackName}
-      onSelectTarget={setTargetPackName}
+      onSelectTarget={(name) => {
+        setTargetPackName(name);
+        setPreviewOpen(false);
+        setRemapOpen(false);
+      }}
       diffState={outcome.state}
       findings={outcome.findings}
       {...(outcome.errorMessage !== undefined ? { errorMessage: outcome.errorMessage } : {})}
@@ -131,6 +175,17 @@ export function PackSwapDialogContainer({ open, onClose }: PackSwapDialogContain
         onClose();
       }}
       onDeleteCheckpoint={deleteCheckpoint}
+      previewOpen={previewOpen}
+      onTogglePreview={() => setPreviewOpen((wasOpen) => !wasOpen)}
+      sourceContext={outcome.sourceContext}
+      targetContext={outcome.targetContext}
+      previewTiles={liveTiles ?? EMPTY_TILES}
+      terrainRemap={terrainRemap}
+      remapOpen={remapOpen}
+      onToggleRemap={() => setRemapOpen((wasOpen) => !wasOpen)}
+      missingTerrains={outcome.missingTerrains}
+      targetTerrains={outcome.targetTerrains}
+      onSetTerrainRemap={setTerrainRemap}
     />
   );
 }

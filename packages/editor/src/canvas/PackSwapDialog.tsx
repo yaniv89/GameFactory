@@ -1,7 +1,12 @@
 import { Button, Dialog, Panel, Select, type ViewState } from "@forge/ds";
 import type { PackSwapFinding, PackSwapSeverity } from "@forge/art-pack";
 import { useRef } from "react";
+import type { ActivePackContext } from "./packTiles";
+import { PackSwapPreview } from "./PackSwapPreview";
 import "./PackSwapDialog.css";
+
+/** The Select option meaning "leave this terrain unmapped" — placeholders where a real target tag would go. */
+const NO_REMAP_VALUE = "";
 
 const SEVERITY_LABEL: Readonly<Record<PackSwapSeverity, string>> = { ok: "OK", warn: "WARN", fail: "FAIL" };
 
@@ -36,21 +41,37 @@ export interface PackSwapDialogProps {
   checkpoints: readonly PackSwapCheckpointSummary[];
   onRestoreCheckpoint: (checkpointId: string) => void;
   onDeleteCheckpoint: (checkpointId: string) => void;
+  /** Section 5.8's "live side-by-side preview with a draggable comparison divider." */
+  previewOpen: boolean;
+  onTogglePreview: () => void;
+  /** `undefined` while the diff is still loading/erroring, or when there's no active pack to compare against. */
+  sourceContext: ActivePackContext | undefined;
+  targetContext: ActivePackContext | undefined;
+  previewTiles: readonly number[];
+  /** Section 11.5's "Remap manually" — source terrain tag -> the active pack's own substitute (`document.packTerrainRemap`). */
+  terrainRemap: Readonly<Record<string, string>>;
+  remapOpen: boolean;
+  onToggleRemap: () => void;
+  missingTerrains: readonly string[];
+  targetTerrains: readonly string[];
+  onSetTerrainRemap: (sourceTag: string, targetTag: string | undefined) => void;
 }
 
 /**
- * docs/SPEC.md Section 11.5 / Section 5.8's hero interaction: a
- * compatibility diff between the active pack and a candidate replacement,
- * real findings from `diffPackSwap` (not a mock), gated behind an
- * automatic named checkpoint the caller creates before applying (see
- * PackSwapDialogContainer). Deliberately narrower than the spec's own
- * mockup: no live side-by-side canvas preview with a draggable divider,
- * and no "Remap manually" flow — both are real, unbuilt features (a
- * second rendering pass and a per-asset remap UI, respectively), and
- * shipping buttons for them here would be exactly the "stub that returns
- * hardcoded data" CLAUDE.md forbids. What's here is real end to end:
- * pick a target, see the actual diff, apply it and watch the canvas
- * update live, or restore the checkpoint from before.
+ * docs/SPEC.md Section 11.5 / Section 5.8's hero interaction, built end
+ * to end: pick a target pack; see the real `diffPackSwap` compatibility
+ * readout; open a live side-by-side render of the actual current tile
+ * grid against both packs with a draggable comparison divider ("Preview
+ * changes"); manually substitute a terrain tag the target pack doesn't
+ * declare ("Remap manually") and watch the preview and, once applied,
+ * the real canvas pick it up; Apply (which creates a named checkpoint
+ * first, then swaps live) or Cancel; restore any past checkpoint with
+ * one click. Character-sheet/animation findings have no "Remap
+ * manually" control — see PackSwapDialogContainer/packTiles.ts's own
+ * notes: no character sprite is pack-sourced on the canvas yet (entity
+ * markers are synthetic shapes), so a remap control for them would
+ * change nothing real, which is exactly the kind of stub CLAUDE.md
+ * forbids. Terrain remap is scoped to what actually renders.
  */
 export function PackSwapDialog({
   open,
@@ -68,12 +89,24 @@ export function PackSwapDialog({
   checkpoints,
   onRestoreCheckpoint,
   onDeleteCheckpoint,
+  previewOpen,
+  onTogglePreview,
+  sourceContext,
+  targetContext,
+  previewTiles,
+  terrainRemap,
+  remapOpen,
+  onToggleRemap,
+  missingTerrains,
+  targetTerrains,
+  onSetTerrainRemap,
 }: PackSwapDialogProps) {
   const selectRef = useRef<HTMLSelectElement>(null);
   const hasFailures = findings.some((finding) => finding.severity === "fail");
   const targetOptions = availablePackNames
     .filter((name) => name !== currentPackName)
     .map((name) => ({ value: name, label: name }));
+  const canPreviewOrRemap = diffState === "populated";
 
   return (
     <Dialog
@@ -158,6 +191,59 @@ export function PackSwapDialog({
               {findings.length === 0 && <li className="fg-pack-swap-dialog__finding">Nothing to compare — the target pack declares no overlapping content.</li>}
             </ul>
           </Panel>
+        )}
+
+        {targetPackName && canPreviewOrRemap && (
+          <div className="fg-pack-swap-dialog__toggle-row">
+            <Button variant="secondary" aria-expanded={previewOpen} onClick={onTogglePreview}>
+              {previewOpen ? "Hide preview" : "Preview changes"}
+            </Button>
+            {missingTerrains.length > 0 && (
+              <Button variant="secondary" aria-expanded={remapOpen} onClick={onToggleRemap}>
+                {remapOpen ? "Hide remap" : "Remap manually"}
+              </Button>
+            )}
+          </div>
+        )}
+
+        {targetPackName && canPreviewOrRemap && previewOpen && (
+          <PackSwapPreview
+            sourceContext={sourceContext}
+            targetContext={targetContext}
+            terrainRemap={terrainRemap}
+            tiles={previewTiles}
+            sourceLabel={currentPackName ?? "No pack active"}
+            targetLabel={targetPackName}
+          />
+        )}
+
+        {targetPackName && canPreviewOrRemap && remapOpen && missingTerrains.length > 0 && (
+          <section aria-label="Remap terrains manually" className="fg-pack-swap-dialog__remap">
+            <h3 className="fg-pack-swap-dialog__section-title">Remap manually</h3>
+            <p className="fg-pack-swap-dialog__hint">
+              {targetPackName} doesn&rsquo;t declare these terrains. Pick one of its own tiles to stand in, or leave
+              them as placeholders.
+            </p>
+            {missingTerrains.map((tag) => (
+              <Select
+                key={tag}
+                label={`'${tag}' ->`}
+                // "No substitute" is a real, always-selectable option here
+                // rather than `Select`'s own `placeholder` prop — that
+                // prop renders a disabled option meant for "nothing
+                // chosen yet," not something a person can pick again once
+                // they've already chosen a substitute (found the hard way:
+                // it made clearing a remap back to "placeholder" a dead
+                // click in this component's own test).
+                options={[
+                  { value: NO_REMAP_VALUE, label: "No substitute (placeholder)" },
+                  ...targetTerrains.map((targetTag) => ({ value: targetTag, label: targetTag })),
+                ]}
+                value={terrainRemap[tag] ?? NO_REMAP_VALUE}
+                onChange={(e) => onSetTerrainRemap(tag, e.target.value === NO_REMAP_VALUE ? undefined : e.target.value)}
+              />
+            ))}
+          </section>
         )}
 
         <section aria-label="Checkpoints">

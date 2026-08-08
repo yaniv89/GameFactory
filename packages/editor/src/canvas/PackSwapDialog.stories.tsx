@@ -22,6 +22,17 @@ const BASE_ARGS = {
   checkpoints: [],
   onRestoreCheckpoint: NOOP,
   onDeleteCheckpoint: NOOP,
+  previewOpen: false,
+  onTogglePreview: NOOP,
+  sourceContext: undefined,
+  targetContext: undefined,
+  previewTiles: [],
+  terrainRemap: {},
+  remapOpen: false,
+  onToggleRemap: NOOP,
+  missingTerrains: [],
+  targetTerrains: [],
+  onSetTerrainRemap: NOOP,
 };
 
 export const NoTargetChosen: Story = {
@@ -82,6 +93,8 @@ export const Populated: Story = {
         detail: "These will render as placeholders until remapped.",
       },
     ],
+    missingTerrains: ["well", "market-stall", "signpost"],
+    targetTerrains: ["grass", "dirt", "sand", "stone"],
   },
 };
 
@@ -127,5 +140,45 @@ export const WithCheckpoints: Story = {
       { id: "c2", label: "Before switching from @pixelfoundry/fantasy-pack to @moonlit/scifi-pack", createdAt: "2026-08-08T14:32:00.000Z" },
       { id: "c1", label: "Before installing @pixelfoundry/fantasy-pack", createdAt: "2026-08-01T09:05:00.000Z" },
     ],
+  },
+};
+
+/** Section 5.8's live side-by-side comparison, open. No active pack in this story, so both sides render the flat-color fallback — the preview's own real render, just with nothing pack-sourced to show. */
+export const PreviewOpen: Story = {
+  args: {
+    ...BASE_ARGS,
+    targetPackName: "@moonlit/scifi-pack",
+    diffState: "populated",
+    findings: [{ severity: "ok", message: "3 tiles map by terrain tag" }],
+    previewOpen: true,
+    previewTiles: new Array(20 * 15).fill(0),
+  },
+};
+
+/** Section 11.5's "Remap manually," open with no choice made yet — every missing terrain still shows the "No substitute" default. */
+export const RemapOpen: Story = {
+  args: {
+    ...BASE_ARGS,
+    targetPackName: "@moonlit/scifi-pack",
+    diffState: "populated",
+    findings: [
+      { severity: "ok", message: "2 tiles map by terrain tag" },
+      {
+        severity: "fail",
+        message: "1 prop has no equivalent: 'water'",
+        detail: "These will render as placeholders until remapped.",
+      },
+    ],
+    missingTerrains: ["water"],
+    targetTerrains: ["grass", "dirt", "sand"],
+    remapOpen: true,
+  },
+};
+
+/** Same as RemapOpen, but with a substitute already chosen — the Select reflects it, and PackSwapDialogContainer would already have this rendering live on the real canvas. */
+export const RemapOpenWithChoiceMade: Story = {
+  args: {
+    ...RemapOpen.args,
+    terrainRemap: { water: "sand" },
   },
 };

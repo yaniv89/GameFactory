@@ -25,18 +25,25 @@ function readManifest(packDir: string) {
 }
 
 /**
- * Two real, checked-in Art Packs — each a manifest.json plus a real PNG,
- * not a stand-in described as one (CLAUDE.md's "never fake it, never
- * write a test that asserts true"). starter-pack and scifi-pack
+ * Three real, checked-in Art Packs — each a manifest.json plus a real
+ * PNG, not a stand-in described as one (CLAUDE.md's "never fake it,
+ * never write a test that asserts true"). starter-pack and scifi-pack
  * deliberately overlap partially (grass/dirt match, water doesn't) and
  * declare different grid.tileSize values, so together they drive a real
  * diffPackSwap OK/WARN/FAIL result — not just the inline-literal
- * scenarios in diffPackSwap.test.ts — and are what the pack-swap dialog
- * UI's own Playwright test switches between.
+ * scenarios in diffPackSwap.test.ts. desert-pack exists specifically for
+ * the "Remap manually" flow: same grid.tileSize as starter-pack (32, so
+ * the pack-aware texture builder's own tile-size-mismatch fallback never
+ * masks the remap), but its own missing terrain ('water' again) — the
+ * scenario where remapping actually changes what renders, which
+ * scifi-pack's mismatched tile size can't demonstrate on its own. All
+ * three are what the pack-swap dialog UI's own Playwright tests switch
+ * between.
  */
 describe.each([
   { name: "starter-pack", dir: join(REPO_ROOT, "fixtures/packs/starter-pack") },
   { name: "scifi-pack", dir: join(REPO_ROOT, "fixtures/packs/scifi-pack") },
+  { name: "desert-pack", dir: join(REPO_ROOT, "fixtures/packs/desert-pack") },
 ])("fixtures/packs/$name", ({ dir }) => {
   it("its manifest.json passes validateArtPackManifest", () => {
     const result = readManifest(dir);
@@ -80,5 +87,27 @@ describe("diffPackSwap on the two real fixture packs", () => {
         detail: "Scenes will be rescaled.",
       },
     ]);
+    expect(result.missingTerrains).toEqual(["water"]);
+    expect(result.targetTerrains).toEqual(["dirt", "grass"]);
+  });
+
+  it("starter-pack -> desert-pack: same tile size, water still fails, no tile-size warning", () => {
+    const source = readManifest(join(REPO_ROOT, "fixtures/packs/starter-pack"));
+    const target = readManifest(join(REPO_ROOT, "fixtures/packs/desert-pack"));
+    expect(source.ok && target.ok).toBe(true);
+
+    const result = diffPackSwap(source.manifest!, target.manifest!);
+
+    expect(result.hasFailures).toBe(true);
+    expect(result.findings).toEqual([
+      { severity: "ok", message: "2 tiles map by terrain tag" },
+      {
+        severity: "fail",
+        message: "1 prop has no equivalent: 'water'",
+        detail: "These will render as placeholders until remapped.",
+      },
+    ]);
+    expect(result.missingTerrains).toEqual(["water"]);
+    expect(result.targetTerrains).toEqual(["dirt", "grass", "sand"]);
   });
 });

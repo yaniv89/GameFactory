@@ -4,7 +4,7 @@ import { migratePersistedProjectState, selectCanRedo, selectCanUndo, useProjectS
 function reset(): void {
   localStorage.clear();
   useProjectStore.setState({
-    document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {} },
+    document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {} },
     past: [],
     future: [],
     checkpoints: [],
@@ -275,6 +275,35 @@ describe("useProjectStore", () => {
     expect(useProjectStore.getState().past).toHaveLength(0);
   });
 
+  it("setTerrainRemap sets a substitute tag and undo removes the key entirely, not just clears its value", () => {
+    useProjectStore.getState().setTerrainRemap("water", "sand");
+    expect(useProjectStore.getState().document.packTerrainRemap).toEqual({ water: "sand" });
+
+    useProjectStore.getState().undo();
+    expect(useProjectStore.getState().document.packTerrainRemap).toEqual({});
+    expect("water" in useProjectStore.getState().document.packTerrainRemap).toBe(false);
+  });
+
+  it("setTerrainRemap with undefined clears an existing remap and undo restores it", () => {
+    useProjectStore.getState().setTerrainRemap("water", "sand");
+    useProjectStore.getState().setTerrainRemap("water", undefined);
+    expect(useProjectStore.getState().document.packTerrainRemap).toEqual({});
+
+    useProjectStore.getState().undo();
+    expect(useProjectStore.getState().document.packTerrainRemap).toEqual({ water: "sand" });
+  });
+
+  it("setTerrainRemap clearing a remap that was never set is a no-op that does not grow the undo log", () => {
+    useProjectStore.getState().setTerrainRemap("water", undefined);
+    expect(useProjectStore.getState().past).toHaveLength(0);
+  });
+
+  it("setTerrainRemap with the same tag already set is a no-op that does not grow the undo log", () => {
+    useProjectStore.getState().setTerrainRemap("water", "sand");
+    useProjectStore.getState().setTerrainRemap("water", "sand");
+    expect(useProjectStore.getState().past).toHaveLength(1);
+  });
+
   it("placePlayerStart places a player-start entity and undo removes it", () => {
     useProjectStore.getState().createScene();
     const sceneId = useProjectStore.getState().document.scenes[0]?.id as string;
@@ -404,6 +433,7 @@ describe("migratePersistedProjectState", () => {
     expect(migrated.document.installedModules).toEqual(legacy.document.installedModules);
     expect(migrated.document.activePack).toBeUndefined();
     expect(migrated.document.packOverrides).toEqual({});
+    expect(migrated.document.packTerrainRemap).toEqual({});
     expect(migrated.checkpoints).toEqual([]);
   });
 
@@ -417,9 +447,9 @@ describe("migratePersistedProjectState", () => {
     expect(migrated.checkpoints).toEqual([]);
   });
 
-  it("passes a full, current-shape document through unchanged", () => {
-    const current = {
-      document: { scenes: [], installedModules: {}, activePack: "@pixelfoundry/fantasy-pack", packOverrides: { "a.png": "https://cdn.forge.dev/a.png" } },
+  it("fills in packTerrainRemap, including inside each checkpoint's own snapshot, for pre-remap (version 3) persisted state", () => {
+    const v3 = {
+      document: { scenes: [], installedModules: {}, activePack: "@pixelfoundry/fantasy-pack", packOverrides: {} },
       past: [],
       future: [],
       checkpoints: [
@@ -428,6 +458,31 @@ describe("migratePersistedProjectState", () => {
           label: "Before switching to fantasy-pack",
           createdAt: "2026-08-08T00:00:00.000Z",
           document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {} },
+        },
+      ],
+    };
+    const migrated = migratePersistedProjectState(v3);
+    expect(migrated.document.packTerrainRemap).toEqual({});
+    expect(migrated.checkpoints[0]!.document.packTerrainRemap).toEqual({});
+  });
+
+  it("passes a full, current-shape document through unchanged", () => {
+    const current = {
+      document: {
+        scenes: [],
+        installedModules: {},
+        activePack: "@pixelfoundry/fantasy-pack",
+        packOverrides: { "a.png": "https://cdn.forge.dev/a.png" },
+        packTerrainRemap: { water: "sand" },
+      },
+      past: [],
+      future: [],
+      checkpoints: [
+        {
+          id: "c1",
+          label: "Before switching to fantasy-pack",
+          createdAt: "2026-08-08T00:00:00.000Z",
+          document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {} },
         },
       ],
     };
@@ -440,7 +495,13 @@ describe("migratePersistedProjectState", () => {
     expect(() => migratePersistedProjectState(undefined)).not.toThrow();
     expect(() => migratePersistedProjectState({})).not.toThrow();
     const migrated = migratePersistedProjectState(undefined);
-    expect(migrated.document).toEqual({ scenes: [], installedModules: {}, activePack: undefined, packOverrides: {} });
+    expect(migrated.document).toEqual({
+      scenes: [],
+      installedModules: {},
+      activePack: undefined,
+      packOverrides: {},
+      packTerrainRemap: {},
+    });
     expect(migrated.checkpoints).toEqual([]);
   });
 });

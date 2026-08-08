@@ -45,6 +45,17 @@ interface ProjectDocument {
    * resolution wiring) — a stated gap, not a silently assumed one.
    */
   packOverrides: Record<string, string>;
+  /**
+   * A manual "remap manually" choice (docs/SPEC.md Section 11.5's own
+   * button) for a terrain tag the active pack doesn't declare: source
+   * tag -> the active pack's own substitute tag. Project-wide and
+   * pack-agnostic (keyed by tag, not by which pack was active when the
+   * choice was made) since "terrain tag" is the stable identity a
+   * pack-swap diff already matches tiles by across packs — the same
+   * remap keeps applying if the project swaps packs again later, rather
+   * than needing to be re-entered per pack.
+   */
+  packTerrainRemap: Record<string, string>;
 }
 
 /**
@@ -93,6 +104,8 @@ type ProjectCommand =
   | { readonly type: "pack/set-active"; readonly packName: string | undefined }
   // `url` undefined clears the override at `path` — same shape again.
   | { readonly type: "pack/set-override"; readonly path: string; readonly url: string | undefined }
+  // `targetTag` undefined clears the remap for `sourceTag` — same shape again.
+  | { readonly type: "pack/set-terrain-remap"; readonly sourceTag: string; readonly targetTag: string | undefined }
   // Restoring a checkpoint (docs/SPEC.md Section 11.5): forward carries
   // the checkpoint's whole document, inverse carries whatever the
   // document was immediately before the restore — same self-inverse
@@ -179,11 +192,19 @@ function applyCommand(document: ProjectDocument, command: ProjectCommand): void 
         document.packOverrides[command.path] = command.url;
       }
       return;
+    case "pack/set-terrain-remap":
+      if (command.targetTag === undefined) {
+        delete document.packTerrainRemap[command.sourceTag];
+      } else {
+        document.packTerrainRemap[command.sourceTag] = command.targetTag;
+      }
+      return;
     case "document/replace":
       document.scenes = command.document.scenes;
       document.installedModules = command.document.installedModules;
       document.activePack = command.document.activePack;
       document.packOverrides = command.document.packOverrides;
+      document.packTerrainRemap = command.document.packTerrainRemap;
       return;
   }
 }
@@ -221,6 +242,7 @@ interface ProjectStoreState {
   selectEntity: (sceneId: string, entityId: string | undefined) => void;
   setActivePack: (packName: string | undefined) => void;
   setPackOverride: (path: string, url: string | undefined) => void;
+  setTerrainRemap: (sourceTag: string, targetTag: string | undefined) => void;
   createCheckpoint: (label: string) => string;
   restoreCheckpoint: (checkpointId: string) => void;
   deleteCheckpoint: (checkpointId: string) => void;
@@ -229,7 +251,7 @@ interface ProjectStoreState {
 }
 
 const PERSIST_KEY = "forge:editor:project-document";
-const PERSIST_VERSION = 3;
+const PERSIST_VERSION = 4;
 
 /**
  * Persisted state from before `activePack`/`packOverrides` existed
@@ -251,22 +273,33 @@ export function migratePersistedProjectState(
     checkpoints?: PackSwapCheckpoint[];
   };
   return {
-    document: {
-      scenes: state.document?.scenes ?? [],
-      installedModules: state.document?.installedModules ?? {},
-      activePack: state.document?.activePack,
-      packOverrides: state.document?.packOverrides ?? {},
-    },
+    document: migrateDocument(state.document),
     past: state.past ?? [],
     future: state.future ?? [],
-    checkpoints: state.checkpoints ?? [],
+    // Each checkpoint carries its own full document snapshot from
+    // whatever version it was created under — the same missing-field
+    // gap the top-level document has, so it gets the same fill-in.
+    // Otherwise an old checkpoint's `restoreCheckpoint` would write
+    // `packTerrainRemap: undefined` into the live document and crash the
+    // very next `setTerrainRemap` call.
+    checkpoints: (state.checkpoints ?? []).map((checkpoint) => ({ ...checkpoint, document: migrateDocument(checkpoint.document) })),
+  };
+}
+
+function migrateDocument(document: Partial<ProjectDocument> | undefined): ProjectDocument {
+  return {
+    scenes: document?.scenes ?? [],
+    installedModules: document?.installedModules ?? {},
+    activePack: document?.activePack,
+    packOverrides: document?.packOverrides ?? {},
+    packTerrainRemap: document?.packTerrainRemap ?? {},
   };
 }
 
 export const useProjectStore = create<ProjectStoreState>()(
   persist(
     immer((set) => ({
-      document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {} },
+      document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {} },
       past: [],
       future: [],
       checkpoints: [],
@@ -416,6 +449,17 @@ export const useProjectStore = create<ProjectStoreState>()(
           if (previous === url) return; // already this value (or already absent), no-op
           const forward: ProjectCommand = { type: "pack/set-override", path, url };
           const inverse: ProjectCommand = { type: "pack/set-override", path, url: previous };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        }),
+
+      setTerrainRemap: (sourceTag, targetTag) =>
+        set((state) => {
+          const previous = state.document.packTerrainRemap[sourceTag];
+          if (previous === targetTag) return; // already this value (or already absent), no-op
+          const forward: ProjectCommand = { type: "pack/set-terrain-remap", sourceTag, targetTag };
+          const inverse: ProjectCommand = { type: "pack/set-terrain-remap", sourceTag, targetTag: previous };
           applyCommand(state.document, forward);
           state.past.push({ forward, inverse });
           state.future = [];

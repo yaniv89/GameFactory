@@ -7,7 +7,7 @@ import { UndoRedoControls } from "./UndoRedoControls";
 function reset(): void {
   localStorage.clear();
   useProjectStore.setState({
-    document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {} },
+    document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {} },
     past: [],
     future: [],
     checkpoints: [],

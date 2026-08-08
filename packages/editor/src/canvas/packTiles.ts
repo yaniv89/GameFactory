@@ -46,6 +46,10 @@ const KNOWN_FIXTURE_PACKS: Readonly<Record<string, { manifestUrl: string; baseUr
     manifestUrl: "/fixture-packs/scifi-pack/manifest.json",
     baseUrl: "/fixture-packs/scifi-pack",
   },
+  "@forge-fixtures/desert-pack": {
+    manifestUrl: "/fixture-packs/desert-pack/manifest.json",
+    baseUrl: "/fixture-packs/desert-pack",
+  },
 };
 
 /**
@@ -147,6 +151,15 @@ export async function buildPackAwarePaletteTextures(
   renderer: Renderer,
   tileSize: number,
   activePack: ActivePackContext | undefined,
+  /**
+   * docs/SPEC.md Section 11.5's "Remap manually" — a source terrain tag
+   * -> the substitute tag to use when `activePack` doesn't declare the
+   * original (`document.packTerrainRemap`). Checked only as a fallback
+   * once the tag's own column lookup misses, so a pack that *does*
+   * cover a tag is never second-guessed by a stale remap entry left
+   * over from a different pack.
+   */
+  terrainRemap: Readonly<Record<string, string>>,
 ): Promise<Map<number, Texture>> {
   const textures = buildPaletteTextures(renderer, tileSize);
   if (!activePack) return textures;
@@ -203,8 +216,12 @@ export async function buildPackAwarePaletteTextures(
   for (const entry of TILE_PALETTE) {
     const terrainTag = PALETTE_TERRAIN_TAGS[entry.label];
     if (!terrainTag) continue; // e.g. "Wall" — deliberately never pack-sourced, see this module's own doc comment.
-    const columnIndex = tileset.terrains.indexOf(terrainTag);
-    if (columnIndex === -1) continue; // this pack doesn't cover that terrain — keep the flat-color default.
+    let columnIndex = tileset.terrains.indexOf(terrainTag);
+    if (columnIndex === -1) {
+      const remappedTag = terrainRemap[terrainTag];
+      if (remappedTag) columnIndex = tileset.terrains.indexOf(remappedTag);
+    }
+    if (columnIndex === -1) continue; // this pack doesn't cover that terrain, remapped or not — keep the flat-color default.
     const frame = new Rectangle(columnIndex * tileSize, 0, tileSize, tileSize);
     textures.set(entry.id, new Texture({ source: sheetTexture.source, frame }));
   }

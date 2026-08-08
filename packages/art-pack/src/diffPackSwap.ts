@@ -13,6 +13,15 @@ export interface PackSwapFinding {
 export interface PackSwapDiffResult {
   readonly findings: readonly PackSwapFinding[];
   readonly hasFailures: boolean;
+  /**
+   * The terrain tags `source` uses that `target` doesn't declare at
+   * all — the same set the terrain FAIL finding's message summarizes in
+   * prose, exposed structured for a "remap manually" UI that needs to
+   * act on the actual tags, not parse them back out of a sentence.
+   */
+  readonly missingTerrains: readonly string[];
+  /** Every terrain tag `target` itself declares — what a manual remap can substitute in. */
+  readonly targetTerrains: readonly string[];
 }
 
 /**
@@ -39,7 +48,7 @@ export interface PackSwapDiffResult {
 export function diffPackSwap(source: ArtPackManifest, target: ArtPackManifest): PackSwapDiffResult {
   const findings: PackSwapFinding[] = [];
 
-  diffTerrains(source, target, findings);
+  const missingTerrains = diffTerrains(source, target, findings);
 
   if (source.grid.tileSize !== target.grid.tileSize) {
     findings.push({
@@ -52,10 +61,15 @@ export function diffPackSwap(source: ArtPackManifest, target: ArtPackManifest): 
   diffCharacterSheets(source, target, findings);
   diffAnimations(source, target, findings);
 
-  return { findings, hasFailures: findings.some((f) => f.severity === "fail") };
+  return {
+    findings,
+    hasFailures: findings.some((f) => f.severity === "fail"),
+    missingTerrains,
+    targetTerrains: Array.from(collectTerrains(target)).sort(),
+  };
 }
 
-function diffTerrains(source: ArtPackManifest, target: ArtPackManifest, findings: PackSwapFinding[]): void {
+function diffTerrains(source: ArtPackManifest, target: ArtPackManifest, findings: PackSwapFinding[]): readonly string[] {
   const sourceTerrains = Array.from(collectTerrains(source));
   const targetTerrains = collectTerrains(target);
   const matched = sourceTerrains.filter((tag) => targetTerrains.has(tag));
@@ -71,6 +85,7 @@ function diffTerrains(source: ArtPackManifest, target: ArtPackManifest, findings
       detail: "These will render as placeholders until remapped.",
     });
   }
+  return missing;
 }
 
 function diffCharacterSheets(source: ArtPackManifest, target: ArtPackManifest, findings: PackSwapFinding[]): void {

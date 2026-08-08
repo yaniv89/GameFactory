@@ -1,3 +1,4 @@
+using Forge.Api.RateLimiting;
 using Forge.Domain.Entities;
 using Forge.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -16,6 +17,7 @@ public static class UpdateProjectEndpoint
     {
         app.MapPatch("/api/v1/projects/{projectId:guid}", Handle)
             .RequireAuthorization("project:write")
+            .WithRateLimit("api", RateLimitKeyStrategy.User, RateLimitPolicies.Api)
             .WithName("UpdateProject")
             .Produces<ProjectDetailResponse>()
             .ProducesValidationProblem()

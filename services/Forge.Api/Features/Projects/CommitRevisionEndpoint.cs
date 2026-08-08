@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Forge.Api.Authorization;
+using Forge.Api.RateLimiting;
 using Forge.Infrastructure.Persistence;
 
 namespace Forge.Api.Features.Projects;
@@ -19,6 +20,7 @@ public static class CommitRevisionEndpoint
     {
         app.MapPost("/api/v1/projects/{projectId:guid}/revisions", Handle)
             .RequireAuthorization("project:write")
+            .WithRateLimit("commit-revision", RateLimitKeyStrategy.User, RateLimitPolicies.CommitRevision)
             .WithName("CommitRevision")
             .Produces<CommitRevisionResponse>(StatusCodes.Status201Created)
             .Produces<CommitRevisionResponse>(StatusCodes.Status200OK)

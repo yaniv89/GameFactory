@@ -1,3 +1,4 @@
+using Forge.Api.RateLimiting;
 using Forge.Infrastructure.Email;
 using Forge.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
@@ -23,10 +24,12 @@ public static class PasswordEndpoints
     public static IEndpointRouteBuilder MapPasswordEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/v1/auth/password/forgot", HandleForgot)
+            .WithRateLimit("auth:password-forgot", RateLimitKeyStrategy.IpAddress, RateLimitPolicies.Auth)
             .WithName("ForgotPassword")
             .Produces(StatusCodes.Status202Accepted);
 
         app.MapPost("/api/v1/auth/password/reset", HandleReset)
+            .WithRateLimit("auth:password-reset", RateLimitKeyStrategy.IpAddress, RateLimitPolicies.Auth)
             .WithName("ResetPassword")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem();

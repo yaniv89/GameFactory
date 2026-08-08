@@ -1,3 +1,4 @@
+using Forge.Api.RateLimiting;
 using Forge.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 
@@ -18,6 +19,7 @@ public static class LoginEndpoint
     public static IEndpointRouteBuilder MapLogin(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/v1/auth/login", Handle)
+            .WithRateLimit("auth:login", RateLimitKeyStrategy.IpAddress, RateLimitPolicies.Auth)
             .WithName("Login")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status401Unauthorized);

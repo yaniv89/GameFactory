@@ -1,3 +1,4 @@
+using Forge.Api.RateLimiting;
 using Forge.Domain.Entities;
 using Forge.Infrastructure.Identity;
 using Forge.Infrastructure.Persistence;
@@ -20,6 +21,7 @@ public static class VerifyEmailEndpoint
     public static IEndpointRouteBuilder MapVerifyEmail(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/v1/auth/verify-email", Handle)
+            .WithRateLimit("auth:verify-email", RateLimitKeyStrategy.IpAddress, RateLimitPolicies.Auth)
             .WithName("VerifyEmail")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status400BadRequest);

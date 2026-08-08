@@ -1,3 +1,4 @@
+using Forge.Api.RateLimiting;
 using Forge.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,6 +18,7 @@ public static class DeleteProjectEndpoint
     {
         app.MapDelete("/api/v1/projects/{projectId:guid}", Handle)
             .RequireAuthorization("project:write")
+            .WithRateLimit("api", RateLimitKeyStrategy.User, RateLimitPolicies.Api)
             .WithName("DeleteProject")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status404NotFound);

@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Forge.Api.RateLimiting;
 using Forge.Domain.Entities;
 using Forge.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -15,6 +16,7 @@ public static class CreateProjectEndpoint
     {
         app.MapPost("/api/v1/workspaces/{workspaceId:guid}/projects", Handle)
             .RequireAuthorization("workspace:write")
+            .WithRateLimit("api", RateLimitKeyStrategy.User, RateLimitPolicies.Api)
             .WithName("CreateProject")
             .Produces<ProjectDetailResponse>(StatusCodes.Status201Created)
             .ProducesValidationProblem()

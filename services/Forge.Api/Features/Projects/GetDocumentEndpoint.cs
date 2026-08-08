@@ -1,3 +1,4 @@
+using Forge.Api.RateLimiting;
 using Forge.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,6 +16,7 @@ public static class GetDocumentEndpoint
     {
         app.MapGet("/api/v1/projects/{projectId:guid}/document", Handle)
             .RequireAuthorization("project:read")
+            .WithRateLimit("api", RateLimitKeyStrategy.User, RateLimitPolicies.Api)
             .WithName("GetProjectDocument")
             .Produces<ProjectDocumentResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound);

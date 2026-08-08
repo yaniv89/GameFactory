@@ -1,4 +1,5 @@
 using Forge.Api.Authorization;
+using Forge.Api.RateLimiting;
 using Forge.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -21,6 +22,7 @@ public static class RestoreRevisionEndpoint
     {
         app.MapPost("/api/v1/projects/{projectId:guid}/revisions/{revisionId:long}/restore", Handle)
             .RequireAuthorization("project:write")
+            .WithRateLimit("commit-revision", RateLimitKeyStrategy.User, RateLimitPolicies.CommitRevision)
             .WithName("RestoreRevision")
             .Produces<CommitRevisionResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status404NotFound)

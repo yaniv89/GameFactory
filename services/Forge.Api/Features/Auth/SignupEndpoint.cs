@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Forge.Api.RateLimiting;
 using Forge.Domain.Entities;
 using Forge.Infrastructure.Email;
 using Forge.Infrastructure.Identity;
@@ -23,6 +24,7 @@ public static class SignupEndpoint
     public static IEndpointRouteBuilder MapSignup(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/v1/auth/signup", Handle)
+            .WithRateLimit("auth:signup", RateLimitKeyStrategy.IpAddress, RateLimitPolicies.Auth)
             .WithName("Signup")
             .Produces<SignupResponse>(StatusCodes.Status201Created)
             .ProducesValidationProblem();

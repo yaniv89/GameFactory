@@ -1,12 +1,14 @@
 using Forge.Infrastructure.Email;
 using Forge.Infrastructure.Identity;
 using Forge.Infrastructure.Persistence;
+using Forge.Infrastructure.RateLimiting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenIddict.Abstractions;
+using StackExchange.Redis;
 
 namespace Forge.Infrastructure;
 
@@ -32,6 +34,27 @@ public static class DependencyInjection
         services.AddDbContext<ForgeDbContext>(options => options
             .UseNpgsql(connectionString)
             .UseSnakeCaseNamingConvention());
+
+        return services;
+    }
+
+    /// <summary>
+    /// One shared <see cref="IConnectionMultiplexer"/> for the whole
+    /// process (StackExchange.Redis's own documented pattern — it's
+    /// already a thread-safe, pooled multiplexer, not a per-request
+    /// connection to open and close) backing <see cref="RedisRateLimiter"/>
+    /// (docs/SPEC.md Section 5.5, CLAUDE.md Section 1.5 guardrail 18: rate
+    /// limiting is centralized in Redis, never counted in-process, since a
+    /// per-instance counter is bypassable by hitting a different replica
+    /// behind the load balancer).
+    /// </summary>
+    public static IServiceCollection AddForgeRateLimiting(this IServiceCollection services, IConfiguration configuration)
+    {
+        var connectionString = configuration.GetConnectionString("Redis")
+            ?? throw new InvalidOperationException("Missing ConnectionStrings:Redis configuration.");
+
+        services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(connectionString));
+        services.AddSingleton<IRateLimiter, RedisRateLimiter>();
 
         return services;
     }

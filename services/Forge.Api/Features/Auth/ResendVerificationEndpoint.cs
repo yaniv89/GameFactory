@@ -1,3 +1,4 @@
+using Forge.Api.RateLimiting;
 using Forge.Infrastructure.Email;
 using Forge.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
@@ -18,6 +19,7 @@ public static class ResendVerificationEndpoint
     public static IEndpointRouteBuilder MapResendVerification(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/v1/auth/resend-verification", Handle)
+            .WithRateLimit("auth:resend-verification", RateLimitKeyStrategy.IpAddress, RateLimitPolicies.Auth)
             .WithName("ResendVerification")
             .Produces(StatusCodes.Status202Accepted);
         return app;

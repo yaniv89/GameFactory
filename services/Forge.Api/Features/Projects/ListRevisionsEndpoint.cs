@@ -1,3 +1,4 @@
+using Forge.Api.RateLimiting;
 using Forge.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -21,6 +22,7 @@ public static class ListRevisionsEndpoint
     {
         app.MapGet("/api/v1/projects/{projectId:guid}/revisions", Handle)
             .RequireAuthorization("project:read")
+            .WithRateLimit("api", RateLimitKeyStrategy.User, RateLimitPolicies.Api)
             .WithName("ListRevisions")
             .Produces<RevisionHistoryResponse>();
         return app;

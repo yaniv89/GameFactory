@@ -1,3 +1,4 @@
+using Forge.Api.RateLimiting;
 using Forge.Infrastructure.Identity;
 using Microsoft.AspNetCore; // GetOpenIddictServerRequest() — OpenIddictServerAspNetCoreHelpers lives here, not in OpenIddict.Server.AspNetCore.
 using Microsoft.AspNetCore.Authentication;
@@ -21,7 +22,8 @@ public static class TokenEndpoint
 {
     public static IEndpointRouteBuilder MapToken(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/connect/token", Handle);
+        app.MapPost("/connect/token", Handle)
+            .WithRateLimit("token", RateLimitKeyStrategy.IpAddress, RateLimitPolicies.Token);
         return app;
     }
 

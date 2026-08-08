@@ -7,7 +7,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using StackExchange.Redis;
 using Testcontainers.PostgreSql;
+using Testcontainers.Redis;
 using Xunit;
 
 namespace Forge.Tests;
@@ -56,10 +58,19 @@ namespace Forge.Tests;
 ///    <c>base.CreateHost</c>'s call into <c>Program.Main</c>), so creating
 ///    the schema afterward is too late; a real CI run confirmed this with
 ///    <c>relation "OpenIddictApplications" does not exist</c>.
+///
+/// 3. Same story for <c>ConnectionStrings:Redis</c> (M5 Phase 4):
+///    <c>AddForgeRateLimiting</c> reads it eagerly the same way
+///    <c>AddForgeInfrastructure</c> does, so it gets the same
+///    ConfigureTestServices-level override — replacing the
+///    <see cref="IConnectionMultiplexer"/> registration directly — rather
+///    than a config-provider override that would lose the same ordering
+///    race.
 /// </summary>
 public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder().WithImage("postgres:16").Build();
+    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder().WithImage("postgres:16").Build();
+    private readonly RedisContainer _redis = new RedisBuilder().WithImage("redis:7").Build();
 
     /// <summary>
     /// No real email provider is configured (IEmailSender's own doc
@@ -69,9 +80,9 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
     /// </summary>
     public CapturingEmailSender EmailSender { get; } = new();
 
-    public Task InitializeAsync() => _container.StartAsync();
+    public async Task InitializeAsync() => await Task.WhenAll(_postgres.StartAsync(), _redis.StartAsync());
 
-    Task IAsyncLifetime.DisposeAsync() => _container.DisposeAsync().AsTask();
+    async Task IAsyncLifetime.DisposeAsync() => await Task.WhenAll(_postgres.DisposeAsync().AsTask(), _redis.DisposeAsync().AsTask());
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -80,7 +91,7 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
             services.RemoveAll<IEmailSender>();
             services.AddSingleton<IEmailSender>(EmailSender);
 
-            var connectionString = _container.GetConnectionString();
+            var connectionString = _postgres.GetConnectionString();
             services.RemoveAll<DbContextOptions<ForgeDbContext>>();
             services.AddDbContext<ForgeDbContext>(options => options
                 .UseNpgsql(connectionString)
@@ -91,6 +102,10 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
                 .UseSnakeCaseNamingConvention()
                 .Options);
             db.Database.EnsureCreated();
+
+            var redisConnectionString = _redis.GetConnectionString();
+            services.RemoveAll<IConnectionMultiplexer>();
+            services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
         });
     }
 

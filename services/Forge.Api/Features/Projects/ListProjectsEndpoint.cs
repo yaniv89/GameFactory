@@ -1,3 +1,4 @@
+using Forge.Api.RateLimiting;
 using Forge.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,6 +11,7 @@ public static class ListProjectsEndpoint
     {
         app.MapGet("/api/v1/workspaces/{workspaceId:guid}/projects", Handle)
             .RequireAuthorization("workspace:read")
+            .WithRateLimit("api", RateLimitKeyStrategy.User, RateLimitPolicies.Api)
             .WithName("ListProjects")
             .Produces<IReadOnlyList<ProjectSummaryResponse>>();
         return app;

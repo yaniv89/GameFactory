@@ -1,4 +1,5 @@
 using Forge.Api.Authorization;
+using Forge.Api.RateLimiting;
 using Forge.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,11 +18,13 @@ public static class MeEndpoint
     {
         app.MapGet("/api/v1/me", HandleGet)
             .RequireAuthorization(ForgeAuthorizationExtensions.BearerPolicy)
+            .WithRateLimit("api", RateLimitKeyStrategy.User, RateLimitPolicies.Api)
             .WithName("GetMe")
             .Produces<MeResponse>();
 
         app.MapPatch("/api/v1/me", HandlePatch)
             .RequireAuthorization(ForgeAuthorizationExtensions.BearerPolicy)
+            .WithRateLimit("api", RateLimitKeyStrategy.User, RateLimitPolicies.Api)
             .WithName("UpdateMe")
             .Produces<MeResponse>()
             .ProducesValidationProblem();

@@ -46,6 +46,12 @@ public sealed class RevisionCommitServiceTests : IClassFixture<ForgeWebApplicati
             var db = scope.ServiceProvider.GetRequiredService<ForgeDbContext>();
             var workspace = new Workspace { Slug = $"ws-{Guid.NewGuid():N}", Name = "Test Workspace", CreatedAt = DateTimeOffset.UtcNow };
             db.Workspaces.Add(workspace);
+            // Id is database-generated (Postgres gen_random_uuid()), not
+            // client-assigned — workspace.Id is still Guid.Empty until
+            // this SaveChangesAsync actually round-trips, so the
+            // dependent Project can't be created in the same batch.
+            await db.SaveChangesAsync();
+
             var project = new Project
             {
                 WorkspaceId = workspace.Id,

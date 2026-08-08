@@ -4,7 +4,6 @@ using System.Text.Json;
 using Forge.Domain.Entities;
 using Forge.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 
 namespace Forge.Api.Features.Projects;
@@ -48,9 +47,20 @@ public static class RevisionCommitService
         // against the same pre-conflict head — Postgres then rejects one
         // of them at commit time with a 40001 serialization failure
         // instead of letting it through, which is exactly the guarantee
-        // this method is for; the catch clauses below turn that into the
+        // this method is for; the catch clause below turns that into the
         // same Conflict result the pre-commit check produces, rather than
-        // an unhandled exception surfacing as a 500.
+        // an unhandled exception surfacing as a 500. Confirmed against a
+        // real Postgres serialization failure in CI (not just reasoned
+        // about): EF Core doesn't surface the PostgresException directly
+        // here — because this transaction is manually managed rather than
+        // wrapped in the context's execution strategy, EF re-wraps it in
+        // an InvalidOperationException ("likely due to a transient
+        // failure") around the DbUpdateException around the
+        // PostgresException, specifically because it can't safely retry a
+        // transaction it doesn't own. Matching on exception *type* alone
+        // (DbUpdateException, or PostgresException directly) missed that
+        // wrapping in the first CI run; this walks the whole
+        // InnerException chain instead.
         await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
 
         try
@@ -102,35 +112,38 @@ public static class RevisionCommitService
             await tx.CommitAsync(ct);
             return new CommitResult(CommitResultKind.Committed, revision, revision.Id);
         }
-        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.SerializationFailure)
+        catch (Exception ex) when (IsSerializationFailure(ex))
         {
-            return await ConflictAfterSerializationFailureAsync(db, tx, projectId, ct);
-        }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.SerializationFailure })
-        {
-            return await ConflictAfterSerializationFailureAsync(db, tx, projectId, ct);
+            // Deliberately not reading back the actual head revision to
+            // populate ActualHeadRevision here (unlike the pre-commit
+            // conflict branch above, which reads it inside the still-live
+            // transaction before anything has gone wrong). Also confirmed
+            // in CI: once Postgres reports a serialization failure, the
+            // underlying NpgsqlTransaction is already done —
+            // NpgsqlTransaction.Rollback() throws "This NpgsqlTransaction
+            // has completed; it is no longer usable" if called explicitly
+            // here, and any further query on this same connection/tx
+            // would be built on the same broken state. Returning null and
+            // letting the caller's normal re-fetch-on-conflict path
+            // (docs/SPEC.md Section 13.3) run on a fresh request/DbContext
+            // is the safe way to recover this specific detail, not a
+            // missing feature. The `await using tx` above still disposes
+            // safely on method exit — Dispose, unlike Rollback, is a
+            // documented no-op against an already-completed transaction.
+            return new CommitResult(CommitResultKind.Conflict, null, null);
         }
     }
 
-    /// <summary>
-    /// Postgres leaves the connection in an aborted state after a
-    /// serialization failure — "current transaction is aborted, commands
-    /// ignored until end of transaction block" — until the transaction is
-    /// explicitly rolled back, so that has to happen here before this can
-    /// run its own read for the actual current head revision the caller
-    /// should rebase onto (the <c>await using</c> in <see cref="CommitAsync"/>
-    /// only rolls back on method exit, which is too late for the read
-    /// below). The <c>await using</c> disposal that follows is then a
-    /// no-op against an already-completed transaction.
-    /// </summary>
-    private static async Task<CommitResult> ConflictAfterSerializationFailureAsync(
-        ForgeDbContext db, IDbContextTransaction tx, Guid projectId, CancellationToken ct)
+    /// <summary>Walks the exception chain because EF Core's wrapping of a transient Postgres error depends on call shape (see the doc comment above) — matching a single exception type isn't reliable.</summary>
+    private static bool IsSerializationFailure(Exception ex)
     {
-        await tx.RollbackAsync(ct);
-        var currentHead = await db.Projects
-            .Where(p => p.Id == projectId && p.DeletedAt == null)
-            .Select(p => (long?)p.HeadRevision)
-            .SingleOrDefaultAsync(ct);
-        return new CommitResult(CommitResultKind.Conflict, null, currentHead);
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (current is PostgresException { SqlState: PostgresErrorCodes.SerializationFailure })
+            {
+                return true;
+            }
+        }
+        return false;
     }
 }

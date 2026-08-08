@@ -229,6 +229,12 @@ importers:
         specifier: ^0.32.0
         version: 0.32.0
     devDependencies:
+      '@types/node':
+        specifier: ^26.1.2
+        version: 26.1.2
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
       vitest:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@26.1.2)(jsdom@30.0.1)(lightningcss@1.33.0)

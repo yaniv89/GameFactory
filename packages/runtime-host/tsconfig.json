@@ -4,5 +4,17 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "include": ["src"]
+  "include": ["src"],
+  // "src/smoke" is built separately (scripts/build-smoke-cli.mjs, an
+  // esbuild bundle emitted to dist/smoke/cli.bundle.mjs) and deliberately
+  // excluded from this package's own tsc-emitted dist/*.js — it's
+  // server-side publish-pipeline tooling (docs/SPEC.md Section 10.4 gate
+  // 4), never part of what a player's browser downloads, and
+  // tools/bench/check-bundle-size.mjs's proxy metric for this package's
+  // CLAUDE.md Section 7 "always shipped" budget gzips every *.js file
+  // under dist/ indiscriminately — it can't tell "shipped to a browser"
+  // apart from "server-only tooling that happens to live in this
+  // package" on its own. Still typechecked normally: tsconfig.typecheck.json
+  // includes "src" with no matching exclusion, and emits nothing anyway.
+  "exclude": ["src/smoke"]
 }

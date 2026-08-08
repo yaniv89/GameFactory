@@ -105,6 +105,20 @@ export class ModuleBridge {
     return this.options.version;
   }
 
+  /**
+   * True once the underlying `ModuleRuntime` has torn itself down after a
+   * host-level exception (see `ModuleRuntime.evaluateProtected`'s own doc
+   * comment — e.g. guest recursion overflowing the host's native stack).
+   * A caller driving many ticks against this bridge (the gate 4 smoke
+   * runner, `packages/runtime-host/src/smoke/smokeRunner.ts`) needs this to
+   * tell "the sandbox instance actually crashed" apart from an ordinary
+   * per-tick guest error, which `runGuestSystem` already catches and logs
+   * without disposing anything.
+   */
+  get isDisposed(): boolean {
+    return this.runtime.isDisposed;
+  }
+
   static async create(options: ModuleBridgeOptions): Promise<ModuleBridge> {
     const storageHandler = new LocalStorageHandler();
     const capabilities: CapabilityHandler[] = [storageHandler];
@@ -154,7 +168,19 @@ export class ModuleBridge {
     const context = this.runtime.context;
     const ctxHandle = context.getProp(context.global, "__forge_setupContext");
     const outcome = this.runtime.callFunction(this.setupHandle, [ctxHandle]);
-    ctxHandle.dispose();
+    // A host-level crash during callFunction() (e.g. guest recursion
+    // overflowing the host's native stack — see ModuleRuntime.evaluateProtected's
+    // own doc comment) already tears the whole runtime down as part of
+    // producing `outcome`. Disposing a handle from an already-torn-down
+    // VM throws ("Lifetime not alive"), which — found by actually
+    // exercising this path with the gate 4 smoke runner, not assumed —
+    // used to escape uncaught here, turning a clean "blocked" verdict
+    // into an unhandled exception. Every handle from a dead VM is already
+    // gone as part of that VM's own teardown; there is nothing left to
+    // dispose.
+    if (!this.runtime.isDisposed) {
+      ctxHandle.dispose();
+    }
     return outcome;
   }
 

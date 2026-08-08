@@ -42,7 +42,7 @@ export class TilemapLayer<S extends TileSpriteLike> {
   private readonly spritesByIndex = new Map<number, S>();
   private readonly container: ContainerLike<S>;
   private readonly createTileSprite: () => S;
-  private readonly resolveTileTexture: (tileId: number) => unknown | undefined;
+  private resolveTileTexture: (tileId: number) => unknown | undefined;
 
   constructor(options: TilemapLayerOptions<S>) {
     const { gridWidth, gridHeight, tileSize, tiles, container, createTileSprite, resolveTileTexture } = options;
@@ -89,6 +89,25 @@ export class TilemapLayer<S extends TileSpriteLike> {
       this.container.addChild(sprite);
     }
     sprite.texture = texture;
+  }
+
+  /**
+   * Re-resolves and reassigns the texture of every currently-placed tile
+   * sprite against a new resolver, and remembers it for future
+   * `setTile` calls — the live half of a pack swap (docs/SPEC.md Section
+   * 11.5): the same grid of tile ids stays painted, only which pixels
+   * they resolve to changes. A cell whose id the new resolver can't
+   * resolve keeps its previous texture rather than going blank — matches
+   * `placeTile`'s own "leave undrawn until it resolves" stance for a
+   * cell that was never drawn, but there's no undrawn state to fall back
+   * to for one that already has a sprite on screen.
+   */
+  refreshTextures(resolveTileTexture: (tileId: number) => unknown | undefined): void {
+    this.resolveTileTexture = resolveTileTexture;
+    for (const [index, sprite] of this.spritesByIndex) {
+      const texture = resolveTileTexture(this.tiles[index]!);
+      if (texture !== undefined) sprite.texture = texture;
+    }
   }
 
   /** Overwrites one cell's tile id and updates its sprite in place. */

@@ -1,3 +1,4 @@
+import { current } from "immer";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
@@ -47,6 +48,24 @@ interface ProjectDocument {
 }
 
 /**
+ * docs/SPEC.md Section 11.5's "automatic named checkpoint before
+ * applying" a pack swap, plus "one-click restore". Deliberately a
+ * separate, named, arbitrarily-long-lived snapshot rather than a spot in
+ * the undo/redo stack: `past`/`future` only cover the most recent edits
+ * and are trimmed by every subsequent action, so undo alone can't
+ * promise "get back to right before that swap" once other edits happen
+ * after it. Not itself a `ProjectCommand` — creating one doesn't change
+ * the document, so it isn't undo/redo material (the same reasoning that
+ * keeps `selection` out of the command log).
+ */
+export interface PackSwapCheckpoint {
+  readonly id: string;
+  readonly label: string;
+  readonly createdAt: string;
+  readonly document: ProjectDocument;
+}
+
+/**
  * Serializable, not closures. This is what makes the log persistable
  * (CLAUDE.md 5.3: "Undo has no ceiling within a session and survives
  * reload") and is the same shape M7's Yjs/CRDT relay will eventually need
@@ -73,7 +92,13 @@ type ProjectCommand =
   // shape as entity/set-player-start.
   | { readonly type: "pack/set-active"; readonly packName: string | undefined }
   // `url` undefined clears the override at `path` — same shape again.
-  | { readonly type: "pack/set-override"; readonly path: string; readonly url: string | undefined };
+  | { readonly type: "pack/set-override"; readonly path: string; readonly url: string | undefined }
+  // Restoring a checkpoint (docs/SPEC.md Section 11.5): forward carries
+  // the checkpoint's whole document, inverse carries whatever the
+  // document was immediately before the restore — same self-inverse
+  // shape as every other command, just at document granularity instead
+  // of a single field.
+  | { readonly type: "document/replace"; readonly document: ProjectDocument };
 
 interface HistoryEntry {
   readonly forward: ProjectCommand;
@@ -154,6 +179,12 @@ function applyCommand(document: ProjectDocument, command: ProjectCommand): void 
         document.packOverrides[command.path] = command.url;
       }
       return;
+    case "document/replace":
+      document.scenes = command.document.scenes;
+      document.installedModules = command.document.installedModules;
+      document.activePack = command.document.activePack;
+      document.packOverrides = command.document.packOverrides;
+      return;
   }
 }
 
@@ -167,6 +198,8 @@ interface ProjectStoreState {
   document: ProjectDocument;
   past: HistoryEntry[];
   future: HistoryEntry[];
+  /** Newest last. Persisted (Section 5.3: "nothing lost... without a warning" applies to checkpoints too — a reload must not silently drop a creator's restore point). */
+  checkpoints: PackSwapCheckpoint[];
   /**
    * What the Inspector is showing. Transient UI focus, not document
    * content — deliberately not part of the command log (selecting
@@ -188,12 +221,15 @@ interface ProjectStoreState {
   selectEntity: (sceneId: string, entityId: string | undefined) => void;
   setActivePack: (packName: string | undefined) => void;
   setPackOverride: (path: string, url: string | undefined) => void;
+  createCheckpoint: (label: string) => string;
+  restoreCheckpoint: (checkpointId: string) => void;
+  deleteCheckpoint: (checkpointId: string) => void;
   undo: () => void;
   redo: () => void;
 }
 
 const PERSIST_KEY = "forge:editor:project-document";
-const PERSIST_VERSION = 2;
+const PERSIST_VERSION = 3;
 
 /**
  * Persisted state from before `activePack`/`packOverrides` existed
@@ -205,8 +241,15 @@ const PERSIST_VERSION = 2;
  * so this fallback path itself has a test, not just an assumption that
  * `persist`'s `migrate` option is wired correctly.
  */
-export function migratePersistedProjectState(persisted: unknown): Pick<ProjectStoreState, "document" | "past" | "future"> {
-  const state = (persisted ?? {}) as { document?: Partial<ProjectDocument>; past?: HistoryEntry[]; future?: HistoryEntry[] };
+export function migratePersistedProjectState(
+  persisted: unknown,
+): Pick<ProjectStoreState, "document" | "past" | "future" | "checkpoints"> {
+  const state = (persisted ?? {}) as {
+    document?: Partial<ProjectDocument>;
+    past?: HistoryEntry[];
+    future?: HistoryEntry[];
+    checkpoints?: PackSwapCheckpoint[];
+  };
   return {
     document: {
       scenes: state.document?.scenes ?? [],
@@ -216,6 +259,7 @@ export function migratePersistedProjectState(persisted: unknown): Pick<ProjectSt
     },
     past: state.past ?? [],
     future: state.future ?? [],
+    checkpoints: state.checkpoints ?? [],
   };
 }
 
@@ -225,6 +269,7 @@ export const useProjectStore = create<ProjectStoreState>()(
       document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {} },
       past: [],
       future: [],
+      checkpoints: [],
       selection: undefined,
 
       createScene: () =>
@@ -376,6 +421,37 @@ export const useProjectStore = create<ProjectStoreState>()(
           state.future = [];
         }),
 
+      createCheckpoint: (label) => {
+        const id = crypto.randomUUID();
+        set((state) => {
+          const checkpoint: PackSwapCheckpoint = {
+            id,
+            label,
+            createdAt: new Date().toISOString(),
+            document: current(state.document) as ProjectDocument,
+          };
+          state.checkpoints.push(checkpoint);
+        });
+        return id;
+      },
+
+      restoreCheckpoint: (checkpointId) =>
+        set((state) => {
+          const checkpoint = state.checkpoints.find((candidate) => candidate.id === checkpointId);
+          if (!checkpoint) return; // deleted or never existed — nothing to restore.
+          const forward: ProjectCommand = { type: "document/replace", document: checkpoint.document };
+          const inverse: ProjectCommand = { type: "document/replace", document: current(state.document) as ProjectDocument };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        }),
+
+      deleteCheckpoint: (checkpointId) =>
+        set((state) => {
+          const index = state.checkpoints.findIndex((candidate) => candidate.id === checkpointId);
+          if (index !== -1) state.checkpoints.splice(index, 1);
+        }),
+
       undo: () =>
         set((state) => {
           const entry = state.past.pop();
@@ -396,7 +472,12 @@ export const useProjectStore = create<ProjectStoreState>()(
       name: PERSIST_KEY,
       version: PERSIST_VERSION,
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({ document: state.document, past: state.past, future: state.future }),
+      partialize: (state) => ({
+        document: state.document,
+        past: state.past,
+        future: state.future,
+        checkpoints: state.checkpoints,
+      }),
       migrate: (persisted) => migratePersistedProjectState(persisted),
     },
   ),

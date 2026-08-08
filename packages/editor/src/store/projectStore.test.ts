@@ -7,6 +7,7 @@ function reset(): void {
     document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {} },
     past: [],
     future: [],
+    checkpoints: [],
     selection: undefined,
   });
 }
@@ -403,6 +404,17 @@ describe("migratePersistedProjectState", () => {
     expect(migrated.document.installedModules).toEqual(legacy.document.installedModules);
     expect(migrated.document.activePack).toBeUndefined();
     expect(migrated.document.packOverrides).toEqual({});
+    expect(migrated.checkpoints).toEqual([]);
+  });
+
+  it("fills in checkpoints for pre-checkpoint (version 2) persisted state", () => {
+    const v2 = {
+      document: { scenes: [], installedModules: {}, activePack: "@pixelfoundry/fantasy-pack", packOverrides: {} },
+      past: [],
+      future: [],
+    };
+    const migrated = migratePersistedProjectState(v2);
+    expect(migrated.checkpoints).toEqual([]);
   });
 
   it("passes a full, current-shape document through unchanged", () => {
@@ -410,9 +422,18 @@ describe("migratePersistedProjectState", () => {
       document: { scenes: [], installedModules: {}, activePack: "@pixelfoundry/fantasy-pack", packOverrides: { "a.png": "https://cdn.forge.dev/a.png" } },
       past: [],
       future: [],
+      checkpoints: [
+        {
+          id: "c1",
+          label: "Before switching to fantasy-pack",
+          createdAt: "2026-08-08T00:00:00.000Z",
+          document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {} },
+        },
+      ],
     };
     const migrated = migratePersistedProjectState(current);
     expect(migrated.document).toEqual(current.document);
+    expect(migrated.checkpoints).toEqual(current.checkpoints);
   });
 
   it("never throws on empty or missing persisted state", () => {
@@ -420,5 +441,74 @@ describe("migratePersistedProjectState", () => {
     expect(() => migratePersistedProjectState({})).not.toThrow();
     const migrated = migratePersistedProjectState(undefined);
     expect(migrated.document).toEqual({ scenes: [], installedModules: {}, activePack: undefined, packOverrides: {} });
+    expect(migrated.checkpoints).toEqual([]);
+  });
+});
+
+describe("checkpoints: docs/SPEC.md Section 11.5's automatic checkpoint + one-click restore", () => {
+  beforeEach(reset);
+
+  it("createCheckpoint snapshots the current document under a label and returns its id", () => {
+    useProjectStore.getState().createScene();
+    useProjectStore.getState().setActivePack("@pixelfoundry/fantasy-pack");
+
+    const id = useProjectStore.getState().createCheckpoint("Before switching to scifi-pack");
+
+    const checkpoints = useProjectStore.getState().checkpoints;
+    expect(checkpoints).toHaveLength(1);
+    expect(checkpoints[0]!.id).toBe(id);
+    expect(checkpoints[0]!.label).toBe("Before switching to scifi-pack");
+    expect(checkpoints[0]!.document.activePack).toBe("@pixelfoundry/fantasy-pack");
+    expect(checkpoints[0]!.document.scenes).toHaveLength(1);
+  });
+
+  it("createCheckpoint's snapshot is independent of later edits", () => {
+    useProjectStore.getState().setActivePack("@pixelfoundry/fantasy-pack");
+    const id = useProjectStore.getState().createCheckpoint("checkpoint");
+
+    useProjectStore.getState().setActivePack("@moonlit/scifi-pack");
+    useProjectStore.getState().createScene();
+
+    const checkpoint = useProjectStore.getState().checkpoints.find((c) => c.id === id);
+    expect(checkpoint?.document.activePack).toBe("@pixelfoundry/fantasy-pack");
+    expect(checkpoint?.document.scenes).toEqual([]);
+    expect(useProjectStore.getState().document.activePack).toBe("@moonlit/scifi-pack");
+  });
+
+  it("restoreCheckpoint replaces the document with the checkpoint's snapshot and is itself undoable", () => {
+    useProjectStore.getState().setActivePack("@pixelfoundry/fantasy-pack");
+    const id = useProjectStore.getState().createCheckpoint("checkpoint");
+    useProjectStore.getState().setActivePack("@moonlit/scifi-pack");
+    useProjectStore.getState().createScene();
+
+    useProjectStore.getState().restoreCheckpoint(id);
+    expect(useProjectStore.getState().document.activePack).toBe("@pixelfoundry/fantasy-pack");
+    expect(useProjectStore.getState().document.scenes).toEqual([]);
+
+    useProjectStore.getState().undo();
+    expect(useProjectStore.getState().document.activePack).toBe("@moonlit/scifi-pack");
+    expect(useProjectStore.getState().document.scenes).toHaveLength(1);
+  });
+
+  it("restoreCheckpoint with an unknown id is a no-op", () => {
+    useProjectStore.getState().createScene();
+    const before = useProjectStore.getState().document;
+    const pastLengthBefore = useProjectStore.getState().past.length;
+
+    useProjectStore.getState().restoreCheckpoint("does-not-exist");
+
+    expect(useProjectStore.getState().document).toEqual(before);
+    expect(useProjectStore.getState().past).toHaveLength(pastLengthBefore);
+  });
+
+  it("deleteCheckpoint removes it from the list without touching the document or undo history", () => {
+    const id = useProjectStore.getState().createCheckpoint("checkpoint");
+    useProjectStore.getState().createScene();
+    const documentBefore = useProjectStore.getState().document;
+
+    useProjectStore.getState().deleteCheckpoint(id);
+
+    expect(useProjectStore.getState().checkpoints).toEqual([]);
+    expect(useProjectStore.getState().document).toBe(documentBefore);
   });
 });

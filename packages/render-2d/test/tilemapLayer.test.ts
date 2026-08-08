@@ -135,6 +135,67 @@ describe("TilemapLayer", () => {
     expect(container.children[0]!.texture).toBe(TEXTURE_FOR_TILE_1);
   });
 
+  it("refreshTextures re-resolves every placed sprite's texture against a new resolver", () => {
+    const container = new FakeContainer();
+    const layer = new TilemapLayer({
+      gridWidth: 2,
+      gridHeight: 1,
+      tileSize: 32,
+      tiles: [1, 2],
+      container,
+      createTileSprite: () => new FakeTileSprite(),
+      resolveTileTexture,
+    });
+
+    const NEW_TEXTURE_FOR_TILE_1 = { id: "swapped-tile-1" };
+    const NEW_TEXTURE_FOR_TILE_2 = { id: "swapped-tile-2" };
+    layer.refreshTextures((tileId) => {
+      if (tileId === 1) return NEW_TEXTURE_FOR_TILE_1;
+      if (tileId === 2) return NEW_TEXTURE_FOR_TILE_2;
+      return undefined;
+    });
+
+    expect(container.children).toHaveLength(2);
+    expect(container.children[0]!.texture).toBe(NEW_TEXTURE_FOR_TILE_1);
+    expect(container.children[1]!.texture).toBe(NEW_TEXTURE_FOR_TILE_2);
+  });
+
+  it("refreshTextures leaves a sprite's texture unchanged when the new resolver can't resolve its id", () => {
+    const container = new FakeContainer();
+    const layer = new TilemapLayer({
+      gridWidth: 1,
+      gridHeight: 1,
+      tileSize: 32,
+      tiles: [1],
+      container,
+      createTileSprite: () => new FakeTileSprite(),
+      resolveTileTexture,
+    });
+
+    layer.refreshTextures(() => undefined);
+
+    expect(container.children[0]!.texture).toBe(TEXTURE_FOR_TILE_1);
+  });
+
+  it("refreshTextures's new resolver is used by later setTile calls, not just the refresh itself", () => {
+    const container = new FakeContainer();
+    const layer = new TilemapLayer({
+      gridWidth: 1,
+      gridHeight: 1,
+      tileSize: 32,
+      tiles: [1],
+      container,
+      createTileSprite: () => new FakeTileSprite(),
+      resolveTileTexture,
+    });
+
+    const NEW_TEXTURE_FOR_TILE_3 = { id: "swapped-tile-3" };
+    layer.refreshTextures((tileId) => (tileId === 3 ? NEW_TEXTURE_FOR_TILE_3 : undefined));
+    layer.setTile(0, 0, 3);
+
+    expect(container.children[0]!.texture).toBe(NEW_TEXTURE_FOR_TILE_3);
+  });
+
   it("cull hides sprites outside the given bounds and shows those inside", () => {
     const container = new FakeContainer();
     // 4x1 grid, all tile 1, tileSize 32: cells at world x = 0, 32, 64, 96

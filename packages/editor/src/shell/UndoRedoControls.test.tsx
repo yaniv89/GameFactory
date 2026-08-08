@@ -10,6 +10,7 @@ function reset(): void {
     document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {} },
     past: [],
     future: [],
+    checkpoints: [],
     selection: undefined,
   });
 }

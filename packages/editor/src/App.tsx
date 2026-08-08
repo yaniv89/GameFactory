@@ -1,7 +1,9 @@
+import { Button } from "@forge/ds";
 import { DockviewReact, type DockviewReadyEvent, type IDockviewPanelProps } from "dockview-react";
 import "dockview/dist/styles/dockview.css";
 import "./styles/dockview-theme.css";
-import type { FC } from "react";
+import { useState, type FC } from "react";
+import { PackSwapDialogContainer } from "./canvas/PackSwapDialogContainer";
 import { SceneCanvas } from "./canvas/SceneCanvas";
 import { InspectorPanelContainer, ModulesPanelContainer, ScenesPanelContainer } from "./shell/DockviewPanels";
 import { PreviewPanel } from "./shell/PreviewPanel";
@@ -47,16 +49,22 @@ function onReady(event: DockviewReadyEvent): void {
 }
 
 export function App() {
+  const [packSwapOpen, setPackSwapOpen] = useState(false);
+
   return (
     <div className="fg-app">
       <header className="fg-app__toolbar">
         <span className="fg-app__title">Forge</span>
         <span className="fg-app__project-name">Untitled Project</span>
         <UndoRedoControls />
+        <Button variant="secondary" onClick={() => setPackSwapOpen(true)}>
+          Swap Art Pack
+        </Button>
       </header>
       <div className="fg-app__dock">
         <DockviewReact components={COMPONENTS} onReady={onReady} className="fg-dockview" />
       </div>
+      <PackSwapDialogContainer open={packSwapOpen} onClose={() => setPackSwapOpen(false)} />
     </div>
   );
 }

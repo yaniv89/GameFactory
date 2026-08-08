@@ -42,7 +42,70 @@ const KNOWN_FIXTURE_PACKS: Readonly<Record<string, { manifestUrl: string; baseUr
     manifestUrl: "/fixture-packs/starter-pack/manifest.json",
     baseUrl: "/fixture-packs/starter-pack",
   },
+  "@forge-fixtures/scifi-pack": {
+    manifestUrl: "/fixture-packs/scifi-pack/manifest.json",
+    baseUrl: "/fixture-packs/scifi-pack",
+  },
 };
+
+/**
+ * Every pack name the pack-swap dialog (docs/SPEC.md Section 11.5) can
+ * offer as a switch target — today, exactly `KNOWN_FIXTURE_PACKS`' own
+ * keys, since there's no registry to browse yet. The dialog imports this
+ * instead of the map itself so that map can stay module-private.
+ */
+export function listKnownPackNames(): readonly string[] {
+  return Object.keys(KNOWN_FIXTURE_PACKS);
+}
+
+/**
+ * `loadActivePackContext`'s "why didn't this work" — collapsed to
+ * `undefined` by that function (a broken/misconfigured pack must never
+ * block the canvas from booting), but the pack-swap dialog needs the
+ * distinction: a network failure is retryable (Panel's "offline" state),
+ * an unknown name or a manifest that fails validation is not (Panel's
+ * "error" state) — CLAUDE.md 5.5's "what happened, why, what to do
+ * next" doesn't hold for a message that conflates "try again" with
+ * "this pack is broken."
+ */
+export type PackManifestLoadResult =
+  | { readonly ok: true; readonly packName: string; readonly manifest: ArtPackManifest; readonly baseUrl: string }
+  | { readonly ok: false; readonly kind: "unknown-pack" | "invalid-manifest"; readonly message: string }
+  | { readonly ok: false; readonly kind: "network"; readonly message: string };
+
+/**
+ * Fetches and validates `packName`'s manifest, distinguishing *why* it
+ * failed. `loadActivePackContext` below is this with every failure
+ * collapsed to `undefined`, for callers (canvas boot) that only care
+ * about "did it work."
+ */
+export async function loadPackManifest(packName: string): Promise<PackManifestLoadResult> {
+  const known = KNOWN_FIXTURE_PACKS[packName];
+  if (!known) {
+    return {
+      ok: false,
+      kind: "unknown-pack",
+      message: `'${packName}' is not a known pack — there is no registry/install flow yet, only this hardcoded fixture list.`,
+    };
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(known.manifestUrl);
+  } catch (err) {
+    return { ok: false, kind: "network", message: err instanceof Error ? err.message : String(err) };
+  }
+  if (!response.ok) {
+    return { ok: false, kind: "network", message: `Manifest fetch returned HTTP ${response.status}.` };
+  }
+
+  const result = validateArtPackManifest(await response.json());
+  if (!result.ok) {
+    return { ok: false, kind: "invalid-manifest", message: JSON.stringify(result.errors) };
+  }
+
+  return { ok: true, packName, manifest: result.manifest!, baseUrl: known.baseUrl };
+}
 
 /**
  * Resolves `packName` (`ProjectDocument.activePack`) to a validated
@@ -55,31 +118,12 @@ const KNOWN_FIXTURE_PACKS: Readonly<Record<string, { manifestUrl: string; baseUr
  */
 export async function loadActivePackContext(packName: string | undefined): Promise<ActivePackContext | undefined> {
   if (!packName) return undefined;
-  const known = KNOWN_FIXTURE_PACKS[packName];
-  if (!known) {
-    console.warn(`[forge:art-pack] '${packName}' is not a known pack (no registry/install flow exists yet) — falling back to placeholder colors.`);
-    return undefined;
-  }
-
-  let response: Response;
-  try {
-    response = await fetch(known.manifestUrl);
-  } catch (err) {
-    console.warn(`[forge:art-pack] failed to fetch '${packName}' manifest from '${known.manifestUrl}' — falling back to placeholder colors.`, err);
-    return undefined;
-  }
-  if (!response.ok) {
-    console.warn(`[forge:art-pack] '${packName}' manifest fetch returned ${response.status} — falling back to placeholder colors.`);
-    return undefined;
-  }
-
-  const result = validateArtPackManifest(await response.json());
+  const result = await loadPackManifest(packName);
   if (!result.ok) {
-    console.warn(`[forge:art-pack] '${packName}' manifest failed validation — falling back to placeholder colors.`, result.errors);
+    console.warn(`[forge:art-pack] '${packName}' failed to load (${result.kind}): ${result.message} — falling back to placeholder colors.`);
     return undefined;
   }
-
-  return { packName, manifest: result.manifest!, baseUrl: known.baseUrl };
+  return { packName: result.packName, manifest: result.manifest, baseUrl: result.baseUrl };
 }
 
 /**

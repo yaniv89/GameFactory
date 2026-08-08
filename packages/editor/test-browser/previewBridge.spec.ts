@@ -23,6 +23,9 @@ test.describe("cross-origin preview bridge, in a real browser", () => {
     page.on("pageerror", (err) => consoleErrors.push(err.message));
 
     await page.goto("/");
+    // Tiles are real, undoable scene document state now (M6 Phase 5b) —
+    // painting needs a scene to persist into.
+    await page.getByRole("button", { name: "Create a scene" }).click();
     await page.waitForSelector(".fg-preview-panel__frame");
 
     // 1. Isolation: the parent's own script cannot reach the sandboxed

@@ -36,6 +36,10 @@ test.describe("Art Pack rendering, in a real browser", () => {
     );
 
     await page.goto("/");
+    // Tiles are real, undoable scene document state now (M6 Phase 5b) —
+    // painting needs a scene to persist into.
+    await page.getByRole("button", { name: "Create a scene" }).click();
+
     const canvasPanel = page.locator(".fg-scene-canvas");
     await canvasPanel.getByRole("radiogroup", { name: "Tile to paint" }).waitFor({ state: "visible" });
 

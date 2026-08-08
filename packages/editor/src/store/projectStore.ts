@@ -2,7 +2,12 @@ import { current } from "immer";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
+import { GRID_HEIGHT, GRID_WIDTH } from "../canvas/gridConstants";
 import type { FormValues } from "../inspector/jsonSchema";
+
+function emptyTiles(): number[] {
+  return new Array(GRID_WIDTH * GRID_HEIGHT).fill(0);
+}
 
 export interface EntityDialogue {
   readonly speaker: string;
@@ -28,6 +33,17 @@ export interface SceneSummary {
    * individual entities are replaced wholesale on change, never patched.
    */
   entities: EntityPlacement[];
+  /**
+   * Row-major (`y * GRID_WIDTH + x`), one tile id per cell — the same
+   * indexing SceneCanvas's own `snapshotTiles`/`tileIndex` already use, so
+   * a scene's persisted tiles and its live `TilemapLayer` never need a
+   * translation step between them. Was purely live, in-memory Pixi state
+   * until now (SceneCanvas's own former doc comment named this a real,
+   * stated gap, not an oversight) — undoable and persisted like every
+   * other document field once `paintTile` below started dispatching real
+   * commands for it instead of mutating the render layer directly.
+   */
+  tiles: number[];
 }
 
 interface ProjectDocument {
@@ -99,6 +115,10 @@ type ProjectCommand =
   // start". Self-inverse-shaped like scene/rename — the inverse just
   // carries whatever the previous value was, including undefined.
   | { readonly type: "entity/set-player-start"; readonly sceneId: string; readonly entity: EntityPlacement | undefined }
+  // One cell, one command — the same "forward carries the new value,
+  // inverse carries whatever was there before" shape as every other
+  // field here, just addressed by a flat grid index instead of a key.
+  | { readonly type: "scene/paint-tile"; readonly sceneId: string; readonly index: number; readonly tileId: number }
   // `packName` undefined means "no Art Pack active" — same self-inverse
   // shape as entity/set-player-start.
   | { readonly type: "pack/set-active"; readonly packName: string | undefined }
@@ -127,7 +147,7 @@ interface HistoryEntry {
 function applyCommand(document: ProjectDocument, command: ProjectCommand): void {
   switch (command.type) {
     case "scene/create":
-      document.scenes.push({ id: command.sceneId, name: command.name, entities: [] });
+      document.scenes.push({ id: command.sceneId, name: command.name, entities: [], tiles: emptyTiles() });
       return;
     case "scene/delete": {
       const index = document.scenes.findIndex((scene) => scene.id === command.sceneId);
@@ -140,7 +160,7 @@ function applyCommand(document: ProjectDocument, command: ProjectCommand): void 
       // Replaces the element rather than assigning `.name` in place:
       // SceneSummary's fields are readonly by design (Section 3), so a
       // rename is "swap in a new value", not a mutation of the old one.
-      if (scene) document.scenes[index] = { id: scene.id, name: command.name, entities: scene.entities };
+      if (scene) document.scenes[index] = { id: scene.id, name: command.name, entities: scene.entities, tiles: scene.tiles };
       return;
     }
     case "module/install":
@@ -180,6 +200,11 @@ function applyCommand(document: ProjectDocument, command: ProjectCommand): void 
       const index = scene.entities.findIndex((entity) => entity.kind === "player-start");
       if (index !== -1) scene.entities.splice(index, 1);
       if (command.entity) scene.entities.push(command.entity);
+      return;
+    }
+    case "scene/paint-tile": {
+      const scene = document.scenes.find((candidate) => candidate.id === command.sceneId);
+      if (scene) scene.tiles[command.index] = command.tileId;
       return;
     }
     case "pack/set-active":
@@ -240,6 +265,7 @@ interface ProjectStoreState {
   removeEntity: (sceneId: string, entityId: string) => void;
   configureEntityDialogue: (sceneId: string, entityId: string, dialogue: EntityDialogue) => void;
   selectEntity: (sceneId: string, entityId: string | undefined) => void;
+  paintTile: (sceneId: string, tileX: number, tileY: number, tileId: number) => void;
   setActivePack: (packName: string | undefined) => void;
   setPackOverride: (path: string, url: string | undefined) => void;
   setTerrainRemap: (sourceTag: string, targetTag: string | undefined) => void;
@@ -251,7 +277,7 @@ interface ProjectStoreState {
 }
 
 const PERSIST_KEY = "forge:editor:project-document";
-const PERSIST_VERSION = 4;
+const PERSIST_VERSION = 5;
 
 /**
  * Persisted state from before `activePack`/`packOverrides` existed
@@ -288,7 +314,11 @@ export function migratePersistedProjectState(
 
 function migrateDocument(document: Partial<ProjectDocument> | undefined): ProjectDocument {
   return {
-    scenes: document?.scenes ?? [],
+    // Pre-tiles (version <5) scenes have no `tiles` field at all — filled
+    // in with a fresh blank grid, same as a scene/create would produce,
+    // rather than leaving it undefined and crashing the first paint or
+    // sync-effect that indexes into it.
+    scenes: (document?.scenes ?? []).map((scene) => ({ ...scene, tiles: scene.tiles ?? emptyTiles() })),
     installedModules: document?.installedModules ?? {},
     activePack: document?.activePack,
     packOverrides: document?.packOverrides ?? {},
@@ -431,6 +461,20 @@ export const useProjectStore = create<ProjectStoreState>()(
       selectEntity: (sceneId, entityId) =>
         set((state) => {
           state.selection = entityId === undefined ? undefined : { kind: "entity", sceneId, entityId };
+        }),
+
+      paintTile: (sceneId, tileX, tileY, tileId) =>
+        set((state) => {
+          const scene = state.document.scenes.find((candidate) => candidate.id === sceneId);
+          if (!scene) return;
+          const index = tileY * GRID_WIDTH + tileX;
+          const previous = scene.tiles[index];
+          if (previous === tileId) return; // already painted this — no-op, not a no-op-shaped undo entry
+          const forward: ProjectCommand = { type: "scene/paint-tile", sceneId, index, tileId };
+          const inverse: ProjectCommand = { type: "scene/paint-tile", sceneId, index, tileId: previous ?? 0 };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
         }),
 
       setActivePack: (packName) =>

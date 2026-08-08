@@ -51,11 +51,13 @@ function snapshotTiles(layer: TilemapLayer<Sprite>): number[] {
  * canvasPreviewStore (Phase 6), which the Preview panel's sandboxed
  * iframe renders as an actual walkable game (Phase 7).
  *
- * Tile data itself is still not part of the project document or undo log
- * — that remains Phase 2's original, documented gap. Entities are, which
- * is an intentional asymmetry: entities are what Phase 7's exit criterion
- * needs to be real and undoable, tiles were not re-scoped to avoid
- * growing this phase further.
+ * Tiles are real, undoable project-document state (`scenes[i].tiles`,
+ * M6 Phase 5b) — paints dispatch `paintTile` to the store, which is what
+ * `forge export` (Phase 5) needs to have real map data to bundle, and
+ * what makes Ctrl+Z actually revert a paint the way it already reverts
+ * an entity placement. Like entity tools, the tile tool needs a scene to
+ * paint into; the tool disables itself with "Create a scene first" when
+ * there is none, the same as player-start/NPC/select already do below.
  *
  * State coverage (CLAUDE.md 5.4): this view only has an honest Loading
  * and Error — "the renderer is booting" and "it failed to boot" are the
@@ -105,6 +107,7 @@ export function SceneCanvas() {
   const placePlayerStart = useProjectStore((state) => state.placePlayerStart);
   const placeNpc = useProjectStore((state) => state.placeNpc);
   const selectEntity = useProjectStore((state) => state.selectEntity);
+  const paintTile = useProjectStore((state) => state.paintTile);
 
   // Serializes boot/dispose across React 18 StrictMode's dev-only double-
   // invoke of this effect (mount -> cleanup -> mount again, reusing the
@@ -175,11 +178,16 @@ export function SceneCanvas() {
           host.destroy();
           return;
         }
+        // A one-time snapshot at boot, same reasoning as activePackContext
+        // above: later external changes to this scene's tiles (undo/redo,
+        // checkpoint restore) are picked up by the reactive sync effect
+        // below, not by re-running this boot effect.
+        const initialTiles = useProjectStore.getState().document.scenes[0]?.tiles ?? new Array(GRID_WIDTH * GRID_HEIGHT).fill(0);
         const layer = new TilemapLayer<Sprite>({
           gridWidth: GRID_WIDTH,
           gridHeight: GRID_HEIGHT,
           tileSize: TILE_SIZE,
-          tiles: new Array(GRID_WIDTH * GRID_HEIGHT).fill(0),
+          tiles: initialTiles,
           container: host.worldContainer,
           createTileSprite: () => new Sprite(),
           resolveTileTexture: (tileId) => paletteTextures.get(tileId),
@@ -271,6 +279,34 @@ export function SceneCanvas() {
     };
   }, [activePack, packTerrainRemap]);
 
+  // Re-applies `activeScene.tiles` onto the live layer whenever it changes
+  // for a reason other than this component's own `paintTileAt` (which
+  // already painted the live layer directly, above) — undo/redo and
+  // checkpoint restore are the two real cases: both replace document state
+  // out from under the render layer with no paint gesture to hook. Skips
+  // its first run for the same reason the activePack effect above does:
+  // boot already seeded the layer from this same array. Diffs cell by
+  // cell rather than rebuilding the layer wholesale — cheap (grid is 300
+  // cells) and means a normal paint's own store round trip re-applies the
+  // same value it already set, a no-op `setTile` rather than 300 of them.
+  const isFirstTilesRunRef = useRef(true);
+  useEffect(() => {
+    if (isFirstTilesRunRef.current) {
+      isFirstTilesRunRef.current = false;
+      return;
+    }
+    const rig = rigRef.current;
+    const tiles = activeScene?.tiles;
+    if (!rig || !tiles) return;
+    for (let y = 0; y < rig.layer.gridHeight; y++) {
+      for (let x = 0; x < rig.layer.gridWidth; x++) {
+        const tileId = tiles[y * rig.layer.gridWidth + x] ?? 0;
+        if (rig.layer.getTile(x, y) !== tileId) rig.layer.setTile(x, y, tileId);
+      }
+    }
+    scheduleSyncPreview();
+  }, [activeScene?.tiles]);
+
   // Keeps the Pixi entity markers in sync with the store's reactive
   // entity list. Rebuilds the whole set on every change rather than
   // diffing: entity counts here are small (a handful for a demo map), so
@@ -327,18 +363,25 @@ export function SceneCanvas() {
   const paintTileAt = (worldX: number, worldY: number): void => {
     const rig = rigRef.current;
     const tile = tileAt(worldX, worldY);
-    if (!rig || !tile) return;
+    if (!rig || !tile || !activeScene) return;
+    // Applied directly to the live layer first — latency is the feature
+    // (CLAUDE.md 5.3), not waiting on the store round trip — then
+    // dispatched as a real, undoable command. The reactive sync effect
+    // below re-applies the same value once the store updates, which is a
+    // harmless no-op against a layer that already shows it (setTile at an
+    // unchanged id just re-assigns the same texture).
     rig.layer.setTile(tile.tileX, tile.tileY, selectedTileId);
+    paintTile(activeScene.id, tile.tileX, tile.tileY, selectedTileId);
     scheduleSyncPreview();
   };
 
   /** The left-click/tap dispatch across all four tools — see the `tool` state and its toolbar. */
   const handlePrimaryAction = (worldX: number, worldY: number): void => {
+    if (!activeScene) return; // every tool needs a scene now — the toolbar disables all four when there isn't one
     if (tool === "tiles") {
       paintTileAt(worldX, worldY);
       return;
     }
-    if (!activeScene) return; // entity tools need a scene to place into — the toolbar disables them too
     if (tool === "player") {
       const tile = tileAt(worldX, worldY);
       if (tile) placePlayerStart(activeScene.id, tile.tileX, tile.tileY);
@@ -447,7 +490,7 @@ export function SceneCanvas() {
           <div className="fg-scene-canvas__toolbar" role="radiogroup" aria-label="Tool">
             {(
               [
-                { tool: "tiles" as const, label: "Tiles", needsScene: false },
+                { tool: "tiles" as const, label: "Tiles", needsScene: true },
                 { tool: "player" as const, label: "Player start", needsScene: true },
                 { tool: "npc" as const, label: "NPC", needsScene: true },
                 { tool: "select" as const, label: "Select", needsScene: true },

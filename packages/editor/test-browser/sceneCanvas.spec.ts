@@ -20,6 +20,11 @@ test.describe("SceneCanvas, in a real browser", () => {
     });
 
     await page.goto("/");
+    // Tiles are real, undoable scene document state now (M6 Phase 5b) —
+    // painting needs a scene to persist into, the same requirement the
+    // player-start/NPC/select tools already had.
+    await page.getByRole("button", { name: "Create a scene" }).click();
+
     const canvasPanel = page.locator(".fg-scene-canvas");
     await canvasPanel.getByRole("radiogroup", { name: "Tile to paint" }).waitFor({ state: "visible" });
     // Scoped to the canvas panel, not the whole page — dockview itself
@@ -98,6 +103,15 @@ test.describe("SceneCanvas, in a real browser", () => {
     expect(after).not.toEqual(before);
     // The default-selected palette entry is "Grass" (0x4a7c3c), fully opaque.
     expect(after).toEqual([74, 124, 60, 255]);
+
+    // M6 Phase 5b: the paint above is real, undoable document state now
+    // (scenes[i].tiles), not just live Pixi state — Ctrl+Z must actually
+    // revert the pixel, proven through the same real-renderer pixel read,
+    // not by inspecting the store in isolation.
+    await page.getByRole("button", { name: "Undo" }).click();
+    const afterUndo = await pixelAt(clickX, clickY);
+    expect(afterUndo).toEqual(before);
+
     expect(consoleErrors).toEqual([]);
   });
 });

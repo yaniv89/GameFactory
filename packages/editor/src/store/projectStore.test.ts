@@ -298,6 +298,30 @@ describe("useProjectStore", () => {
     expect(useProjectStore.getState().past).toHaveLength(0);
   });
 
+  it("paintTile writes the tile at the given cell's flat index and undo restores the previous id", () => {
+    useProjectStore.getState().createScene();
+    const sceneId = useProjectStore.getState().document.scenes[0]!.id;
+
+    useProjectStore.getState().paintTile(sceneId, 3, 2, 7);
+    // GRID_WIDTH is 20 — index 2*20+3 = 43, per the same row-major layout SceneCanvas's own snapshotTiles uses.
+    expect(useProjectStore.getState().document.scenes[0]!.tiles[43]).toBe(7);
+
+    useProjectStore.getState().undo();
+    expect(useProjectStore.getState().document.scenes[0]!.tiles[43]).toBe(0);
+  });
+
+  it("paintTile against an unknown scene id is a no-op that does not grow the undo log", () => {
+    useProjectStore.getState().paintTile("no-such-scene", 0, 0, 3);
+    expect(useProjectStore.getState().past).toHaveLength(0);
+  });
+
+  it("paintTile with the tile id already there is a no-op that does not grow the undo log", () => {
+    useProjectStore.getState().createScene(); // itself one undo entry
+    const sceneId = useProjectStore.getState().document.scenes[0]!.id;
+    useProjectStore.getState().paintTile(sceneId, 0, 0, 0); // already 0 from scene/create's blank grid
+    expect(useProjectStore.getState().past).toHaveLength(1);
+  });
+
   it("setTerrainRemap with the same tag already set is a no-op that does not grow the undo log", () => {
     useProjectStore.getState().setTerrainRemap("water", "sand");
     useProjectStore.getState().setTerrainRemap("water", "sand");
@@ -429,7 +453,7 @@ describe("migratePersistedProjectState", () => {
       future: [],
     };
     const migrated = migratePersistedProjectState(legacy);
-    expect(migrated.document.scenes).toEqual(legacy.document.scenes);
+    expect(migrated.document.scenes).toEqual([{ id: "s1", name: "Scene 1", entities: [], tiles: new Array(300).fill(0) }]);
     expect(migrated.document.installedModules).toEqual(legacy.document.installedModules);
     expect(migrated.document.activePack).toBeUndefined();
     expect(migrated.document.packOverrides).toEqual({});
@@ -464,6 +488,38 @@ describe("migratePersistedProjectState", () => {
     const migrated = migratePersistedProjectState(v3);
     expect(migrated.document.packTerrainRemap).toEqual({});
     expect(migrated.checkpoints[0]!.document.packTerrainRemap).toEqual({});
+  });
+
+  it("fills in scene tiles, including inside each checkpoint's own snapshot, for pre-tiles (version 4) persisted state", () => {
+    const v4 = {
+      document: {
+        scenes: [{ id: "s1", name: "Scene 1", entities: [] }],
+        installedModules: {},
+        activePack: undefined,
+        packOverrides: {},
+        packTerrainRemap: {},
+      },
+      past: [],
+      future: [],
+      checkpoints: [
+        {
+          id: "c1",
+          label: "Before switching to fantasy-pack",
+          createdAt: "2026-08-08T00:00:00.000Z",
+          document: {
+            scenes: [{ id: "s1", name: "Scene 1", entities: [] }],
+            installedModules: {},
+            activePack: undefined,
+            packOverrides: {},
+            packTerrainRemap: {},
+          },
+        },
+      ],
+    };
+    const migrated = migratePersistedProjectState(v4);
+    const blankTiles = new Array(300).fill(0);
+    expect(migrated.document.scenes).toEqual([{ id: "s1", name: "Scene 1", entities: [], tiles: blankTiles }]);
+    expect(migrated.checkpoints[0]!.document.scenes).toEqual([{ id: "s1", name: "Scene 1", entities: [], tiles: blankTiles }]);
   });
 
   it("passes a full, current-shape document through unchanged", () => {

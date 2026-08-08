@@ -1,0 +1,22 @@
+# Extends gitleaks' own default ruleset (CLAUDE.md Section 4.9's gate #4)
+# — nothing here narrows what gitleaks scans for. It only carves out a
+# confirmed false positive gitleaks can't help finding in git history:
+# fixing a value in a later commit doesn't remove the old one from an
+# earlier commit's diff, and rewriting history to force it out entirely
+# would mean a force-push, which this session does not do without
+# explicit user confirmation (a destructive git operation, per this
+# repo's own operating rules).
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Confirmed false positives: local-dev config placeholders that happen to match a secret's shape, never real credentials."
+regexes = [
+  # services/Forge.Api/appsettings.json's Stripe SecretKey value at
+  # scaffold time (M5 Phase 5, commit 436aed0) — a placeholder string,
+  # never a real key, renamed in commit 479e3cc specifically to stop
+  # matching gitleaks' stripe-access-token shape, but still reachable at
+  # the commit that introduced it since history isn't rewritten for a
+  # non-secret.
+  '''sk_test_placeholder''',
+]

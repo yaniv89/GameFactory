@@ -224,7 +224,7 @@ jobs:
           tar -xzf gitleaks.tar.gz gitleaks
           sudo mv gitleaks /usr/local/bin/gitleaks
       - name: Scan full history
-        run: gitleaks detect --source . --log-opts="--all" --redact --verbose
+        run: gitleaks detect --source . --config .gitleaks.toml --log-opts="--all" --redact --verbose
 
   # ── Gate: CodeQL (TypeScript/JavaScript and C#) ───────────────────────
   codeql:

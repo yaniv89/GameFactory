@@ -43,14 +43,14 @@ public static class AuthTestHelper
         const string password = "correct horse battery staple 42";
 
         var signupResponse = await client.PostAsJsonAsync("/api/v1/auth/signup", new { email, password, displayName = "Test User" });
-        signupResponse.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(signupResponse);
         var signup = (await signupResponse.Content.ReadFromJsonAsync<SignupResponse>())!;
 
         var verificationEmail = Assert.Single(factory.EmailSender.Sent, e => e.ToEmail == email && e.Subject.Contains("Verify"));
         var verificationToken = verificationEmail.Body["Verification token: ".Length..];
-        (await client.PostAsJsonAsync("/api/v1/auth/verify-email", new { email, token = verificationToken })).EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(await client.PostAsJsonAsync("/api/v1/auth/verify-email", new { email, token = verificationToken }));
 
-        (await client.PostAsJsonAsync("/api/v1/auth/login", new { email, password })).EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(await client.PostAsJsonAsync("/api/v1/auth/login", new { email, password }));
 
         var (verifier, challenge) = CreatePkcePair();
         var authorizeUrl = "/connect/authorize"
@@ -72,13 +72,33 @@ public static class AuthTestHelper
             ["client_id"] = OpenIddictSeeding.EditorClientId,
             ["code_verifier"] = verifier,
         }));
-        tokenResponse.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(tokenResponse);
         var tokenPayload = await tokenResponse.Content.ReadFromJsonAsync<JsonElement>();
         var accessToken = tokenPayload.GetProperty("access_token").GetString()!;
 
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
         return new AuthenticatedTestUser(client, signup.UserId, signup.WorkspaceId, email);
+    }
+
+    /// <summary>
+    /// <c>HttpResponseMessage.EnsureSuccessStatusCode()</c> throws with
+    /// just the status code, discarding the response body — which, in
+    /// this Development-environment test host, is exactly where
+    /// <c>DeveloperExceptionPageMiddlewareImpl</c> puts the real server-
+    /// side stack trace on a 500. A load test that fails with only
+    /// "500 Internal Server Error" and no body is the same
+    /// "something failed" anti-pattern CLAUDE.md Section 5.5 bars for
+    /// product error copy, just relocated into test diagnostics — every
+    /// caller in this file uses this instead so a real CI failure comes
+    /// with an actual cause attached.
+    /// </summary>
+    private static async Task EnsureSuccessAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode) return;
+        var body = await response.Content.ReadAsStringAsync();
+        throw new InvalidOperationException(
+            $"{(int)response.StatusCode} {response.StatusCode} calling {response.RequestMessage?.Method} {response.RequestMessage?.RequestUri}: {body}");
     }
 
     private static string RandomPrivateIPv4()

@@ -99,5 +99,23 @@ export function resolveAsset(path: string, context: AssetResolutionContext, modu
 }
 
 function joinUrl(baseUrl: string, path: string): string {
-  return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
+  return `${trimTrailingSlashes(baseUrl)}/${trimLeadingSlashes(path)}`;
+}
+
+// Manual, regex-free trimming — a CodeQL high-severity alert flagged the
+// previous regex-based version (`/\/+$/`, `/^\/+/`) as a polynomial
+// ReDoS risk on uncontrolled input (baseUrl/path can originate from a
+// third-party pack or module manifest). Both patterns were actually
+// linear in practice, but there's no reason to argue the point when a
+// loop is just as clear and removes the question entirely.
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === "/") end--;
+  return value.slice(0, end);
+}
+
+function trimLeadingSlashes(value: string): string {
+  let start = 0;
+  while (start < value.length && value[start] === "/") start++;
+  return value.slice(start);
 }

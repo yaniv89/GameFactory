@@ -80,6 +80,9 @@ importers:
 
   packages/editor:
     dependencies:
+      '@forge/art-pack':
+        specifier: workspace:*
+        version: link:../art-pack
       '@forge/core':
         specifier: workspace:*
         version: link:../core

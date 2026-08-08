@@ -1,8 +1,47 @@
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { extname, join } from "node:path";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
+
+const REPO_ROOT = new URL("../../", import.meta.url).pathname;
+const FIXTURE_PACKS_DIR = join(REPO_ROOT, "fixtures/packs");
+const FIXTURE_CONTENT_TYPES: Record<string, string> = {
+  ".json": "application/json",
+  ".png": "image/png",
+};
+
+/**
+ * Dev-server-only static serving for fixtures/packs/ (M6 Phase 4's Art
+ * Pack wiring) — never wired into `build` (configureServer only runs
+ * under `vite dev`/Playwright's dev server, not `vite build`), so fixture
+ * content never ships in a production bundle. A real deployment fetches
+ * real pack CDN URLs (docs/SPEC.md Section 10.6); this exists purely so
+ * the resolver/rendering wiring has real files to fetch during
+ * development and the real-browser Playwright suite.
+ */
+function serveFixturePacks(): Plugin {
+  return {
+    name: "forge-serve-fixture-packs",
+    configureServer(server) {
+      server.middlewares.use("/fixture-packs", (req, res, next) => {
+        const requestPath = decodeURIComponent((req.url ?? "").split("?")[0] ?? "");
+        const filePath = join(FIXTURE_PACKS_DIR, requestPath);
+        // join() normalizes ".." segments before this check runs, so a
+        // request trying to escape FIXTURE_PACKS_DIR resolves outside it
+        // and is rejected here, not served.
+        if (!filePath.startsWith(FIXTURE_PACKS_DIR) || !existsSync(filePath) || !statSync(filePath).isFile()) {
+          next();
+          return;
+        }
+        res.setHeader("Content-Type", FIXTURE_CONTENT_TYPES[extname(filePath)] ?? "application/octet-stream");
+        res.end(readFileSync(filePath));
+      });
+    },
+  };
+}
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), serveFixturePacks()],
   // The preview page (preview.html) is loaded inside a sandboxed iframe
   // with no allow-same-origin, so the browser treats it as coming from an
   // opaque ("null") origin — and per spec, `<script type="module">`

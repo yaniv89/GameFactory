@@ -4,7 +4,8 @@ import { Sprite, type Texture } from "pixi.js";
 import { useCanvasPreviewStore } from "./canvasPreviewStore";
 import { buildEntityTextures } from "./entityMarkers";
 import { GRID_HEIGHT, GRID_WIDTH, TILE_SIZE } from "./gridConstants";
-import { buildPaletteTextures, TILE_PALETTE } from "./tilePalette";
+import { buildPackAwarePaletteTextures, loadActivePackContext } from "./packTiles";
+import { TILE_PALETTE } from "./tilePalette";
 import { useProjectStore, type EntityPlacement } from "../store/projectStore";
 import "./SceneCanvas.css";
 
@@ -152,7 +153,22 @@ export function SceneCanvas() {
         camera.zoom = clamp(Math.min(width / (GRID_WIDTH * TILE_SIZE), height / (GRID_HEIGHT * TILE_SIZE)), MIN_ZOOM, MAX_ZOOM);
         camera.applyTo(host.worldContainer);
 
-        const paletteTextures = buildPaletteTextures(host.app.renderer, TILE_SIZE);
+        // A one-time snapshot at boot, not a reactive subscription: this
+        // effect runs once per mount (deps: []), and live pack-swapping
+        // after boot is a separate, not-yet-built flow (the pack-swap
+        // diff/apply UI, a later M6 Phase 4 slice) — this only needs
+        // "render with whatever pack was already active when the canvas
+        // first mounted."
+        const activePackContext = await loadActivePackContext(useProjectStore.getState().document.activePack);
+        if (cancelled) {
+          host.destroy();
+          return;
+        }
+        const paletteTextures = await buildPackAwarePaletteTextures(host.app.renderer, TILE_SIZE, activePackContext);
+        if (cancelled) {
+          host.destroy();
+          return;
+        }
         const layer = new TilemapLayer<Sprite>({
           gridWidth: GRID_WIDTH,
           gridHeight: GRID_HEIGHT,

@@ -17,6 +17,7 @@
     "build-storybook": "storybook build"
   },
   "dependencies": {
+    "@forge/art-pack": "workspace:*",
     "@forge/core": "workspace:*",
     "@forge/dialogue": "workspace:*",
     "@forge/ds": "workspace:*",

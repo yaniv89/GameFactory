@@ -5,6 +5,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Forge.Functions.Scan</RootNamespace>
+    <!-- Required by the Azure Functions Worker SDK build targets below — an isolated-worker Functions app is its own executable host process, not a class library. -->
+    <OutputType>Exe</OutputType>
+    <AzureFunctionsVersion>v4</AzureFunctionsVersion>
   </PropertyGroup>
 
   <!--
@@ -13,21 +16,47 @@
     with no Azure Functions Worker dependency, so they're fully
     unit-testable in services/Forge.Tests against a real Postgres
     Testcontainer and the real built packages/runtime-host smoke CLI —
-    see those tests for what's actually verified. The Azure Functions
-    Worker trigger wiring itself (the [Function]-attributed entry point
-    that actually calls these on a schedule) is a separate, deliberately
-    isolated follow-up: this environment has no .NET SDK to verify a
-    restore/build against the Functions Worker SDK's package surface
-    before pushing, so keeping it out of this change means a problem
-    there can't block or entangle with what's already verified here.
+    see those tests for what's actually verified.
+
+    The trigger wiring below (Program.cs, ScanPendingVersionsFunction.cs)
+    is the one piece of this phase that could not be verified any way
+    other than a real CI build — this sandbox has no .NET SDK, so the
+    Functions Worker SDK's package surface and the isolated-worker
+    HostBuilder bootstrap pattern are confirmed correct only by the
+    real `dotnet build Forge.sln` CI runs on GitHub-hosted runners.
+    Actually firing on a schedule is not something Forge.Tests can
+    exercise either (no Azure Functions Core Tools / storage emulator
+    wired into this repo's test infrastructure) — everything the timer
+    trigger itself does beyond DI resolution is a single call into
+    ScanOrchestrator.ScanNextAsync, which the real tests already cover.
+
     Gates 2/3 (static analysis, dependency audit) already run inline in
     Forge.Api's PublishVersionEndpoint (M6 Phase 2), not here — see that
     endpoint's own doc comment for why.
   -->
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.52.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" Version="4.3.1" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.0.7">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Forge.Domain\Forge.Domain.csproj" />
     <ProjectReference Include="..\Forge.Infrastructure\Forge.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="host.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="local.settings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

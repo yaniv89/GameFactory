@@ -6,6 +6,7 @@ using Forge.Infrastructure.Identity;
 using Forge.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Forge.Api.Features.Auth;
 
@@ -67,15 +68,7 @@ public static class SignupEndpoint
         db.DomainUsers.Add(domainUser);
         await db.SaveChangesAsync(ct); // domainUser.Id must be real before the member row below.
 
-        var workspace = new Workspace
-        {
-            Slug = await GenerateUniqueSlugAsync(db, req.DisplayName, ct),
-            Name = $"{req.DisplayName}'s Workspace",
-            Plan = "free",
-            CreatedAt = DateTimeOffset.UtcNow,
-        };
-        db.Workspaces.Add(workspace);
-        await db.SaveChangesAsync(ct); // workspace.Id must be real before the member row below.
+        var workspace = await CreateWorkspaceWithUniqueSlugAsync(db, req.DisplayName, ct); // workspace.Id must be real before the member row below.
 
         db.WorkspaceMembers.Add(new WorkspaceMember
         {
@@ -101,16 +94,47 @@ public static class SignupEndpoint
         return TypedResults.Created($"/api/v1/workspaces/{workspace.Id}", new SignupResponse(domainUser.Id, workspace.Id));
     }
 
-    private static async Task<string> GenerateUniqueSlugAsync(ForgeDbContext db, string displayName, CancellationToken ct)
+    /// <summary>
+    /// Generates a candidate slug and inserts the workspace in the same
+    /// attempt, retrying on an actual unique-constraint violation rather
+    /// than checking availability first and inserting later — a real CI
+    /// run under concurrent signups (M5 Phase 6's load test) proved the
+    /// check-then-insert version genuinely races: two signups with the
+    /// same display name ("Test User" in the test; "John Smith" in
+    /// reality) can both pass an <c>AnyAsync</c> availability check
+    /// before either has committed, and the second insert then throws an
+    /// unhandled <c>23505</c> unique-violation. This can't be pushed into
+    /// a Serializable transaction the way <see cref="Projects.RevisionCommitService"/>
+    /// handles its own race — the whole point here is to keep retrying
+    /// with a different slug, not to report a conflict back to a caller
+    /// who never supplied one.
+    /// </summary>
+    private static async Task<Workspace> CreateWorkspaceWithUniqueSlugAsync(ForgeDbContext db, string displayName, CancellationToken ct)
     {
         var baseSlug = Slugify(displayName);
         for (var attempt = 0; attempt < 5; attempt++)
         {
-            var suffix = Guid.NewGuid().ToString("N")[..6];
-            var candidate = attempt == 0 ? baseSlug : $"{baseSlug}-{suffix}";
-            if (!await db.Workspaces.AnyAsync(w => w.Slug == candidate, ct)) return candidate;
+            var candidate = attempt == 0 ? baseSlug : $"{baseSlug}-{Guid.NewGuid().ToString("N")[..6]}";
+            var workspace = new Workspace
+            {
+                Slug = candidate,
+                Name = $"{displayName}'s Workspace",
+                Plan = "free",
+                CreatedAt = DateTimeOffset.UtcNow,
+            };
+            db.Workspaces.Add(workspace);
+
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                return workspace;
+            }
+            catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "ix_workspaces_slug" })
+            {
+                db.Entry(workspace).State = EntityState.Detached;
+            }
         }
-        throw new InvalidOperationException("Could not generate a unique workspace slug.");
+        throw new InvalidOperationException("Could not generate a unique workspace slug after 5 attempts.");
     }
 
     private static string Slugify(string input)

@@ -124,6 +124,37 @@ public sealed class AuthFlowTests : IClassFixture<ForgeWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Concurrent_Signups_With_The_Same_Display_Name_Both_Get_Their_Own_Workspace()
+    {
+        // A real CI run of M5 Phase 6's load test (many simulated editors
+        // all signing up as "Test User") caught SignupEndpoint racing on
+        // its own workspace-slug uniqueness check: two concurrent signups
+        // with the same display name could both pass an availability
+        // check before either committed, and the second insert then threw
+        // an unhandled 500 instead of retrying with a different slug.
+        // This is the fast, deterministic regression test for that fix —
+        // two, not two hundred, and no HTTP-level retry loop of its own,
+        // so a reintroduced race fails this directly rather than only
+        // showing up as one flaky failure in eighty seconds of load test.
+        const string displayName = "Duplicate Display Name";
+
+        var responses = await Task.WhenAll(Enumerable.Range(0, 2).Select(async i =>
+        {
+            var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+            var email = $"dup-{i}-{Guid.NewGuid():N}@example.com";
+            return await client.PostAsJsonAsync("/api/v1/auth/signup", new { email, password = "correct horse battery staple 42", displayName });
+        }));
+
+        foreach (var response in responses)
+        {
+            Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        }
+
+        var signups = await Task.WhenAll(responses.Select(r => r.Content.ReadFromJsonAsync<SignupResponse>()));
+        Assert.NotEqual(signups[0]!.WorkspaceId, signups[1]!.WorkspaceId);
+    }
+
+    [Fact]
     public async Task Unauthenticated_Request_To_Me_Is_Rejected()
     {
         var client = _factory.CreateClient();

@@ -94,7 +94,19 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
     // package version was tested against, and this sandbox can't verify
     // a hand-picked tag actually exists on the registry before a real CI
     // run does — safer to trust the package's own default than guess.
-    private readonly AzuriteContainer _azurite = new AzuriteBuilder().Build();
+    //
+    // --skipApiVersionCheck: a real CI run confirmed the Azure.Storage.Blobs
+    // client (12.24.0) sends a newer x-ms-version header than this Azurite
+    // image's REST API layer recognizes ("The API version ... is not
+    // supported by Azurite"), which the client surfaces as a 400 on every
+    // single blob call — this is the emulator's own documented escape
+    // hatch for exactly that skew (Azurite's error message names this flag
+    // directly), not a security bypass: it only relaxes a version-string
+    // allowlist on an ephemeral, credential-less local emulator that never
+    // runs in production, and every actual request still executes for
+    // real, not a mock — the create-only-if-not-exists check this whole
+    // container exists to verify is still genuinely exercised.
+    private readonly AzuriteContainer _azurite = new AzuriteBuilder().WithCommand("--skipApiVersionCheck").Build();
 
     /// <summary>
     /// No real email provider is configured (IEmailSender's own doc

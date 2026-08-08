@@ -27,15 +27,6 @@
   </ItemGroup>
 
   <!--
-    Same reasoning as the OpenIddict reference above: Features/Billing/
-    StripeWebhookEndpoint.cs calls Stripe.EventUtility.ConstructEvent and
-    catches Stripe.StripeException directly.
-  -->
-  <ItemGroup>
-    <PackageReference Include="Stripe.net" Version="47.4.0" />
-  </ItemGroup>
-
-  <!--
     Lets Forge.Tests construct a CurrentUser with known values directly
     (its setters are internal on purpose — only CurrentUserMiddleware
     should write them at runtime; this is a compile-time-only visibility

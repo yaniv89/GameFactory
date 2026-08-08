@@ -1,15 +1,11 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Forge.Api.RateLimiting;
 using Forge.Domain.Entities;
 using Forge.Infrastructure.Billing;
 using Forge.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
-using Stripe;
-// Stripe.net has its own Stripe.Subscription type — this alias, not a
-// fully-qualified name at each call site, since the domain entity is
-// what this file is overwhelmingly about; Stripe.net's own types
-// (Event, EventUtility, StripeException) are used unqualified instead.
-using Subscription = Forge.Domain.Entities.Subscription;
 
 namespace Forge.Api.Features.Billing;
 
@@ -21,16 +17,26 @@ namespace Forge.Api.Features.Billing;
 /// below, not Bearer/cookie auth: Stripe calls this endpoint directly,
 /// with no user session.
 ///
-/// Reads event field values via <see cref="JsonDocument"/> over the raw
-/// request body rather than <c>Stripe.Event.Data.Object</c>'s typed
-/// model — deliberately: this only needs <see cref="Event.Type"/> (a
-/// plain string, stable across SDK versions) from the Stripe.net object,
-/// and parsing the payload itself with .NET's own, version-independent
-/// JSON reader avoids any dependency on which JSON library a given
-/// Stripe.net version uses internally to deserialize <c>Data.Object</c>.
+/// Verifies the signature and reads every field via <see cref="JsonDocument"/>
+/// over the raw request body, deliberately not through Stripe.net's
+/// <c>EventUtility.ConstructEvent</c>/typed <c>Event</c> model. That was
+/// tried first: it requires successfully deserializing the entire payload
+/// into Stripe.net's own object graph just to hand back
+/// <c>Event.Type</c>, and a real CI run proved a hand-built test payload
+/// good enough to carry every field this handler actually reads still
+/// isn't necessarily good enough to satisfy the full typed model — it
+/// threw a non-<c>StripeException</c> that surfaced as a 500, not the
+/// intended 400. Signature verification itself is a self-contained,
+/// stable, publicly documented HMAC-SHA256 scheme
+/// (<c>t={timestamp},v1=HMAC-SHA256(secret,"{timestamp}.{payload}")</c>)
+/// that doesn't need the SDK at all; implementing it directly removes any
+/// dependency on Stripe.net's internal JSON handling for this endpoint.
 /// </summary>
 public static class StripeWebhookEndpoint
 {
+    /// <summary>Stripe's own reference implementations use this same 5-minute default tolerance against replay of an old, still-validly-signed payload.</summary>
+    private const int SignatureToleranceSeconds = 300;
+
     public static IEndpointRouteBuilder MapStripeWebhook(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/v1/webhooks/stripe", Handle)
@@ -52,21 +58,18 @@ public static class StripeWebhookEndpoint
         using var reader = new StreamReader(request.Body);
         var json = await reader.ReadToEndAsync(ct);
 
-        Event stripeEvent;
-        try
+        if (!IsSignatureValid(json, request.Headers["Stripe-Signature"].ToString(), webhookOptions.Secret))
         {
-            stripeEvent = EventUtility.ConstructEvent(json, request.Headers["Stripe-Signature"], webhookOptions.Secret);
-        }
-        catch (StripeException ex)
-        {
-            log.LogWarning("Rejected a Stripe webhook with an invalid signature: {Message}", ex.Message);
+            log.LogWarning("Rejected a Stripe webhook with an invalid or expired signature.");
             return TypedResults.Problem(title: "Invalid signature", statusCode: StatusCodes.Status400BadRequest);
         }
 
         using var doc = JsonDocument.Parse(json);
-        var dataObject = doc.RootElement.GetProperty("data").GetProperty("object");
+        var root = doc.RootElement;
+        var eventType = GetString(root, "type");
+        var dataObject = root.GetProperty("data").GetProperty("object");
 
-        switch (stripeEvent.Type)
+        switch (eventType)
         {
             case "checkout.session.completed":
                 await HandleCheckoutSessionCompletedAsync(dataObject, db, ct);
@@ -90,6 +93,40 @@ public static class StripeWebhookEndpoint
         }
 
         return TypedResults.Ok();
+    }
+
+    /// <summary>
+    /// Hand-rolled verification of Stripe's <c>Stripe-Signature</c> header:
+    /// <c>t={timestamp},v1={hex hmac},v1={hex hmac}...</c> (Stripe sends
+    /// multiple <c>v1</c> values during secret rotation — any match is
+    /// sufficient). Rejects a payload whose timestamp has drifted more than
+    /// <see cref="SignatureToleranceSeconds"/> from now, the same
+    /// replay-tolerance Stripe's own libraries apply by default.
+    /// </summary>
+    private static bool IsSignatureValid(string payload, string signatureHeader, string secret)
+    {
+        long? timestamp = null;
+        var signatures = new List<string>();
+
+        foreach (var part in signatureHeader.Split(','))
+        {
+            var kv = part.Split('=', 2);
+            if (kv.Length != 2) continue;
+            if (kv[0] == "t" && long.TryParse(kv[1], out var t)) timestamp = t;
+            else if (kv[0] == "v1") signatures.Add(kv[1]);
+        }
+
+        if (timestamp is not { } ts || signatures.Count == 0) return false;
+
+        var age = Math.Abs(DateTimeOffset.UtcNow.ToUnixTimeSeconds() - ts);
+        if (age > SignatureToleranceSeconds) return false;
+
+        var signedPayload = $"{ts}.{payload}";
+        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
+        var expected = Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(signedPayload))).ToLowerInvariant();
+
+        return signatures.Any(sig => CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(sig), Encoding.UTF8.GetBytes(expected)));
     }
 
     private static async Task HandleCheckoutSessionCompletedAsync(JsonElement session, ForgeDbContext db, CancellationToken ct)

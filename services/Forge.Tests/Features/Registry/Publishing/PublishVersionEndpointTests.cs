@@ -34,6 +34,24 @@ public sealed class PublishVersionEndpointTests : IClassFixture<ForgeWebApplicat
     private static string BundleBase64(string source = "export function setup() {}") =>
         Convert.ToBase64String(Encoding.UTF8.GetBytes(source));
 
+    /// <summary>
+    /// A real CI run of this file failed every single test with a bare
+    /// "500 Internal Server Error" and no further detail — every
+    /// assertion here compared only <c>response.StatusCode</c>, never
+    /// read the body, and this Development test host's
+    /// DeveloperExceptionPageMiddlewareImpl puts the real server-side
+    /// stack trace exactly there. Same fix, same reasoning, as
+    /// AuthTestHelper.EnsureSuccessAsync earlier this session — asserting
+    /// through this instead of a bare status-code comparison means the
+    /// next failure comes with an actual cause attached.
+    /// </summary>
+    private static async Task AssertStatusAsync(HttpStatusCode expected, HttpResponseMessage response)
+    {
+        if (response.StatusCode == expected) return;
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Fail($"Expected {expected} but got {(int)response.StatusCode} {response.StatusCode} calling {response.RequestMessage?.Method} {response.RequestMessage?.RequestUri}: {body}");
+    }
+
     private static object ValidRequest(string name, string version, object? manifestOverrides = null, Dictionary<string, string>? dependencies = null)
     {
         var manifest = manifestOverrides ?? new
@@ -69,10 +87,9 @@ public sealed class PublishVersionEndpointTests : IClassFixture<ForgeWebApplicat
         var name = "@acme/publish-success";
 
         var response = await author.Client.PostAsJsonAsync($"/api/v1/packages/{name}/versions", ValidRequest(name, "1.0.0"));
-        response.EnsureSuccessStatusCode();
+        await AssertStatusAsync(HttpStatusCode.Created, response);
         var body = await response.Content.ReadFromJsonAsync<PublishVersionResponse>();
 
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         Assert.Equal(PackageScanStatus.Pending, body!.ScanStatus);
 
         using var scope = _factory.Services.CreateScope();
@@ -90,10 +107,10 @@ public sealed class PublishVersionEndpointTests : IClassFixture<ForgeWebApplicat
         var name = "@acme/publish-duplicate";
 
         var first = await author.Client.PostAsJsonAsync($"/api/v1/packages/{name}/versions", ValidRequest(name, "1.0.0"));
-        first.EnsureSuccessStatusCode();
+        await AssertStatusAsync(HttpStatusCode.Created, first);
 
         var second = await author.Client.PostAsJsonAsync($"/api/v1/packages/{name}/versions", ValidRequest(name, "1.0.0"));
-        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        await AssertStatusAsync(HttpStatusCode.Conflict, second);
     }
 
     [Fact]
@@ -103,10 +120,10 @@ public sealed class PublishVersionEndpointTests : IClassFixture<ForgeWebApplicat
         var outsider = await AuthTestHelper.SignupAndAuthenticateAsync(_factory);
         var name = "@acme/publish-wrong-author";
 
-        (await owner.Client.PostAsJsonAsync($"/api/v1/packages/{name}/versions", ValidRequest(name, "1.0.0"))).EnsureSuccessStatusCode();
+        await AssertStatusAsync(HttpStatusCode.Created, await owner.Client.PostAsJsonAsync($"/api/v1/packages/{name}/versions", ValidRequest(name, "1.0.0")));
 
         var response = await outsider.Client.PostAsJsonAsync($"/api/v1/packages/{name}/versions", ValidRequest(name, "2.0.0"));
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        await AssertStatusAsync(HttpStatusCode.Forbidden, response);
     }
 
     [Fact]
@@ -116,7 +133,7 @@ public sealed class PublishVersionEndpointTests : IClassFixture<ForgeWebApplicat
         var name = "@acme/publish-unverified";
 
         var response = await author.Client.PostAsJsonAsync($"/api/v1/packages/{name}/versions", ValidRequest(name, "1.0.0"));
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        await AssertStatusAsync(HttpStatusCode.Forbidden, response);
     }
 
     [Fact]
@@ -140,7 +157,7 @@ public sealed class PublishVersionEndpointTests : IClassFixture<ForgeWebApplicat
             dependencies = (Dictionary<string, string>?)null,
         });
 
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        await AssertStatusAsync(HttpStatusCode.UnprocessableEntity, response);
     }
 
     [Fact]
@@ -153,7 +170,7 @@ public sealed class PublishVersionEndpointTests : IClassFixture<ForgeWebApplicat
             $"/api/v1/packages/{name}/versions",
             ValidRequest(name, "1.0.0", dependencies: new Dictionary<string, string> { ["@acme/does-not-exist-publish"] = "^1.0.0" }));
 
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        await AssertStatusAsync(HttpStatusCode.UnprocessableEntity, response);
     }
 
     [Fact]
@@ -173,13 +190,13 @@ public sealed class PublishVersionEndpointTests : IClassFixture<ForgeWebApplicat
         var packageA = "@acme/publish-cycle-a";
         var packageB = "@acme/publish-cycle-b";
 
-        (await author.Client.PostAsJsonAsync($"/api/v1/packages/{packageA}/versions", ValidRequest(packageA, "1.0.0"))).EnsureSuccessStatusCode();
+        await AssertStatusAsync(HttpStatusCode.Created, await author.Client.PostAsJsonAsync($"/api/v1/packages/{packageA}/versions", ValidRequest(packageA, "1.0.0")));
 
         var response = await author.Client.PostAsJsonAsync(
             $"/api/v1/packages/{packageB}/versions",
             ValidRequest(packageB, "1.0.0", dependencies: new Dictionary<string, string> { [packageA] = "^1.0.0" }));
 
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        await AssertStatusAsync(HttpStatusCode.UnprocessableEntity, response);
     }
 
     [Fact]
@@ -203,7 +220,7 @@ public sealed class PublishVersionEndpointTests : IClassFixture<ForgeWebApplicat
             dependencies = (Dictionary<string, string>?)null,
         });
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        await AssertStatusAsync(HttpStatusCode.BadRequest, response);
     }
 
     [Fact]
@@ -227,7 +244,7 @@ public sealed class PublishVersionEndpointTests : IClassFixture<ForgeWebApplicat
             dependencies = (Dictionary<string, string>?)null,
         });
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        await AssertStatusAsync(HttpStatusCode.BadRequest, response);
     }
 
     [Fact]

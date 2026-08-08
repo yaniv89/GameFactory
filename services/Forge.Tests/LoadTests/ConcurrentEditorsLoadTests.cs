@@ -203,9 +203,14 @@ public sealed class ConcurrentEditorsLoadTests : IClassFixture<ForgeWebApplicati
         monitorCts.Cancel();
         var peakConnections = await monitorTask;
 
-        for (var i = 0; i < results.Length; i++)
+        var failures = results
+            .Select((r, i) => (Index: i, r.Success, r.FailureDetail))
+            .Where(r => !r.Success)
+            .ToList();
+        if (failures.Count > 0)
         {
-            Assert.True(results[i].Success, $"Editor {i} did not complete cleanly: {results[i].FailureDetail}");
+            var sample = string.Join("\n", failures.Take(5).Select(f => $"  editor {f.Index}: {f.FailureDetail}"));
+            Assert.Fail($"{failures.Count} of {editorCount} editors did not complete cleanly. First {Math.Min(5, failures.Count)}:\n{sample}");
         }
 
         // The first real measurement for docs/SPEC.md Section 18.4's "DB
@@ -249,6 +254,7 @@ public sealed class ConcurrentEditorsLoadTests : IClassFixture<ForgeWebApplicati
                 // expectedHeadRevision the way CommitOwnMarkerWithRetryAsync
                 // does for genuine content contention.
                 var doc = JsonSerializer.SerializeToElement(new { scenes = new[] { new { id = $"editor-{index}-scene" } }, installedModules = new { } });
+                const int maxCommitAttempts = 30;
                 HttpResponseMessage commitResponse;
                 var commitAttempts = 0;
                 while (true)
@@ -258,12 +264,23 @@ public sealed class ConcurrentEditorsLoadTests : IClassFixture<ForgeWebApplicati
                         $"/api/v1/projects/{project.Id}/revisions",
                         new { expectedHeadRevision = (long?)null, label = (string?)null, isCheckpoint = false, document = doc });
                     if (commitResponse.StatusCode == HttpStatusCode.Created) break;
-                    if (commitResponse.StatusCode == HttpStatusCode.Conflict && commitAttempts < 10)
+                    if (commitResponse.StatusCode == HttpStatusCode.Conflict && commitAttempts < maxCommitAttempts)
                     {
-                        await Task.Delay(Random.Shared.Next(5, 25));
+                        // Exponential backoff, not a fixed tiny window: a
+                        // real CI run at 200-way concurrency on a small,
+                        // shared runner exhausted 10 fixed-5-25ms-jitter
+                        // attempts outright, meaning contention on the
+                        // shared table/index structures behind every
+                        // editor's insert lasted longer than that gave it
+                        // room to clear. Capped at 500ms so the worst case
+                        // across 30 attempts stays well inside the job's
+                        // own timeout, not because 500ms is a meaningful
+                        // production number.
+                        var capMs = Math.Min(500, 10 * (1 << Math.Min(commitAttempts, 6)));
+                        await Task.Delay(Random.Shared.Next(capMs / 2, capMs));
                         continue;
                     }
-                    return (false, $"CommitRevision: {(int)commitResponse.StatusCode} {await commitResponse.Content.ReadAsStringAsync()}");
+                    return (false, $"CommitRevision after {commitAttempts} attempt(s): {(int)commitResponse.StatusCode} {await commitResponse.Content.ReadAsStringAsync()}");
                 }
 
                 // Prove it is durably readable back, not just accepted.

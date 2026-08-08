@@ -14,6 +14,9 @@ importers:
 
   packages/art-pack:
     devDependencies:
+      '@types/node':
+        specifier: ^26.1.2
+        version: 26.1.2
       vitest:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@26.1.2)(jsdom@30.0.1)(lightningcss@1.33.0)

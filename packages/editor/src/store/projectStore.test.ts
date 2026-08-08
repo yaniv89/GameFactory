@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { selectCanRedo, selectCanUndo, useProjectStore } from "./projectStore";
+import { migratePersistedProjectState, selectCanRedo, selectCanUndo, useProjectStore } from "./projectStore";
 
 function reset(): void {
   localStorage.clear();
   useProjectStore.setState({
-    document: { scenes: [], installedModules: {} },
+    document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {} },
     past: [],
     future: [],
     selection: undefined,
@@ -223,6 +223,57 @@ describe("useProjectStore", () => {
     expect(useProjectStore.getState().past).toHaveLength(1);
   });
 
+  it("setActivePack sets the active pack and undo clears it via a command-log entry", () => {
+    useProjectStore.getState().setActivePack("@pixelfoundry/fantasy-pack");
+    expect(useProjectStore.getState().document.activePack).toBe("@pixelfoundry/fantasy-pack");
+    expect(selectCanUndo(useProjectStore.getState())).toBe(true);
+
+    useProjectStore.getState().undo();
+    expect(useProjectStore.getState().document.activePack).toBeUndefined();
+  });
+
+  it("setActivePack from one pack to another restores the prior pack on undo", () => {
+    useProjectStore.getState().setActivePack("@pixelfoundry/fantasy-pack");
+    useProjectStore.getState().setActivePack("@moonlit/scifi-pack");
+    expect(useProjectStore.getState().document.activePack).toBe("@moonlit/scifi-pack");
+
+    useProjectStore.getState().undo();
+    expect(useProjectStore.getState().document.activePack).toBe("@pixelfoundry/fantasy-pack");
+  });
+
+  it("setActivePack with the same pack already active is a no-op that does not grow the undo log", () => {
+    useProjectStore.getState().setActivePack("@pixelfoundry/fantasy-pack");
+    useProjectStore.getState().setActivePack("@pixelfoundry/fantasy-pack");
+    expect(useProjectStore.getState().past).toHaveLength(1);
+  });
+
+  it("setPackOverride sets an override and undo removes the key entirely, not just clears its value", () => {
+    useProjectStore.getState().setPackOverride("tilesets/outdoor-base.png", "https://cdn.forge.dev/overrides/mine.png");
+    expect(useProjectStore.getState().document.packOverrides).toEqual({
+      "tilesets/outdoor-base.png": "https://cdn.forge.dev/overrides/mine.png",
+    });
+
+    useProjectStore.getState().undo();
+    expect(useProjectStore.getState().document.packOverrides).toEqual({});
+    expect("tilesets/outdoor-base.png" in useProjectStore.getState().document.packOverrides).toBe(false);
+  });
+
+  it("setPackOverride with undefined clears an existing override and undo restores it", () => {
+    useProjectStore.getState().setPackOverride("tilesets/outdoor-base.png", "https://cdn.forge.dev/overrides/mine.png");
+    useProjectStore.getState().setPackOverride("tilesets/outdoor-base.png", undefined);
+    expect(useProjectStore.getState().document.packOverrides).toEqual({});
+
+    useProjectStore.getState().undo();
+    expect(useProjectStore.getState().document.packOverrides).toEqual({
+      "tilesets/outdoor-base.png": "https://cdn.forge.dev/overrides/mine.png",
+    });
+  });
+
+  it("setPackOverride clearing an override that was never set is a no-op that does not grow the undo log", () => {
+    useProjectStore.getState().setPackOverride("tilesets/outdoor-base.png", undefined);
+    expect(useProjectStore.getState().past).toHaveLength(0);
+  });
+
   it("placePlayerStart places a player-start entity and undo removes it", () => {
     useProjectStore.getState().createScene();
     const sceneId = useProjectStore.getState().document.scenes[0]?.id as string;
@@ -337,5 +388,37 @@ describe("useProjectStore", () => {
 
     useProjectStore.getState().selectEntity(sceneId, undefined);
     expect(useProjectStore.getState().selection).toBeUndefined();
+  });
+});
+
+describe("migratePersistedProjectState", () => {
+  it("fills in activePack/packOverrides for pre-Art-Pack (version 1) persisted state", () => {
+    const legacy = {
+      document: { scenes: [{ id: "s1", name: "Scene 1", entities: [] }], installedModules: { "@forge/inventory": {} } },
+      past: [],
+      future: [],
+    };
+    const migrated = migratePersistedProjectState(legacy);
+    expect(migrated.document.scenes).toEqual(legacy.document.scenes);
+    expect(migrated.document.installedModules).toEqual(legacy.document.installedModules);
+    expect(migrated.document.activePack).toBeUndefined();
+    expect(migrated.document.packOverrides).toEqual({});
+  });
+
+  it("passes a full, current-shape document through unchanged", () => {
+    const current = {
+      document: { scenes: [], installedModules: {}, activePack: "@pixelfoundry/fantasy-pack", packOverrides: { "a.png": "https://cdn.forge.dev/a.png" } },
+      past: [],
+      future: [],
+    };
+    const migrated = migratePersistedProjectState(current);
+    expect(migrated.document).toEqual(current.document);
+  });
+
+  it("never throws on empty or missing persisted state", () => {
+    expect(() => migratePersistedProjectState(undefined)).not.toThrow();
+    expect(() => migratePersistedProjectState({})).not.toThrow();
+    const migrated = migratePersistedProjectState(undefined);
+    expect(migrated.document).toEqual({ scenes: [], installedModules: {}, activePack: undefined, packOverrides: {} });
   });
 });

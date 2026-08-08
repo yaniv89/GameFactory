@@ -33,6 +33,17 @@ interface ProjectDocument {
   scenes: SceneSummary[];
   /** Installed module name -> its config values. Presence of the key is the install flag. */
   installedModules: Record<string, FormValues>;
+  /** docs/SPEC.md Section 7.3's `activePack` — the registry name of the currently active Art Pack, or undefined when none is installed. */
+  activePack: string | undefined;
+  /**
+   * Project-level per-asset overrides scoped to the active pack
+   * (docs/SPEC.md Section 11.4 tier 1, Section 7.3's `packOverrides`) —
+   * keyed by the pack-relative asset path (e.g. `"tilesets/outdoor-base.png"`),
+   * valued by the override's own resolved URL. Empty until the asset
+   * upload UI that would populate it exists (M6 Phase 4's later asset-
+   * resolution wiring) — a stated gap, not a silently assumed one.
+   */
+  packOverrides: Record<string, string>;
 }
 
 /**
@@ -57,7 +68,12 @@ type ProjectCommand =
   // Only one player-start per scene: `entity` undefined means "no player
   // start". Self-inverse-shaped like scene/rename — the inverse just
   // carries whatever the previous value was, including undefined.
-  | { readonly type: "entity/set-player-start"; readonly sceneId: string; readonly entity: EntityPlacement | undefined };
+  | { readonly type: "entity/set-player-start"; readonly sceneId: string; readonly entity: EntityPlacement | undefined }
+  // `packName` undefined means "no Art Pack active" — same self-inverse
+  // shape as entity/set-player-start.
+  | { readonly type: "pack/set-active"; readonly packName: string | undefined }
+  // `url` undefined clears the override at `path` — same shape again.
+  | { readonly type: "pack/set-override"; readonly path: string; readonly url: string | undefined };
 
 interface HistoryEntry {
   readonly forward: ProjectCommand;
@@ -128,6 +144,16 @@ function applyCommand(document: ProjectDocument, command: ProjectCommand): void 
       if (command.entity) scene.entities.push(command.entity);
       return;
     }
+    case "pack/set-active":
+      document.activePack = command.packName;
+      return;
+    case "pack/set-override":
+      if (command.url === undefined) {
+        delete document.packOverrides[command.path];
+      } else {
+        document.packOverrides[command.path] = command.url;
+      }
+      return;
   }
 }
 
@@ -160,17 +186,43 @@ interface ProjectStoreState {
   removeEntity: (sceneId: string, entityId: string) => void;
   configureEntityDialogue: (sceneId: string, entityId: string, dialogue: EntityDialogue) => void;
   selectEntity: (sceneId: string, entityId: string | undefined) => void;
+  setActivePack: (packName: string | undefined) => void;
+  setPackOverride: (path: string, url: string | undefined) => void;
   undo: () => void;
   redo: () => void;
 }
 
 const PERSIST_KEY = "forge:editor:project-document";
-const PERSIST_VERSION = 1;
+const PERSIST_VERSION = 2;
+
+/**
+ * Persisted state from before `activePack`/`packOverrides` existed
+ * (version 1) rehydrates without those keys — `persist`'s default merge
+ * is a shallow replace of `document` wholesale, not a deep merge, so an
+ * old `document` object landing as-is would leave `packOverrides`
+ * missing entirely and crash the very first `pack/set-override` command
+ * (`document.packOverrides[path] = ...` against `undefined`). Exported
+ * so this fallback path itself has a test, not just an assumption that
+ * `persist`'s `migrate` option is wired correctly.
+ */
+export function migratePersistedProjectState(persisted: unknown): Pick<ProjectStoreState, "document" | "past" | "future"> {
+  const state = (persisted ?? {}) as { document?: Partial<ProjectDocument>; past?: HistoryEntry[]; future?: HistoryEntry[] };
+  return {
+    document: {
+      scenes: state.document?.scenes ?? [],
+      installedModules: state.document?.installedModules ?? {},
+      activePack: state.document?.activePack,
+      packOverrides: state.document?.packOverrides ?? {},
+    },
+    past: state.past ?? [],
+    future: state.future ?? [],
+  };
+}
 
 export const useProjectStore = create<ProjectStoreState>()(
   persist(
     immer((set) => ({
-      document: { scenes: [], installedModules: {} },
+      document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {} },
       past: [],
       future: [],
       selection: undefined,
@@ -303,6 +355,27 @@ export const useProjectStore = create<ProjectStoreState>()(
           state.selection = entityId === undefined ? undefined : { kind: "entity", sceneId, entityId };
         }),
 
+      setActivePack: (packName) =>
+        set((state) => {
+          if (state.document.activePack === packName) return; // already this pack (or already none), no-op
+          const forward: ProjectCommand = { type: "pack/set-active", packName };
+          const inverse: ProjectCommand = { type: "pack/set-active", packName: state.document.activePack };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        }),
+
+      setPackOverride: (path, url) =>
+        set((state) => {
+          const previous = state.document.packOverrides[path];
+          if (previous === url) return; // already this value (or already absent), no-op
+          const forward: ProjectCommand = { type: "pack/set-override", path, url };
+          const inverse: ProjectCommand = { type: "pack/set-override", path, url: previous };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        }),
+
       undo: () =>
         set((state) => {
           const entry = state.past.pop();
@@ -324,6 +397,7 @@ export const useProjectStore = create<ProjectStoreState>()(
       version: PERSIST_VERSION,
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({ document: state.document, past: state.past, future: state.future }),
+      migrate: (persisted) => migratePersistedProjectState(persisted),
     },
   ),
 );

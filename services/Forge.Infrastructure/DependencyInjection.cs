@@ -90,6 +90,28 @@ public static class DependencyInjection
     }
 
     /// <summary>
+    /// M7 Phase 4's marketplace purchase flow (docs/SPEC.md Section
+    /// 16.1) — Stripe Connect accounts and destination-charge Checkout
+    /// Sessions, a different API surface from <see cref="AddForgeBilling"/>'s
+    /// subscription billing even though both ultimately call the same
+    /// Stripe account (one <c>Stripe:SecretKey</c>, read independently
+    /// here rather than threaded through from that method, since a
+    /// second lightweight <see cref="StripeClient"/> instance from the
+    /// same key is how Stripe.net is designed to be used — it holds no
+    /// exclusive resource worth sharing).
+    /// </summary>
+    public static IServiceCollection AddForgeMarketplaceBilling(this IServiceCollection services, IConfiguration configuration)
+    {
+        var secretKey = configuration["Stripe:SecretKey"]
+            ?? throw new InvalidOperationException("Missing Stripe:SecretKey configuration.");
+
+        var stripeClient = new StripeClient(secretKey);
+        services.AddSingleton<IStripeMarketplaceClient>(_ => new StripeMarketplaceClient(stripeClient));
+
+        return services;
+    }
+
+    /// <summary>
     /// M6 Phase 2: where a published package version's bundle actually
     /// lives (docs/SPEC.md Section 6.2, CLAUDE.md Section 2.1's pinned
     /// Blob choice). The container is created eagerly, the same

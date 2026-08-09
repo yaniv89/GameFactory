@@ -129,18 +129,36 @@ public static class StripeWebhookEndpoint
             Encoding.UTF8.GetBytes(sig), Encoding.UTF8.GetBytes(expected)));
     }
 
+    /// <summary>
+    /// Dispatches by metadata shape: a subscription checkout
+    /// (<see cref="Features.Billing.CheckoutSessionEndpoint"/>) carries
+    /// <c>workspaceId</c>+<c>plan</c>; a marketplace purchase checkout
+    /// (<see cref="Features.Marketplace.PurchaseCheckoutSessionEndpoint"/>)
+    /// carries <c>workspaceId</c>+<c>packageId</c> instead. Both post to
+    /// this same webhook route — Stripe has no per-Checkout-Session
+    /// callback URL — so the metadata written at session-creation time is
+    /// the only signal distinguishing them.
+    /// </summary>
     private static async Task HandleCheckoutSessionCompletedAsync(JsonElement session, ForgeDbContext db, CancellationToken ct)
     {
-        var customerId = GetString(session, "customer");
-        var subscriptionId = GetString(session, "subscription");
-
         string? workspaceIdRaw = null;
         string? plan = null;
+        string? packageIdRaw = null;
         if (session.TryGetProperty("metadata", out var metadata) && metadata.ValueKind == JsonValueKind.Object)
         {
             workspaceIdRaw = GetString(metadata, "workspaceId");
             plan = GetString(metadata, "plan");
+            packageIdRaw = GetString(metadata, "packageId");
         }
+
+        if (packageIdRaw is not null)
+        {
+            await HandlePurchaseCheckoutSessionCompletedAsync(session, workspaceIdRaw, packageIdRaw, db, ct);
+            return;
+        }
+
+        var customerId = GetString(session, "customer");
+        var subscriptionId = GetString(session, "subscription");
 
         if (customerId is null || subscriptionId is null
             || !Guid.TryParse(workspaceIdRaw, out var workspaceId)
@@ -172,6 +190,54 @@ public static class StripeWebhookEndpoint
 
         await db.SaveChangesAsync(ct);
         await SyncWorkspacePlanAsync(db, workspaceId, ct);
+    }
+
+    /// <summary>
+    /// The only place a <see cref="License"/> is ever created from a
+    /// purchase — <see cref="Features.Marketplace.PurchaseCheckoutSessionEndpoint"/>
+    /// only ever writes a <see cref="PurchaseStatus.Pending"/>
+    /// <see cref="Purchase"/> row, deliberately never a license, so a
+    /// Checkout Session response is never mistaken for proof of payment
+    /// (same posture the subscription flow already documents). Correlates
+    /// by <c>StripePaymentIntent</c> — the payment intent id Stripe
+    /// assigns to the Checkout Session is the same one
+    /// <see cref="Infrastructure.Billing.StripeMarketplaceClient.CreatePurchaseCheckoutSessionAsync"/>
+    /// returned and stored on the <see cref="Purchase"/> row at session
+    /// creation. Idempotent against Stripe's documented at-least-once
+    /// webhook redelivery: a purchase already <see cref="PurchaseStatus.Succeeded"/>
+    /// is a no-op rather than a second license row (the
+    /// <c>(PackageId, WorkspaceId)</c> unique index would reject a
+    /// duplicate anyway, but checking first avoids surfacing that as an
+    /// unhandled exception on a legitimate redelivery).
+    /// </summary>
+    private static async Task HandlePurchaseCheckoutSessionCompletedAsync(
+        JsonElement session, string? workspaceIdRaw, string packageIdRaw, ForgeDbContext db, CancellationToken ct)
+    {
+        var paymentIntentId = GetString(session, "payment_intent");
+        if (paymentIntentId is null
+            || !Guid.TryParse(workspaceIdRaw, out var workspaceId)
+            || !Guid.TryParse(packageIdRaw, out var packageId))
+        {
+            return;
+        }
+
+        var purchase = await db.Purchases.SingleOrDefaultAsync(p => p.StripePaymentIntent == paymentIntentId, ct);
+        if (purchase is null || purchase.WorkspaceId != workspaceId || purchase.PackageId != packageId) return;
+        if (purchase.Status == PurchaseStatus.Succeeded) return;
+
+        purchase.Status = PurchaseStatus.Succeeded;
+
+        db.Licenses.Add(new License
+        {
+            PackageId = purchase.PackageId,
+            WorkspaceId = purchase.WorkspaceId,
+            GrantedVia = LicenseGrantedVia.Purchase,
+            PurchaseId = purchase.Id,
+            GrantedAt = DateTimeOffset.UtcNow,
+            ExpiresAt = null,
+        });
+
+        await db.SaveChangesAsync(ct);
     }
 
     private static async Task HandleSubscriptionUpdatedAsync(JsonElement subscriptionObj, StripePriceOptions priceOptions, ForgeDbContext db, CancellationToken ct)

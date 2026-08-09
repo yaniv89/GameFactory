@@ -139,6 +139,9 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
     /// <summary>No real Stripe API key exists in this environment (see class remarks) — this captures what would have been requested.</summary>
     public FakeStripeBillingClient BillingClient { get; } = new();
 
+    /// <summary>Same story as <see cref="BillingClient"/>, for M7 Phase 4's marketplace Connect/purchase flow.</summary>
+    public FakeStripeMarketplaceClient MarketplaceClient { get; } = new();
+
     public async Task InitializeAsync() => await Task.WhenAll(_postgres.StartAsync(), _redis.StartAsync(), _azurite.StartAsync());
 
     async Task IAsyncLifetime.DisposeAsync() => await Task.WhenAll(
@@ -153,6 +156,9 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
 
             services.RemoveAll<IStripeBillingClient>();
             services.AddSingleton<IStripeBillingClient>(BillingClient);
+
+            services.RemoveAll<IStripeMarketplaceClient>();
+            services.AddSingleton<IStripeMarketplaceClient>(MarketplaceClient);
 
             var connectionString = _postgres.GetConnectionString();
             services.RemoveAll<DbContextOptions<ForgeDbContext>>();

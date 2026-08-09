@@ -23,10 +23,10 @@ namespace Forge.Infrastructure.Persistence;
 /// is a projection linked by <c>IdentitySubjectId</c>, not the same row.
 ///
 /// Models the M5 subset (identity, workspaces, subscriptions,
-/// projects/revisions) plus M6 Phase 1's registry tables (packages,
-/// package_versions, package_dependencies). Commerce and asset tables
-/// (listings, purchases, assets, published_builds) are still M6/M7 scope
-/// and land in a later phase.
+/// projects/revisions), M6 Phase 1's registry tables (packages,
+/// package_versions, package_dependencies), and M7 Phase 4's commerce
+/// tables (listings, licenses, purchases). Asset tables (assets,
+/// published_builds) are still later scope.
 /// </summary>
 public sealed class ForgeDbContext(DbContextOptions<ForgeDbContext> options)
     : IdentityDbContext<ForgeIdentityUser, IdentityRole<Guid>, Guid>(options)
@@ -56,6 +56,12 @@ public sealed class ForgeDbContext(DbContextOptions<ForgeDbContext> options)
     public DbSet<PackageVersion> PackageVersions => Set<PackageVersion>();
 
     public DbSet<PackageDependency> PackageDependencies => Set<PackageDependency>();
+
+    public DbSet<Listing> Listings => Set<Listing>();
+
+    public DbSet<License> Licenses => Set<License>();
+
+    public DbSet<Purchase> Purchases => Set<Purchase>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

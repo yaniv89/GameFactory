@@ -186,6 +186,11 @@ public static class PublishVersionEndpoint
         if (existingPackage is null)
         {
             db.Packages.Add(package);
+            // docs/SPEC.md Section 16.1: "unlimited free packages" — every
+            // package gets a listing from its very first publish, not
+            // only once an author later sets a price (M7 Phase 4's own
+            // ListingEndpoint, which updates this row, never creates it).
+            db.Listings.Add(new Listing { PackageId = package.Id, PricingModel = ListingPricingModel.Free, PriceCents = 0 });
             await db.SaveChangesAsync(ct); // package.Id must be real before the version row below.
         }
 

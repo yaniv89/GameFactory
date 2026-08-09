@@ -116,7 +116,7 @@ public static class PurchaseCheckoutSessionEndpoint
             ?? throw new InvalidOperationException("Missing Editor:BaseUrl configuration.");
 
         var result = await marketplace.CreatePurchaseCheckoutSessionAsync(
-            new CreatePurchaseCheckoutSessionRequest(
+            new Infrastructure.Billing.CreatePurchaseCheckoutSessionRequest(
                 package.DisplayName,
                 listing.PriceCents,
                 listing.Currency,

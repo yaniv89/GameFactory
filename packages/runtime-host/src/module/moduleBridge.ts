@@ -10,7 +10,7 @@ import type {
   World,
 } from "@forge/core";
 import { PHASE_ORDER } from "@forge/core";
-import type { QuickJSHandle } from "quickjs-emscripten";
+import type { QuickJSHandle, QuickJSWASMModule } from "quickjs-emscripten";
 import type { CapabilityHandler } from "../sandbox/capabilities";
 import { NetworkHandler } from "../sandbox/capabilities/network";
 import { LocalStorageHandler } from "../sandbox/capabilities/storageLocal";
@@ -36,6 +36,8 @@ export interface ModuleBridgeOptions {
   readonly computeBudgetMs: number;
   /** Presence grants the `network` capability; absence means `SetupContext.net` is `undefined` in the guest, per the absence-is-the-enforcement pattern in docs/security/SANDBOX-DESIGN.md. */
   readonly networkAllowedOrigins?: readonly string[];
+  /** Forwarded to `ModuleRuntime.create` verbatim — see its own doc comment. The standalone `forge export` player (M6 Phase 5) sets this; nothing else needs to. */
+  readonly wasmModule?: QuickJSWASMModule;
 }
 
 function qualify(moduleName: string, id: string): string {
@@ -130,6 +132,7 @@ export class ModuleBridge {
       maxStackSizeBytes: options.maxStackSizeBytes,
       computeBudgetMs: options.computeBudgetMs,
       capabilities,
+      ...(options.wasmModule ? { wasmModule: options.wasmModule } : {}),
     });
     const bridge = new ModuleBridge(runtime, options, storageHandler);
     bridge.installNativeFunctions();

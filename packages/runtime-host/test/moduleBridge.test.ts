@@ -1,6 +1,7 @@
 import { EventBusImpl, FIXED_STEP_MS, InterceptorRegistry, Scheduler, World } from "@forge/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ModuleBridge } from "../src/module/moduleBridge";
+import { buildWasmModuleFromEmbeddedBytes } from "./testWasmModule";
 
 const BASE_OPTIONS = {
   version: "1.0.0",
@@ -347,5 +348,40 @@ describe("ModuleBridge: setup() error surfacing", () => {
     if (!outcome.ok) {
       expect(outcome.error.message).toMatch(/did not call __forge_registerModule/);
     }
+  });
+});
+
+describe("ModuleBridge: wasmModule override (M6 Phase 5d)", () => {
+  it("setup() and a real tick both work when built from a caller-supplied WASM module instead of the default getQuickJS() singleton", async () => {
+    const wasmModule = await buildWasmModuleFromEmbeddedBytes();
+    const harness = makeHarness();
+    const bridge = await createBridge("test-wasm-override", harness, { wasmModule });
+
+    const outcome = bridge.setup(`
+      (function () {
+        function setup(ctx) {
+          ctx.defineComponent("Counter", { n: { type: "number" } }, { n: 0 });
+          ctx.addSystem({
+            id: "increment",
+            phase: "Update",
+            query: ["Counter"],
+            run: function (tctx, entities) {
+              entities.forEach(function (id) {
+                var c = tctx.world.get(id, "Counter");
+                tctx.world.set(id, "Counter", { n: c.n + 1 });
+              });
+            }
+          });
+        }
+        __forge_registerModule({ setup: setup });
+      })();
+    `);
+    expect(outcome.ok).toBe(true);
+
+    const entity = harness.world.create({ Counter: { n: 0 } });
+    harness.world.flush();
+    harness.scheduler.tick(FIXED_STEP_MS);
+
+    expect(harness.world.get(entity, "Counter")).toEqual({ n: 1 });
   });
 });

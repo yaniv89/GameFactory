@@ -80,8 +80,6 @@ function logModuleMessage(moduleName: string, level: "debug" | "info" | "warn" |
  * - `before`/`after` system-ordering constraints are scoped to this
  *   module's own systems (ids are namespaced `moduleName::id` internally);
  *   cross-module ordering isn't part of the v1 surface.
- * - `setup()` is called synchronously; a returned `Promise<void>` is not
- *   awaited to completion (tracked: github.com/yaniv89/GameFactory/issues/4).
  * - `TickContext.input`/`.scene` throw `not implemented` — no Input or
  *   Scene system exists in `@forge/core` yet (M4 concern; tracked:
  *   github.com/yaniv89/GameFactory/issues/3).
@@ -153,8 +151,18 @@ export class ModuleBridge {
    * `__forge_registerModule(...)`, see class doc comment) and then calls
    * its `setup(ctx)`. Returns the outcome of whichever step failed first,
    * or of `setup()` itself on success.
+   *
+   * `setup()` may return a thenable — `ModuleRuntime.callFunctionAsync`
+   * drives it to real settlement (bounded by the same compute budget as
+   * every other guest call) rather than dumping the live Promise handle
+   * as an opaque value, per github.com/yaniv89/GameFactory/issues/4. A
+   * synchronous `setup()` (the overwhelmingly common case) still resolves
+   * on the same microtask turn `callFunctionAsync` detects that via
+   * `getPromiseState().notAPromise`, so this is not a behavior change for
+   * existing modules, only a completion of the previously-unimplemented
+   * async path.
    */
-  setup(moduleSourceCode: string): EvalOutcome {
+  async setup(moduleSourceCode: string): Promise<EvalOutcome> {
     const loadOutcome = this.runtime.eval(moduleSourceCode);
     if (!loadOutcome.ok) return loadOutcome;
 
@@ -170,8 +178,8 @@ export class ModuleBridge {
 
     const context = this.runtime.context;
     const ctxHandle = context.getProp(context.global, "__forge_setupContext");
-    const outcome = this.runtime.callFunction(this.setupHandle, [ctxHandle]);
-    // A host-level crash during callFunction() (e.g. guest recursion
+    const outcome = await this.runtime.callFunctionAsync(this.setupHandle, [ctxHandle]);
+    // A host-level crash during callFunctionAsync() (e.g. guest recursion
     // overflowing the host's native stack — see ModuleRuntime.evaluateProtected's
     // own doc comment) already tears the whole runtime down as part of
     // producing `outcome`. Disposing a handle from an already-torn-down

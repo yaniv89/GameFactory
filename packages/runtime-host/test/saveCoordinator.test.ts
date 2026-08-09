@@ -35,7 +35,7 @@ async function createBridge(moduleName: string, version: string, harness: Return
 }
 
 async function setupInventoryModule(bridge: ModuleBridge, initialGold?: number) {
-  const outcome = bridge.setup(`
+  const outcome = await bridge.setup(`
     (function () {
       function setup(ctx) {
         ctx.defineComponent("Held", { qty: { type: "number" } }, { qty: 0 });
@@ -93,7 +93,7 @@ describe("saveCoordinator: createSave / loadSave", () => {
   it("a module not installed at load time is preserved verbatim in the returned orphaned map", async () => {
     const harness = makeHarness();
     const bridge = await createBridge("@test/weather", "1.0.0", harness);
-    bridge.setup(`
+    await bridge.setup(`
       (function () {
         function setup(ctx) { ctx.storage.set("season", "winter"); }
         __forge_registerModule({ setup: setup });
@@ -136,7 +136,7 @@ describe("saveCoordinator: createSave / loadSave", () => {
   it("reinstalling a previously-orphaned module restores its globals on the next load", async () => {
     const harness = makeHarness();
     const bridge = await createBridge("@test/weather", "1.0.0", harness);
-    bridge.setup(`
+    await bridge.setup(`
       (function () {
         function setup(ctx) { ctx.storage.set("season", "winter"); }
         __forge_registerModule({ setup: setup });
@@ -180,7 +180,7 @@ describe("saveCoordinator: createSave / loadSave", () => {
   it("refuses to load a save whose module major version is newer than the installed module", async () => {
     const harness = makeHarness();
     const bridge = await createBridge("@test/weather", "2.0.0", harness);
-    bridge.setup(`(function(){ function setup(ctx){ ctx.storage.set("x", 1); } __forge_registerModule({ setup: setup }); })();`);
+    await bridge.setup(`(function(){ function setup(ctx){ ctx.storage.set("x", 1); } __forge_registerModule({ setup: setup }); })();`);
     const save = createSave({
       world: harness.world,
       modules: [bridge],
@@ -201,7 +201,7 @@ describe("saveCoordinator: createSave / loadSave", () => {
   it("invokes migrateSave when the installed module's major version is ahead of the save, and refuses when migrateSave is missing", async () => {
     const harness = makeHarness();
     const bridge = await createBridge("@test/inventory", "1.0.0", harness);
-    bridge.setup(`(function(){ function setup(ctx){ ctx.storage.set("gold", 10); } __forge_registerModule({ setup: setup }); })();`);
+    await bridge.setup(`(function(){ function setup(ctx){ ctx.storage.set("gold", 10); } __forge_registerModule({ setup: setup }); })();`);
     const save = createSave({
       world: harness.world,
       modules: [bridge],
@@ -217,7 +217,7 @@ describe("saveCoordinator: createSave / loadSave", () => {
     // Installed module is now major version 2, WITH a migrateSave: migration runs and its result is what gets restored.
     const migratedHarness = makeHarness();
     const migratingBridge = await createBridge("@test/inventory", "2.0.0", migratedHarness);
-    migratingBridge.setup(`
+    await migratingBridge.setup(`
       (function () {
         function setup(ctx) {}
         function migrateSave(from, to, data) {
@@ -232,7 +232,7 @@ describe("saveCoordinator: createSave / loadSave", () => {
     // Installed module is major version 2 with NO migrateSave: must refuse rather than silently drop the mismatch.
     const noMigrationHarness = makeHarness();
     const noMigrationBridge = await createBridge("@test/inventory", "2.0.0", noMigrationHarness);
-    noMigrationBridge.setup(`(function(){ function setup(ctx){} __forge_registerModule({ setup: setup }); })();`);
+    await noMigrationBridge.setup(`(function(){ function setup(ctx){} __forge_registerModule({ setup: setup }); })();`);
     expect(() => loadSave(noMigrationHarness.world, [noMigrationBridge], save)).toThrow(/declares no migrateSave/);
   });
 

@@ -153,6 +153,137 @@ export class ModuleRuntime {
     return this.evaluateProtected((context) => context.callFunction(fn, context.undefined, args as QuickJSHandle[]));
   }
 
+  /**
+   * Like `callFunction`, but if the guest function returns a thenable
+   * (per `docs/adr/0005`/module-api, an async `setup()` — tracked:
+   * github.com/yaniv89/GameFactory/issues/4), drives it to settlement
+   * instead of dumping the live Promise handle as an opaque value.
+   *
+   * Detection uses `context.getPromiseState()`'s own `notAPromise` flag
+   * rather than a manual `typeof value.then === "function"` check, since
+   * that's QuickJS's own authoritative answer to "is this actually
+   * thenable," not a host-side guess.
+   *
+   * Settlement is driven in two stages, both under the same compute-budget
+   * deadline `eval()`/`callFunction()` already use for CPU-bound guest
+   * work:
+   * 1. A synchronous `executePendingJobs()` drain, for promise chains that
+   *    resolve purely from microtasks already queued (`Promise.resolve()`,
+   *    chained `.then()`, no real capability call involved).
+   * 2. An `await` of `context.resolvePromise()`'s host promise, raced
+   *    against the same deadline. A capability call's own async
+   *    resolution (`ModuleRuntime.runPendingJobs()`'s doc comment) can
+   *    still settle this promise later via its own `.finally()` hook, but
+   *    `setup()` itself must not be allowed to hang the caller forever —
+   *    a promise that never settles within the budget is reported as a
+   *    setup failure, not awaited indefinitely.
+   */
+  async callFunctionAsync(fn: QuickJSHandle, args: readonly QuickJSHandle[]): Promise<EvalOutcome> {
+    if (this.disposed) {
+      throw new Error("ModuleRuntime: cannot evaluate after dispose()");
+    }
+    const runtime = this.vmRuntime!;
+    const context = this.vmContext!;
+    const deadline = Date.now() + this.computeBudgetMs;
+    runtime.setInterruptHandler(() => Date.now() > deadline);
+
+    let callResult: ReturnType<QuickJSContext["callFunction"]>;
+    try {
+      callResult = context.callFunction(fn, context.undefined, args as QuickJSHandle[]);
+    } catch (err) {
+      this.dispose();
+      return {
+        ok: false,
+        error: {
+          name: err instanceof Error ? err.name : "Error",
+          message: `sandbox runtime failed and was torn down: ${err instanceof Error ? err.message : String(err)}`,
+        },
+      };
+    }
+
+    if (callResult.error) {
+      const dumped = context.dump(callResult.error) as { name?: unknown; message?: unknown } | undefined;
+      callResult.error.dispose();
+      return {
+        ok: false,
+        error: {
+          name: typeof dumped?.name === "string" ? dumped.name : "Error",
+          message: typeof dumped?.message === "string" ? dumped.message : String(dumped),
+        },
+      };
+    }
+
+    const returned = callResult.value;
+    const state = context.getPromiseState(returned);
+    if (state.type === "fulfilled" && state.notAPromise) {
+      const value = context.dump(returned);
+      returned.dispose();
+      return { ok: true, value };
+    }
+
+    const settlementPromise = context.resolvePromise(returned);
+    while (runtime.hasPendingJob() && Date.now() <= deadline) {
+      runtime.executePendingJobs();
+    }
+
+    const timedOut = Symbol("callFunctionAsync-timeout");
+    const remainingMs = Math.max(0, deadline - Date.now());
+    let settled: Awaited<typeof settlementPromise> | typeof timedOut;
+    try {
+      settled = await Promise.race([
+        settlementPromise,
+        new Promise<typeof timedOut>((resolve) => setTimeout(() => resolve(timedOut), remainingMs)),
+      ]);
+    } catch (err) {
+      returned.dispose();
+      this.dispose();
+      return {
+        ok: false,
+        error: {
+          name: err instanceof Error ? err.name : "Error",
+          message: `sandbox runtime failed and was torn down: ${err instanceof Error ? err.message : String(err)}`,
+        },
+      };
+    }
+    returned.dispose();
+    // Note: `context.resolvePromise()` settling a *rejected* guest promise
+    // can — independent of anything done with the handles here, isolated
+    // with a standalone repro against quickjs-emscripten-core directly —
+    // intermittently leave `ModuleRuntime.dispose()`'s later
+    // `runtime.dispose()` call hitting the WASM build's own
+    // `list_empty(&rt->gc_obj_list)` assertion. This is the same class of
+    // host-level WASM-internal failure `evaluateProtected`'s catch block
+    // already documents and `dispose()` already tolerates (log, continue,
+    // never throw) — already exercised by the pre-existing stack-overflow
+    // cases in `sandbox-escape.test.ts`. Not something this method can
+    // itself prevent; the existing defensive `dispose()` handling covers it.
+
+    if (settled === timedOut) {
+      return {
+        ok: false,
+        error: {
+          name: "Error",
+          message: "setup() returned a promise that did not settle within the compute budget",
+        },
+      };
+    }
+
+    if (settled.error) {
+      const dumped = context.dump(settled.error) as { name?: unknown; message?: unknown } | undefined;
+      settled.error.dispose();
+      return {
+        ok: false,
+        error: {
+          name: typeof dumped?.name === "string" ? dumped.name : "Error",
+          message: typeof dumped?.message === "string" ? dumped.message : String(dumped),
+        },
+      };
+    }
+    const value = context.dump(settled.value);
+    settled.value.dispose();
+    return { ok: true, value };
+  }
+
   private evaluateProtected(
     run: (context: QuickJSContext) => ReturnType<QuickJSContext["evalCode"]>,
   ): EvalOutcome {

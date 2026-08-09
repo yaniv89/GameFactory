@@ -137,7 +137,7 @@ export async function bootGameLogic(options: GameLogicOptions): Promise<GameLogi
       computeBudgetMs: PER_MODULE_COMPUTE_BUDGET_MS,
       ...(options.wasmModule ? { wasmModule: options.wasmModule } : {}),
     });
-    const outcome = bridge.setup(installedModule.guestBundleSource);
+    const outcome = await bridge.setup(installedModule.guestBundleSource);
     if (!outcome.ok) {
       bridge.dispose();
       for (const b of bridges) b.dispose();

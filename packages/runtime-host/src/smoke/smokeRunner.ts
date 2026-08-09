@@ -84,7 +84,7 @@ export async function runModuleSmokeTest(options: SmokeRunOptions): Promise<Smok
   });
 
   try {
-    const setupOutcome = bridge.setup(options.bundleSource);
+    const setupOutcome = await bridge.setup(options.bundleSource);
     if (!setupOutcome.ok) {
       return {
         verdict: "blocked",

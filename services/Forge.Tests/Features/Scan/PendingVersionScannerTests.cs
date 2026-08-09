@@ -241,9 +241,16 @@ public sealed class PendingVersionScannerTests : IClassFixture<ForgeWebApplicati
         // caught this: expected/actual differed by 200 nanoseconds).
         // StripeWebhookEndpointTests sidesteps the same class of DB
         // round-trip precision loss by comparing ToUnixTimeSeconds();
-        // this needs finer-than-a-second precision, so a small tolerance
-        // is the more accurate fix here.
-        Assert.Equal(earlierPublishedAt, signals.FirstPublishedAt, TimeSpan.FromMilliseconds(1));
+        // this needs finer-than-a-second precision. xUnit 2.9.3 has no
+        // TimeSpan-tolerance overload that resolves against a nullable
+        // DateTimeOffset (confirmed by a real CI build failure: it bound
+        // to the Func&lt;T,T,bool&gt; comparer overload instead and
+        // rejected the TimeSpan argument), so the tolerance is asserted
+        // by hand instead.
+        Assert.NotNull(signals.FirstPublishedAt);
+        Assert.True(
+            Math.Abs((earlierPublishedAt - signals.FirstPublishedAt.Value).Ticks) < TimeSpan.FromMilliseconds(1).Ticks,
+            $"Expected {earlierPublishedAt:O}, got {signals.FirstPublishedAt.Value:O}.");
         Assert.Equal(0.0, signals.RefundRate);
         Assert.False(signals.SecurityAuditPassed);
         Assert.False(signals.SlaAccepted);

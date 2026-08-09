@@ -258,6 +258,9 @@ importers:
       '@forge/dialogue':
         specifier: workspace:*
         version: link:../modules/dialogue
+      '@playwright/test':
+        specifier: 1.62.0
+        version: 1.62.0
       '@types/node':
         specifier: ^26.1.2
         version: 26.1.2

@@ -173,6 +173,34 @@ jobs:
       - run: pnpm --filter forge-editor exec playwright install --with-deps chromium
       - run: pnpm --filter forge-editor run test:browser
 
+  # ── Gate: M6 exit criterion — forge export to a real file:// build ────
+  # test-browser/exportedGame.spec.ts runs the real `forge export` CLI
+  # (packages/cli's compiled dist/index.js, a real subprocess, not an
+  # in-process shortcut) against the checked-in
+  # fixtures/projects/starter-rpg/project.json, opens the output
+  # index.html from a genuine file:// URL, and plays it — proving both
+  # halves of "exported to file:// with no network access" (CLAUDE.md
+  # Milestone M6 exit criterion) mechanically, not by inspection.
+  # "{packages/cli}..." (not "forge...") sidesteps a real name collision
+  # in this repo: root package.json and packages/cli/package.json are
+  # both named "forge", so a bare `--filter forge` resolves to the root
+  # workspace script instead of the CLI package — the path-scoped
+  # selector is unambiguous.
+  player-browser-tests:
+    name: JS/TS — @forge/player real-browser (Playwright) — M6 exit criterion
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter "{packages/cli}..." run build
+      - run: pnpm --filter @forge/player exec playwright install --with-deps chromium
+      - run: pnpm --filter @forge/player run test:browser
+
   # ── Informational: runtime simulation benchmark (M1 Phase 5) ──────────
   # Runs @forge/core's headless ECS+collision throughput bench and
   # steady-state heap check (part of its normal `test` script, already

@@ -12,7 +12,8 @@
     "pretypecheck": "node scripts/generate-dev-fixture.mjs",
     "typecheck": "tsc -p tsconfig.typecheck.json",
     "test": "node scripts/build-smoke-test.mjs && node dist/smoke/smokeTest.bundle.mjs",
-    "build:app": "node scripts/build-app.mjs"
+    "build:app": "node scripts/build-app.mjs",
+    "test:browser": "playwright test"
   },
   "dependencies": {
     "@forge/core": "workspace:*",
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "@forge/dialogue": "workspace:*",
+    "@playwright/test": "1.62.0",
     "@types/node": "^26.1.2",
     "esbuild": "^0.25.12",
     "vite": "^5.4.21"

@@ -1,3 +1,4 @@
+import type { EventBusImpl } from "@forge/core";
 import { bootGameLogic } from "./gameLogic.js";
 // "./generated/*" doesn't exist in the checked-in source tree at all
 // (.gitignore's own comment on that path) — forge export (M6 Phase 5e)
@@ -12,6 +13,27 @@ import { WALL_TILE_ID } from "./tilePalette.js";
 import { buildWasmModuleFromBase64 } from "./wasmBinary.js";
 
 const AUTOSAVE_INTERVAL_MS = 30_000;
+/** Matches PreviewApp.tsx's own DIALOGUE_BUBBLE_MS — the editor's live preview and the real exported player show a line for the same length of time. */
+const DIALOGUE_BUBBLE_MS = 3500;
+
+function wireDialogueBubble(events: EventBusImpl): void {
+  const bubble = document.querySelector<HTMLDivElement>("#forge-player-dialogue");
+  const speakerEl = document.querySelector<HTMLSpanElement>("#forge-player-dialogue-speaker");
+  const textEl = document.querySelector<HTMLSpanElement>("#forge-player-dialogue-text");
+  if (!bubble || !speakerEl || !textEl) return;
+
+  let hideTimeout: ReturnType<typeof setTimeout> | undefined;
+  events.on("dialogue:shown", (payload) => {
+    const { speaker, text } = payload as { speaker: string; text: string };
+    speakerEl.textContent = speaker;
+    textEl.textContent = text;
+    bubble.dataset.open = "true";
+    clearTimeout(hideTimeout);
+    hideTimeout = setTimeout(() => {
+      bubble.dataset.open = "false";
+    }, DIALOGUE_BUBBLE_MS);
+  });
+}
 
 async function main(): Promise<void> {
   const canvas = document.querySelector<HTMLCanvasElement>("#forge-player-canvas");
@@ -30,6 +52,7 @@ async function main(): Promise<void> {
   const keysHeld = new Set<string>();
   const wasmModule = await buildWasmModuleFromBase64(WASM_BINARY_BASE64);
   const game = await bootGameLogic({ projectData: PROJECT_DATA, wasmModule, isWalkable, keysHeld });
+  wireDialogueBubble(game.events);
 
   const loaded = loadGame(PROJECT_DATA, game);
   const orphaned: Readonly<Record<string, unknown>> = loaded?.orphaned ?? {};

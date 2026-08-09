@@ -48,6 +48,8 @@ function buildFixtureProjectData(guestBundleSource: string): PlayerProjectData {
 
   return {
     projectId: "smoke-test-project",
+    buildId: "smoke-test-build",
+    schemaVersion: 1,
     engineVersion: "0.0.0-smoke-test",
     scenes: [
       {

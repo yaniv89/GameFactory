@@ -38,3 +38,10 @@ test-results/
 
 # --- api-extractor scratch output (etc/*.api.md is the tracked report) ---
 packages/*/temp/
+
+# --- forge export's own per-project bundle inputs (never a checked-in
+# fixture — scripts/generate-dev-fixture.mjs regenerates a real, working
+# placeholder here on demand; a committed version would get silently
+# overwritten by every local `forge export`/test run, dirtying the tree) ---
+packages/player/src/generated/
+

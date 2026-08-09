@@ -57,6 +57,8 @@ export interface GameLogic {
   readonly world: World;
   readonly scheduler: Scheduler;
   readonly events: EventBusImpl;
+  /** One per installed module, in `projectData.installedModules` order — save.ts needs these directly for `createSave`/`loadSave` (`packages/runtime-host/src/save/saveCoordinator.ts`). */
+  readonly bridges: readonly ModuleBridge[];
   readonly playerEntity: EntityId | undefined;
   readonly npcEntityByPlacementId: ReadonlyMap<string, EntityId>;
   /** Placement id of every NPC a dialogue-tracking entity exists for — the `treeId` `startDialogue` expects. */
@@ -163,6 +165,7 @@ export async function bootGameLogic(options: GameLogicOptions): Promise<GameLogi
     world,
     scheduler,
     events,
+    bridges,
     playerEntity,
     npcEntityByPlacementId,
     dialogueCapableNpcIds,

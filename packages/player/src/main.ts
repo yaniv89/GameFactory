@@ -1,0 +1,56 @@
+import { bootGameLogic } from "./gameLogic.js";
+// "./generated/*" doesn't exist in the checked-in source tree at all
+// (.gitignore's own comment on that path) — forge export (M6 Phase 5e)
+// writes both files immediately before running this package's own Vite
+// build, one project's data per export.
+import { PROJECT_DATA } from "./generated/projectData.js";
+import { WASM_BINARY_BASE64 } from "./generated/wasmBinaryBase64.js";
+import { GRID_HEIGHT, GRID_WIDTH, TILE_SIZE } from "./gridConstants.js";
+import { bootRenderer } from "./render.js";
+import { loadGame, saveGame } from "./save.js";
+import { WALL_TILE_ID } from "./tilePalette.js";
+import { buildWasmModuleFromBase64 } from "./wasmBinary.js";
+
+const AUTOSAVE_INTERVAL_MS = 30_000;
+
+async function main(): Promise<void> {
+  const canvas = document.querySelector<HTMLCanvasElement>("#forge-player-canvas");
+  if (!canvas) throw new Error("main: expected a <canvas id=\"forge-player-canvas\"> in index.html");
+
+  const scene = PROJECT_DATA.scenes.find((candidate) => candidate.id === PROJECT_DATA.startSceneId);
+  if (!scene) throw new Error(`main: PROJECT_DATA has no scene "${PROJECT_DATA.startSceneId}"`);
+
+  const isWalkable = (worldX: number, worldY: number): boolean => {
+    const tileX = Math.floor(worldX / TILE_SIZE);
+    const tileY = Math.floor(worldY / TILE_SIZE);
+    if (tileX < 0 || tileY < 0 || tileX >= GRID_WIDTH || tileY >= GRID_HEIGHT) return false;
+    return scene.tiles[tileY * GRID_WIDTH + tileX] !== WALL_TILE_ID;
+  };
+
+  const keysHeld = new Set<string>();
+  const wasmModule = await buildWasmModuleFromBase64(WASM_BINARY_BASE64);
+  const game = await bootGameLogic({ projectData: PROJECT_DATA, wasmModule, isWalkable, keysHeld });
+
+  const loaded = loadGame(PROJECT_DATA, game);
+  const orphaned: Readonly<Record<string, unknown>> = loaded?.orphaned ?? {};
+
+  await bootRenderer(canvas, scene, game);
+
+  const bootTimeMs = performance.now();
+  const currentPlaytimeSec = (): number => (performance.now() - bootTimeMs) / 1000;
+  const persist = (): void => saveGame(PROJECT_DATA, game, scene.id, currentPlaytimeSec(), orphaned);
+
+  window.addEventListener("keydown", (event) => {
+    keysHeld.add(event.key);
+    if (event.key.toLowerCase() === "e") game.interact();
+  });
+  window.addEventListener("keyup", (event) => keysHeld.delete(event.key));
+  window.addEventListener("beforeunload", persist);
+  setInterval(persist, AUTOSAVE_INTERVAL_MS);
+}
+
+main().catch((err: unknown) => {
+  console.error("[forge:player] failed to boot", err);
+  const root = document.querySelector("#forge-player-root");
+  if (root) root.textContent = "This game failed to start. See the browser console for details.";
+});

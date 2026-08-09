@@ -52,6 +52,9 @@ export interface PlayerInstalledModule {
 
 export interface PlayerProjectData {
   readonly projectId: string;
+  /** Whatever `forge export` was run against — a save file records which build produced it (SaveFile.buildId, docs/SPEC.md Section 8.5), independent of the engine version. */
+  readonly buildId: string;
+  readonly schemaVersion: number;
   readonly engineVersion: string;
   readonly scenes: readonly PlayerScene[];
   readonly installedModules: readonly PlayerInstalledModule[];

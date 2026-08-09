@@ -166,4 +166,77 @@ public sealed class CollabHubTests : IClassFixture<ForgeWebApplicationFactory>
         Assert.Equal(editorConnectionId, leftConnectionId);
         await editorConnection.DisposeAsync();
     }
+
+    [Fact]
+    public async Task PublishUpdate_Relays_To_Other_Group_Members_Only()
+    {
+        var owner = await AuthTestHelper.SignupAndAuthenticateAsync(_factory);
+        var editor = await AuthTestHelper.SignupAndAuthenticateAsync(_factory);
+        var project = await CreateProjectAsync(owner);
+        await AddWorkspaceMemberAsync(owner.WorkspaceId, editor.UserId, WorkspaceRole.Editor);
+
+        await using var ownerConnection = BuildConnection(owner, project.Id);
+        var ownerGotUpdate = new TaskCompletionSource<byte[]>();
+        ownerConnection.On<byte[]>("yjs:update", update => ownerGotUpdate.TrySetResult(update));
+        await ownerConnection.StartAsync();
+
+        await using var editorConnection = BuildConnection(editor, project.Id);
+        await editorConnection.StartAsync();
+
+        var payload = new byte[] { 1, 2, 3, 4 };
+        await editorConnection.InvokeAsync("PublishUpdate", payload);
+
+        var received = await ownerGotUpdate.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(payload, received);
+    }
+
+    [Fact]
+    public async Task SendSyncTo_Refuses_A_Target_Connection_Outside_The_Callers_Own_Project()
+    {
+        var owner = await AuthTestHelper.SignupAndAuthenticateAsync(_factory);
+        var projectA = await CreateProjectAsync(owner);
+        var projectB = await CreateProjectAsync(owner);
+
+        await using var connectionInA = BuildConnection(owner, projectA.Id);
+        var gotSyncInA = new TaskCompletionSource<byte[]>();
+        connectionInA.On<byte[]>("yjs:sync", update => gotSyncInA.TrySetResult(update));
+        await connectionInA.StartAsync();
+        var targetConnectionId = connectionInA.ConnectionId!;
+
+        await using var connectionInB = BuildConnection(owner, projectB.Id);
+        await connectionInB.StartAsync();
+
+        // connectionInB tries to push a sync payload directly at
+        // connectionInA's id even though they're in different projects
+        // — the roster check inside SendSyncTo (never trust a
+        // client-supplied target id, CLAUDE.md Section 1.1 guardrail 4)
+        // must refuse this rather than relay it.
+        await connectionInB.InvokeAsync("SendSyncTo", targetConnectionId, new byte[] { 9, 9, 9 });
+
+        await Task.Delay(TimeSpan.FromSeconds(1)); // give a wrongly-relayed message a moment to arrive if the check were missing
+        Assert.False(gotSyncInA.Task.IsCompleted);
+    }
+
+    [Fact]
+    public async Task RequestSync_Reaches_Other_Group_Members_With_The_Requesters_ConnectionId()
+    {
+        var owner = await AuthTestHelper.SignupAndAuthenticateAsync(_factory);
+        var editor = await AuthTestHelper.SignupAndAuthenticateAsync(_factory);
+        var project = await CreateProjectAsync(owner);
+        await AddWorkspaceMemberAsync(owner.WorkspaceId, editor.UserId, WorkspaceRole.Editor);
+
+        await using var ownerConnection = BuildConnection(owner, project.Id);
+        var ownerSawSyncRequest = new TaskCompletionSource<string>();
+        ownerConnection.On<string>("yjs:syncRequested", requesterConnectionId => ownerSawSyncRequest.TrySetResult(requesterConnectionId));
+        await ownerConnection.StartAsync();
+
+        await using var editorConnection = BuildConnection(editor, project.Id);
+        await editorConnection.StartAsync();
+        var editorConnectionId = editorConnection.ConnectionId!;
+
+        await editorConnection.InvokeAsync("RequestSync");
+
+        var requesterConnectionId = await ownerSawSyncRequest.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(editorConnectionId, requesterConnectionId);
+    }
 }

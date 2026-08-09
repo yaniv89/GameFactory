@@ -123,7 +123,7 @@ public sealed class CollabHub(ForgeDbContext db, IPresenceStore presence) : Hub
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        if (Context.Items.TryGetValue(ProjectIdItemKey, out var projectIdObj) && projectIdObj is Guid projectId)
+        if (TryGetProjectId(out var projectId))
         {
             var ct = CancellationToken.None; // the connection is already gone; cleanup must still run
             await presence.LeaveAsync(projectId, Context.ConnectionId, ct);
@@ -131,5 +131,64 @@ public sealed class CollabHub(ForgeDbContext db, IPresenceStore presence) : Hub
         }
 
         await base.OnDisconnectedAsync(exception);
+    }
+
+    /// <summary>
+    /// M7 Phase 2: relays a Yjs update (an opaque byte blob — the hub
+    /// never inspects or persists it, matching the SPEC's framing of
+    /// this hub as CRDT relay, not CRDT storage) to every other
+    /// connection in the caller's own project group. Scoped by
+    /// <see cref="Context"/>'s own <see cref="ProjectIdItemKey"/>, set
+    /// only after <see cref="OnConnectedAsync"/>'s real authorization
+    /// check succeeded — an unauthorized connection has no group to
+    /// relay into, so this is a silent no-op for it rather than a
+    /// second access check duplicating that one.
+    /// </summary>
+    public async Task PublishUpdate(byte[] update)
+    {
+        if (!TryGetProjectId(out var projectId)) return;
+        await Clients.OthersInGroup(GroupName(projectId)).SendAsync("yjs:update", update, cancellationToken: Context.ConnectionAborted);
+    }
+
+    /// <summary>
+    /// Asks every other connected peer in this project for a full copy
+    /// of the current document (there is no server-side persisted copy
+    /// this phase — see <c>collabDoc.ts</c>'s own doc comment on scope).
+    /// The first peer to answer via <see cref="SendSyncTo"/> wins; if
+    /// nobody else is connected, the caller falls back to whatever it
+    /// already loaded locally (a normal project open).
+    /// </summary>
+    public async Task RequestSync()
+    {
+        if (!TryGetProjectId(out var projectId)) return;
+        await Clients.OthersInGroup(GroupName(projectId)).SendAsync("yjs:syncRequested", Context.ConnectionId, cancellationToken: Context.ConnectionAborted);
+    }
+
+    /// <summary>
+    /// A peer's answer to <see cref="RequestSync"/>. <paramref name="targetConnectionId"/>
+    /// is client-supplied, so it is never trusted directly (CLAUDE.md
+    /// Section 1.1 guardrail 4) — verified against the real, server-side
+    /// presence roster for this same project before relaying, so a
+    /// connection cannot use this to push arbitrary bytes to a
+    /// connection outside its own project's group.
+    /// </summary>
+    public async Task SendSyncTo(string targetConnectionId, byte[] update)
+    {
+        if (!TryGetProjectId(out var projectId)) return;
+        var ct = Context.ConnectionAborted;
+        var roster = await presence.GetRosterAsync(projectId, ct);
+        if (!roster.Any(entry => entry.ConnectionId == targetConnectionId)) return;
+        await Clients.Client(targetConnectionId).SendAsync("yjs:sync", update, cancellationToken: ct);
+    }
+
+    private bool TryGetProjectId(out Guid projectId)
+    {
+        if (Context.Items.TryGetValue(ProjectIdItemKey, out var value) && value is Guid resolved)
+        {
+            projectId = resolved;
+            return true;
+        }
+        projectId = default;
+        return false;
     }
 }

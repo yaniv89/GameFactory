@@ -1,11 +1,5 @@
-import {
-  HttpTransportType,
-  HubConnectionBuilder,
-  HubConnectionState,
-  LogLevel,
-  type HubConnection,
-} from "@microsoft/signalr";
 import { useEffect, useState } from "react";
+import { useCollabConnection, type UseCollabConnectionOptions } from "./useCollabConnection";
 
 /** Wire shape of `services/Forge.Infrastructure/Realtime/IPresenceStore.cs`'s `PresenceEntry` — SignalR's default JSON hub protocol serializes it camelCase. */
 export interface PresenceEntry {
@@ -15,8 +9,8 @@ export interface PresenceEntry {
 }
 
 export type PresenceStatus =
-  | "loading" // connecting or reconnecting
-  | "populated" // connected; roster always includes the caller, so this is the only reachable "has data" state
+  | "loading" // connecting or reconnecting, or connected but the initial roster hasn't arrived yet
+  | "populated" // connected and the roster has arrived; roster always includes the caller, so this is the only reachable "has data" state
   | "error" // connection failed, or the server aborted it — see the doc comment below for why these are indistinguishable here
   | "offline"; // the browser itself has no network (navigator.onLine / the online/offline events) — the one case genuinely distinguishable from "error"
 
@@ -25,25 +19,15 @@ export interface UsePresenceResult {
   readonly roster: readonly PresenceEntry[];
 }
 
-export interface UsePresenceOptions {
-  /** Origin the API/hub is served from, e.g. `https://api.forge.dev` — no trailing slash. */
-  readonly hubUrl: string;
-  readonly projectId: string;
-  /** In-memory only, never persisted — CLAUDE.md Section 4.7. The caller owns refresh; this hook only reads the current value at connect/reconnect time via `accessTokenFactory`. */
-  readonly accessToken: string;
-}
-
-function isOffline(): boolean {
-  return typeof navigator !== "undefined" && navigator.onLine === false;
-}
+export type UsePresenceOptions = UseCollabConnectionOptions;
 
 /**
- * Connects to CollabHub (`services/Forge.Api/Features/Collab/CollabHub.cs`)
- * for `options.projectId` and tracks who else is connected — the
- * "○○○ (3 online)" toolbar indicator, docs/SPEC.md Section 12.2. M7
- * Phase 2's Yjs CRDT relay shares this same connection rather than
- * opening a second one, so this hook (not a one-off component) is where
- * that will attach.
+ * Tracks who else is connected to `options.projectId`'s collaboration
+ * session — the "○○○ (3 online)" toolbar indicator, docs/SPEC.md
+ * Section 12.2. Presence itself is `CollabHub`'s M7 Phase 1 feature;
+ * this hook now layers on top of `useCollabConnection` (extracted in M7
+ * Phase 2 so `useCollabDoc`'s Yjs relay can share the exact same
+ * connection rather than opening a second one).
  *
  * Of CLAUDE.md Section 5.4's six required UI states, two are not
  * independently reachable by this hub's own design, documented here
@@ -59,67 +43,38 @@ function isOffline(): boolean {
  *   `"error"`.
  */
 export function usePresence(options: UsePresenceOptions): UsePresenceResult {
-  const [status, setStatus] = useState<PresenceStatus>(() => (isOffline() ? "offline" : "loading"));
+  const { status: connectionStatus, connection } = useCollabConnection(options);
   const [roster, setRoster] = useState<readonly PresenceEntry[]>([]);
+  const [hasRoster, setHasRoster] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-    setStatus(isOffline() ? "offline" : "loading");
     setRoster([]);
+    setHasRoster(false);
+    if (!connection) return;
 
-    const connection: HubConnection = new HubConnectionBuilder()
-      .withUrl(`${options.hubUrl}/hubs/collab?projectId=${encodeURIComponent(options.projectId)}`, {
-        accessTokenFactory: () => options.accessToken,
-        transport: HttpTransportType.WebSockets,
-      })
-      .withAutomaticReconnect()
-      .configureLogging(LogLevel.Warning)
-      .build();
-
-    connection.on("presence:roster", (nextRoster: readonly PresenceEntry[]) => {
-      if (cancelled) return;
+    const onRoster = (nextRoster: readonly PresenceEntry[]): void => {
       setRoster(nextRoster);
-      setStatus("populated");
-    });
-    connection.on("presence:joined", (entry: PresenceEntry) => {
-      if (cancelled) return;
+      setHasRoster(true);
+    };
+    const onJoined = (entry: PresenceEntry): void => {
       setRoster((current) => (current.some((e) => e.connectionId === entry.connectionId) ? current : [...current, entry]));
-    });
-    connection.on("presence:left", (connectionId: string) => {
-      if (cancelled) return;
+    };
+    const onLeft = (connectionId: string): void => {
       setRoster((current) => current.filter((e) => e.connectionId !== connectionId));
-    });
-
-    connection.onreconnecting(() => {
-      if (!cancelled) setStatus(isOffline() ? "offline" : "loading");
-    });
-    connection.onreconnected(() => {
-      if (!cancelled) setStatus("populated");
-    });
-    connection.onclose(() => {
-      if (!cancelled) setStatus(isOffline() ? "offline" : "error");
-    });
-
-    const handleOffline = (): void => {
-      if (!cancelled) setStatus("offline");
     };
-    const handleOnline = (): void => {
-      if (!cancelled && connection.state !== HubConnectionState.Connected) setStatus("loading");
-    };
-    window.addEventListener("offline", handleOffline);
-    window.addEventListener("online", handleOnline);
 
-    connection.start().catch(() => {
-      if (!cancelled) setStatus(isOffline() ? "offline" : "error");
-    });
+    connection.on("presence:roster", onRoster);
+    connection.on("presence:joined", onJoined);
+    connection.on("presence:left", onLeft);
 
     return () => {
-      cancelled = true;
-      window.removeEventListener("offline", handleOffline);
-      window.removeEventListener("online", handleOnline);
-      void connection.stop();
+      connection.off("presence:roster", onRoster);
+      connection.off("presence:joined", onJoined);
+      connection.off("presence:left", onLeft);
     };
-  }, [options.hubUrl, options.projectId, options.accessToken]);
+  }, [connection]);
+
+  const status: PresenceStatus = connectionStatus === "connected" ? (hasRoster ? "populated" : "loading") : connectionStatus;
 
   return { status, roster };
 }

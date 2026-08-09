@@ -30,6 +30,10 @@ class FakeHubConnection {
     this.handlers.set(event, handler);
   }
 
+  off(event: string): void {
+    this.handlers.delete(event);
+  }
+
   onclose(handler: Handler): void {
     this.closeHandlers.push(handler);
   }

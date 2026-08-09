@@ -1,6 +1,7 @@
 using System.Data;
 using System.Text.Json;
 using Forge.Domain.Entities;
+using Forge.Domain.Marketplace;
 using Forge.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -120,6 +121,57 @@ public sealed class PendingVersionScanner(ForgeDbContext db)
 
     public Task MarkBlockedAsync(Guid versionId, SmokeGate.SmokeRunReport report, CancellationToken ct) =>
         SetFinalStatusAsync(versionId, PackageScanStatus.Blocked, report, ct);
+
+    /// <summary>Gate 5 (M7 Phase 3): the version cleared gate 4 but its author's trust tier requires a human review before this can become <see cref="PackageScanStatus.Passed"/> — see that constant's own doc comment.</summary>
+    public Task MarkFlaggedForReviewAsync(Guid versionId, SmokeGate.SmokeRunReport report, CancellationToken ct) =>
+        SetFinalStatusAsync(versionId, PackageScanStatus.Flagged, report, ct);
+
+    /// <summary>
+    /// Gate 5's inputs (docs/SPEC.md Section 10.4/16.3) for the author who
+    /// owns <paramref name="packageId"/>. Two-factor status is read from
+    /// <c>ForgeIdentityUser.TwoFactorEnabled</c> — the domain
+    /// <see cref="User"/> row never duplicates it — via
+    /// <see cref="User.IdentitySubjectId"/> parsed back to the
+    /// <see cref="Guid"/> Identity keys its own store by (the same
+    /// string-claim round trip <c>CurrentUserMiddleware</c> does the
+    /// other direction). Identity verification/security audit/SLA
+    /// acceptance and refund rate are stated gaps — see
+    /// <see cref="AuthorTrustSignals"/>'s own doc comment on each.
+    /// </summary>
+    public async Task<AuthorTrustSignals> GetAuthorTrustSignalsAsync(Guid packageId, CancellationToken ct)
+    {
+        // Package.Author is a real, explicitly-configured navigation
+        // (PackageConfiguration.cs: HasOne(p => p.Author).HasForeignKey(p
+        // => p.AuthorUserId)) — safe to project directly rather than a
+        // separate round trip against the AuthorUserId scalar.
+        var author = await db.Packages
+            .Where(p => p.Id == packageId)
+            .Select(p => new { p.AuthorUserId, p.Author!.IdentitySubjectId, p.Author.IdentityVerifiedAt, p.Author.SecurityAuditPassedAt, p.Author.SlaAcceptedAt })
+            .SingleAsync(ct);
+
+        var identitySubjectId = Guid.Parse(author.IdentitySubjectId);
+        var twoFactorEnabled = await db.Users
+            .Where(u => u.Id == identitySubjectId)
+            .Select(u => u.TwoFactorEnabled)
+            .SingleOrDefaultAsync(ct);
+
+        // PackageVersion.Package (via PackageId) is the same kind of
+        // real, explicit navigation (PackageConfiguration.cs's own
+        // HasMany(p => p.Versions).WithOne(v => v.Package)).
+        var firstPublishedAt = await db.PackageVersions
+            .Where(v => v.Package!.AuthorUserId == author.AuthorUserId)
+            .OrderBy(v => v.PublishedAt)
+            .Select(v => (DateTimeOffset?)v.PublishedAt)
+            .FirstOrDefaultAsync(ct);
+
+        return new AuthorTrustSignals(
+            TwoFactorEnabled: twoFactorEnabled,
+            IdentityVerified: author.IdentityVerifiedAt is not null,
+            FirstPublishedAt: firstPublishedAt,
+            RefundRate: 0.0, // M7 Phase 4/5: no real purchase/refund data exists yet.
+            SecurityAuditPassed: author.SecurityAuditPassedAt is not null,
+            SlaAccepted: author.SlaAcceptedAt is not null);
+    }
 
     private async Task SetFinalStatusAsync(Guid versionId, string status, SmokeGate.SmokeRunReport report, CancellationToken ct)
     {

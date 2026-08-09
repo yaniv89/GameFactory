@@ -2,6 +2,7 @@ using System.Text.Json;
 using Forge.Domain.Entities;
 using Forge.Functions.Scan;
 using Forge.Functions.Scan.SmokeGate;
+using Forge.Infrastructure.Identity;
 using Forge.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -182,6 +183,105 @@ public sealed class PendingVersionScannerTests : IClassFixture<ForgeWebApplicati
         Assert.Equal(PackageScanStatus.Blocked, version.ScanStatus);
         Assert.NotNull(version.ScanReport);
         Assert.Equal("blocked", version.ScanReport!.Value.GetProperty("verdict").GetString());
+    }
+
+    [Fact]
+    public async Task GetAuthorTrustSignalsAsync_Resolves_TwoFactor_IdentityVerification_And_Earliest_Publish()
+    {
+        var name = "@acme/scan-trust-signals";
+        var identitySubjectId = Guid.NewGuid();
+        var (pkg, ws) = NewPackage(name);
+        pkg.Author!.IdentitySubjectId = identitySubjectId.ToString();
+        pkg.Author.IdentityVerifiedAt = DateTimeOffset.UtcNow.AddDays(-100);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ForgeDbContext>();
+        db.Workspaces.Add(ws);
+        db.DomainUsers.Add(pkg.Author);
+        db.Packages.Add(pkg);
+        db.Users.Add(new ForgeIdentityUser
+        {
+            Id = identitySubjectId,
+            UserName = pkg.Author.Email,
+            NormalizedUserName = pkg.Author.Email.ToUpperInvariant(),
+            Email = pkg.Author.Email,
+            NormalizedEmail = pkg.Author.Email.ToUpperInvariant(),
+            TwoFactorEnabled = true,
+        });
+        await db.SaveChangesAsync();
+
+        var earlierPublishedAt = DateTimeOffset.UtcNow.AddDays(-95);
+        db.PackageVersions.Add(new PackageVersion
+        {
+            PackageId = pkg.Id, Version = "0.1.0", EngineRange = ">=1.0.0 <2.0.0",
+            Manifest = JsonSerializer.SerializeToElement(new { }),
+            BundleUrl = "https://example.invalid/trust-signals-a.js",
+            BundleSha256 = System.Security.Cryptography.SHA256.HashData("trust-signals-a"u8.ToArray()),
+            SizeBytes = 1, ScanStatus = PackageScanStatus.Passed, PublishedAt = earlierPublishedAt,
+        });
+        db.PackageVersions.Add(new PackageVersion
+        {
+            PackageId = pkg.Id, Version = "0.2.0", EngineRange = ">=1.0.0 <2.0.0",
+            Manifest = JsonSerializer.SerializeToElement(new { }),
+            BundleUrl = "https://example.invalid/trust-signals-b.js",
+            BundleSha256 = System.Security.Cryptography.SHA256.HashData("trust-signals-b"u8.ToArray()),
+            SizeBytes = 1, ScanStatus = PackageScanStatus.Pending, PublishedAt = DateTimeOffset.UtcNow,
+        });
+        await db.SaveChangesAsync();
+
+        var scanner = new PendingVersionScanner(db);
+        var signals = await scanner.GetAuthorTrustSignalsAsync(pkg.Id, CancellationToken.None);
+
+        Assert.True(signals.TwoFactorEnabled);
+        Assert.True(signals.IdentityVerified);
+        Assert.Equal(earlierPublishedAt, signals.FirstPublishedAt);
+        Assert.Equal(0.0, signals.RefundRate);
+        Assert.False(signals.SecurityAuditPassed);
+        Assert.False(signals.SlaAccepted);
+    }
+
+    [Fact]
+    public async Task GetAuthorTrustSignalsAsync_Defaults_To_No_Trust_For_An_Author_With_No_Signals()
+    {
+        var name = "@acme/scan-trust-signals-none";
+        await SeedPendingVersionAsync(name);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ForgeDbContext>();
+        var packageId = await db.Packages.Where(p => p.Name == name).Select(p => p.Id).SingleAsync();
+
+        var scanner = new PendingVersionScanner(db);
+        var signals = await scanner.GetAuthorTrustSignalsAsync(packageId, CancellationToken.None);
+
+        Assert.False(signals.TwoFactorEnabled); // no matching ForgeIdentityUser row was ever seeded for this author
+        Assert.False(signals.IdentityVerified);
+        Assert.False(signals.SecurityAuditPassed);
+        Assert.False(signals.SlaAccepted);
+    }
+
+    [Fact]
+    public async Task MarkFlaggedForReviewAsync_Sets_Flagged_Status_And_Stores_The_Report()
+    {
+        var name = "@acme/scan-mark-flagged";
+        await SeedPendingVersionAsync(name);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ForgeDbContext>();
+        var scanner = new PendingVersionScanner(db);
+        var claimed = await FindAndClaimAsync(scanner, name);
+
+        var report = new SmokeRunReport
+        {
+            Verdict = "passed", TicksRequested = 600, TicksCompleted = 600, Crashed = false,
+            Budget = new SmokeRunBudget { MaxTickMs = 1.2, TotalMs = 300, AverageTickMs = 0.5 },
+        };
+        await scanner.MarkFlaggedForReviewAsync(claimed.VersionId, report, CancellationToken.None);
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<ForgeDbContext>();
+        var version = await verifyDb.PackageVersions.SingleAsync(v => v.Id == claimed.VersionId);
+        Assert.Equal(PackageScanStatus.Flagged, version.ScanStatus);
+        Assert.NotNull(version.ScanReport);
     }
 
     private static async Task<ScannedVersion> FindAndClaimAsync(PendingVersionScanner scanner, string packageName)

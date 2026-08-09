@@ -54,6 +54,18 @@ public static class PackageScanStatus
     /// <summary>Claimed by one gate 4 scanner instance (services/Forge.Functions.Scan) — the atomic claim transition that keeps two horizontally-scaled instances from picking up the same row (CLAUDE.md Section 1.5 guardrail 20).</summary>
     public const string Scanning = "scanning";
     public const string Passed = "passed";
+    /// <summary>
+    /// Gate 5 (docs/SPEC.md Section 10.4's reputation gate, M7 Phase 3):
+    /// the version cleared gate 4's sandboxed smoke run, but its
+    /// author's <see cref="Marketplace.AuthorTrustTier"/> is
+    /// <see cref="Marketplace.AuthorTrustTier.Unverified"/> — "new
+    /// authors: manual review queue," per the SPEC's own gate 5
+    /// description. A version sits here until a human reviewer promotes
+    /// it to <see cref="Passed"/>; the review endpoint/reviewer role
+    /// itself is a stated, separate follow-up (M7 Phase 3 scope is the
+    /// trust-tier calculation and routing into this queue, not yet the
+    /// review UI/authorization model for who empties it).
+    /// </summary>
     public const string Flagged = "flagged";
     public const string Blocked = "blocked";
 }

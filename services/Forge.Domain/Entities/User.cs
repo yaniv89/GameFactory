@@ -36,6 +36,23 @@ public sealed class User
     /// <summary>Stripe customer for this user's own subscription billing. Distinct from <see cref="StripeAccount"/>.</summary>
     public string? StripeCustomerId { get; set; }
 
+    /// <summary>
+    /// docs/SPEC.md Section 16.3's Verified/Partner-tier "identity
+    /// verified" requirement — an external KYC-style verification step
+    /// (e.g. Stripe Identity). No verification provider is wired up yet
+    /// (M7 Phase 3 scope: the trust-tier <i>calculation</i>, not the
+    /// verification UX/integration) — this stays null for every author
+    /// until that lands, a stated gap rather than an assumed pass. See
+    /// <see cref="Marketplace.AuthorTrustSignals"/>.
+    /// </summary>
+    public DateTimeOffset? IdentityVerifiedAt { get; set; }
+
+    /// <summary>docs/SPEC.md Section 16.3's Partner-tier security-audit requirement. No audit-tracking workflow exists yet — same stated-gap posture as <see cref="IdentityVerifiedAt"/>.</summary>
+    public DateTimeOffset? SecurityAuditPassedAt { get; set; }
+
+    /// <summary>docs/SPEC.md Section 16.3's Partner-tier SLA requirement. No SLA-acceptance flow exists yet — same stated-gap posture as <see cref="IdentityVerifiedAt"/>.</summary>
+    public DateTimeOffset? SlaAcceptedAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset UpdatedAt { get; set; }

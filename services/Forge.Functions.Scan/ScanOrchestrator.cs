@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Forge.Domain.Marketplace;
 using Forge.Functions.Scan.SmokeGate;
 using Forge.Infrastructure.Storage;
 
@@ -9,12 +10,20 @@ namespace Forge.Functions.Scan;
 /// Wires <see cref="PendingVersionScanner"/> (claim/complete against
 /// <c>package_versions</c>), <see cref="IPackageBundleStorage"/> (fetch
 /// the real bundle text) and <see cref="SmokeRunGate"/> (run it in the
-/// real sandbox) into gate 4's actual per-version workflow. The Azure
-/// Functions Worker trigger that calls <see cref="ScanNextAsync"/> on a
-/// schedule doesn't exist yet — see Forge.Functions.Scan.csproj's own
-/// comment for why that's deliberately a separate, later change — but
-/// this class is the whole real gate, independently callable and tested
-/// without it.
+/// real sandbox) into gate 4's actual per-version workflow, then gate 5
+/// (M7 Phase 3, docs/SPEC.md Section 10.4): a version that clears gate 4
+/// only reaches <see cref="Forge.Domain.Entities.PackageScanStatus.Passed"/>
+/// automatically if its author's <see cref="AuthorTrustTier"/> is
+/// <see cref="AuthorTrustTier.Verified"/> or <see cref="AuthorTrustTier.Partner"/>
+/// — an <see cref="AuthorTrustTier.Unverified"/> author's version is
+/// routed to the manual review queue instead
+/// (<see cref="Forge.Domain.Entities.PackageScanStatus.Flagged"/>), matching
+/// the SPEC's own "new authors: manual review queue, established
+/// authors: automated pass" description. The Azure Functions Worker
+/// trigger that calls <see cref="ScanNextAsync"/> on a schedule doesn't
+/// exist yet — see Forge.Functions.Scan.csproj's own comment for why
+/// that's deliberately a separate, later change — but this class is the
+/// whole real gate, independently callable and tested without it.
 /// </summary>
 public sealed class ScanOrchestrator(
     PendingVersionScanner scanner,
@@ -52,7 +61,17 @@ public sealed class ScanOrchestrator(
 
         if (report.Verdict == "passed")
         {
-            await scanner.MarkPassedAsync(claimed.VersionId, report, ct);
+            var signals = await scanner.GetAuthorTrustSignalsAsync(claimed.PackageId, ct);
+            var tier = AuthorTrustTierCalculator.Calculate(signals, DateTimeOffset.UtcNow);
+
+            if (tier == AuthorTrustTier.Unverified)
+            {
+                await scanner.MarkFlaggedForReviewAsync(claimed.VersionId, report, ct);
+            }
+            else
+            {
+                await scanner.MarkPassedAsync(claimed.VersionId, report, ct);
+            }
         }
         else
         {

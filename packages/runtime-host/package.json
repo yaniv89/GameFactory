@@ -8,8 +8,18 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "echo \"no tests yet for @forge/runtime-host\" && exit 0"
+    "build": "tsc -p tsconfig.json && node scripts/build-smoke-cli.mjs",
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@forge/core": "workspace:*",
+    "@forge/module-api": "workspace:*",
+    "quickjs-emscripten": "^0.32.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "esbuild": "^0.25.12",
+    "vitest": "^3.2.7"
   }
 }

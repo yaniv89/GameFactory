@@ -1,0 +1,190 @@
+import { execFileSync } from "node:child_process";
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import type { PlayerInstalledModule, PlayerProjectData } from "@forge/player";
+import { findRepoRoot } from "../repoRoot.js";
+
+const REPO_ROOT = findRepoRoot();
+const PLAYER_DIR = join(REPO_ROOT, "packages/player");
+const ALLOWLIST_PATH = join(REPO_ROOT, "tools/security/licenses.json");
+
+/** One entry of `ExportProjectInput.installedModules` — everything `PlayerInstalledModule` has except `guestBundleSource`, which `runExport` resolves itself (see its own doc comment). */
+type ExportInstalledModuleInput = Omit<PlayerInstalledModule, "guestBundleSource">;
+
+/**
+ * What a project file on disk actually declares — `PlayerProjectData`
+ * minus each module's `guestBundleSource`. Requiring an author (or a
+ * hand-authored fixture) to pre-compute and paste in a module's compiled
+ * guest bundle text would be impractical and would silently drift from
+ * that module's real source the moment it changed — `runExport` resolves
+ * each declared module's own `dist/guest-bundle.js` fresh, every export,
+ * the same way a real package-registry-backed resolution would slot in
+ * later (M6 Phase 1/2's registry already exists; wiring export to fetch
+ * from it instead of node_modules is a separate, future piece — this is
+ * the local/workspace-resolved version of the same idea).
+ */
+export type ExportProjectInput = Omit<PlayerProjectData, "installedModules"> & {
+  readonly installedModules: readonly ExportInstalledModuleInput[];
+};
+
+export interface ExportOptions {
+  /** Path to an ExportProjectInput JSON file — see packages/player/src/playerProjectData.ts for the field shapes. Not the editor's own ProjectDocument shape (there is no serializer from that to a file yet; docs/SPEC.md Section 7's full on-disk format is a separate, larger gap — fixtures/projects/* are hand-authored ExportProjectInput files directly, same as this command expects). */
+  readonly projectPath: string;
+  readonly outDir: string;
+}
+
+function validateExportProjectInput(value: unknown, sourcePath: string): asserts value is ExportProjectInput {
+  const fail = (reason: string): never => {
+    throw new Error(`forge export: "${sourcePath}" is not a valid project file — ${reason}`);
+  };
+  if (typeof value !== "object" || value === null) fail("expected a JSON object");
+  const data = value as Record<string, unknown>;
+  for (const field of ["projectId", "buildId", "engineVersion", "startSceneId"]) {
+    if (typeof data[field] !== "string" || data[field] === "") fail(`"${field}" must be a non-empty string`);
+  }
+  if (typeof data.schemaVersion !== "number") fail('"schemaVersion" must be a number');
+  if (!Array.isArray(data.scenes) || data.scenes.length === 0) fail('"scenes" must be a non-empty array');
+  if (!Array.isArray(data.installedModules)) fail('"installedModules" must be an array');
+  const scenes = data.scenes as Array<Record<string, unknown>>;
+  for (const scene of scenes) {
+    if (typeof scene.id !== "string" || scene.id === "") fail("every scene needs a non-empty string id");
+    if (!Array.isArray(scene.tiles) || scene.tiles.length !== 300) {
+      fail(`scene "${String(scene.id)}" must have exactly 300 tiles (20x15 grid, gridConstants.ts), got ${Array.isArray(scene.tiles) ? scene.tiles.length : typeof scene.tiles}`);
+    }
+    if (!Array.isArray(scene.entities)) fail(`scene "${String(scene.id)}" is missing "entities"`);
+  }
+  if (!scenes.some((scene) => scene.id === data.startSceneId)) {
+    fail(`"startSceneId" (${String(data.startSceneId)}) does not match any scene id`);
+  }
+  const modules = data.installedModules as Array<Record<string, unknown>>;
+  for (const installedModule of modules) {
+    for (const field of ["name", "version"]) {
+      if (typeof installedModule[field] !== "string" || installedModule[field] === "") {
+        fail(`installed module is missing a non-empty string "${field}"`);
+      }
+    }
+    if (typeof installedModule.config !== "object" || installedModule.config === null) {
+      fail(`installed module "${String(installedModule.name)}" is missing a "config" object`);
+    }
+  }
+}
+
+/** Resolves `<moduleName>/dist/guest-bundle.js` from the player package's own node_modules — see `ExportProjectInput`'s doc comment for why this isn't pre-supplied in the project file. */
+function readModuleGuestBundle(moduleName: string): string {
+  const require = createRequire(join(PLAYER_DIR, "package.json"));
+  let path: string;
+  try {
+    path = require.resolve(`${moduleName}/dist/guest-bundle.js`);
+  } catch (err) {
+    throw new Error(
+      `forge export: could not resolve "${moduleName}/dist/guest-bundle.js" — is it installed as a dependency of packages/player, and has its own \`build\` script run? (${err instanceof Error ? err.message : String(err)})`,
+    );
+  }
+  return readFileSync(path, "utf8");
+}
+
+function hydrateProjectData(input: ExportProjectInput): PlayerProjectData {
+  return {
+    ...input,
+    installedModules: input.installedModules.map((installedModule) => ({
+      ...installedModule,
+      guestBundleSource: readModuleGuestBundle(installedModule.name),
+    })),
+  };
+}
+
+function readWasmBinaryBase64(): string {
+  const require = createRequire(join(PLAYER_DIR, "package.json"));
+  const quickjsEmscriptenPkgJson = require.resolve("quickjs-emscripten/package.json");
+  const wasmfilePkgJson = require.resolve("@jitl/quickjs-wasmfile-release-sync/package.json", {
+    paths: [dirname(quickjsEmscriptenPkgJson)],
+  });
+  const wasmPath = join(dirname(wasmfilePkgJson), "dist", "emscripten-module.wasm");
+  return readFileSync(wasmPath).toString("base64");
+}
+
+function writeGeneratedFiles(projectData: PlayerProjectData): void {
+  const generatedDir = join(PLAYER_DIR, "src", "generated");
+  mkdirSync(generatedDir, { recursive: true });
+  writeFileSync(
+    join(generatedDir, "projectData.ts"),
+    `// AUTO-GENERATED by forge export — do not edit by hand.\n` +
+      `import type { PlayerProjectData } from "../playerProjectData.js";\n\n` +
+      `export const PROJECT_DATA: PlayerProjectData = ${JSON.stringify(projectData, null, 2)};\n`,
+  );
+  writeFileSync(
+    join(generatedDir, "wasmBinaryBase64.ts"),
+    `// AUTO-GENERATED by forge export — do not edit by hand.\n` +
+      `export const WASM_BINARY_BASE64: string = ${JSON.stringify(readWasmBinaryBase64())};\n`,
+  );
+}
+
+interface LicensedPackage {
+  readonly name: string;
+  readonly versions: readonly string[];
+}
+
+/**
+ * docs/SPEC.md Section 15.3: the export "must generate LICENSES.txt, and
+ * the build must fail if any dependency's license is unsatisfiable for
+ * redistribution." Reuses the exact same allowlist
+ * `tools/security/license-check.mjs` already enforces for the whole
+ * repo (`tools/security/licenses.json`) — that file's own description
+ * already names "redistributing exported games" as the actual
+ * constraint, not a separate policy invented here. Scoped to
+ * `@forge/player`'s own production dependency closure (`--prod
+ * --filter`), not the whole monorepo — devDependencies like vite/esbuild
+ * never ship in the export and have no bearing on what a player receives.
+ */
+function writeLicensesFile(outDir: string): void {
+  const allowlist = (JSON.parse(readFileSync(ALLOWLIST_PATH, "utf8")) as { allowed: readonly string[] }).allowed;
+
+  const raw = execFileSync("pnpm", ["licenses", "list", "--json", "--prod", "--filter", "@forge/player"], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  const byLicense = JSON.parse(raw) as Record<string, readonly LicensedPackage[]>;
+
+  const disallowed = Object.keys(byLicense).filter((license) => !allowlist.includes(license));
+  if (disallowed.length > 0) {
+    throw new Error(
+      `forge export: refusing to export — disallowed license(s) in @forge/player's bundled dependency tree: ${disallowed.join(", ")}. ` +
+        `Add the license to tools/security/licenses.json only after confirming it's compatible with redistributing exported games.`,
+    );
+  }
+
+  const lines = ["Third-party licenses for this exported game", "=".repeat(44), ""];
+  for (const license of Object.keys(byLicense).sort()) {
+    lines.push(license, "-".repeat(license.length));
+    for (const pkg of [...byLicense[license]!].sort((a, b) => a.name.localeCompare(b.name))) {
+      lines.push(`  ${pkg.name}@${pkg.versions.join(",")}`);
+    }
+    lines.push("");
+  }
+  writeFileSync(join(outDir, "LICENSES.txt"), lines.join("\n"));
+}
+
+export function runExport(options: ExportOptions): void {
+  const raw: unknown = JSON.parse(readFileSync(options.projectPath, "utf8"));
+  validateExportProjectInput(raw, options.projectPath);
+  const projectData = hydrateProjectData(raw);
+
+  writeGeneratedFiles(projectData);
+
+  // scripts/build-app.mjs: vite build, then inlineBundle — see that
+  // script's and packages/player/scripts/inline-bundle.mjs's own doc
+  // comments for exactly why a plain `vite build` output alone does not
+  // load under file:// (CORS on every ES module load, confirmed with a
+  // real Playwright file:// run, not assumed).
+  execFileSync("node", ["scripts/build-app.mjs"], { cwd: PLAYER_DIR, stdio: "inherit" });
+
+  rmSync(options.outDir, { recursive: true, force: true });
+  mkdirSync(options.outDir, { recursive: true });
+  cpSync(join(PLAYER_DIR, "dist-app"), options.outDir, { recursive: true });
+
+  writeLicensesFile(options.outDir);
+
+  console.log(`forge export: wrote a standalone, file://-loadable build to ${options.outDir}`);
+}

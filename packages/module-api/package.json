@@ -10,6 +10,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "echo \"no tests yet for @forge/module-api\" && exit 0"
+    "test": "echo \"no tests yet for @forge/module-api\" && exit 0",
+    "api-check": "pnpm run build && api-extractor run --config api-extractor.json",
+    "api-update": "pnpm run build && api-extractor run --config api-extractor.json --local"
+  },
+  "devDependencies": {
+    "@microsoft/api-extractor": "^7.58.12"
   }
 }

@@ -15,17 +15,37 @@
  * after the code exists is a budget that gets raised (CLAUDE.md Section 7
  * intro).
  *
+ * Also checks `wasmPayloads`: real, npm-resolvable binary assets (the
+ * QuickJS sandbox interpreter — see docs/adr/0004) that are lazy-loaded
+ * rather than bundled into a package's static output, so they can't be
+ * measured by gzipping `dist/*.js` the way the packages above are. These
+ * ARE the final number already — a WASM binary doesn't get smaller by
+ * bundling — so they're not a proxy metric the way the JS packages are.
+ *
+ * And `appBundles`: real Vite production builds (`vite build`, minified
+ * and tree-shaken) of a full application, as opposed to `packages`'
+ * unbundled `tsc` library output. Also a real number already, not a proxy
+ * — this is what CLAUDE.md Section 7's "Editor JS, gzipped, initial
+ * route" budget actually measures.
+ *
  * Usage: node tools/bench/check-bundle-size.mjs
  */
 import { execFileSync } from "node:child_process";
 import { gzipSync } from "node:zlib";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, extname } from "node:path";
+import { createRequire } from "node:module";
 
 const ROOT = new URL("../../", import.meta.url).pathname;
-const { packages } = JSON.parse(
+const { packages, wasmPayloads = [], appBundles = [] } = JSON.parse(
   readFileSync(new URL("./budgets.json", import.meta.url), "utf8"),
 );
+// pnpm's strict node_modules isolation means a transitive dependency like
+// @jitl/quickjs-wasmfile-release-sync is only resolvable from within the
+// package that actually depends on it (quickjs-emscripten), not from
+// runtime-host's own node_modules — so resolution starts from there.
+const quickjsEmscriptenRequire = createRequire(new URL("../../packages/runtime-host/package.json", import.meta.url));
+const require = createRequire(quickjsEmscriptenRequire.resolve("quickjs-emscripten"));
 
 function collectJsFiles(dir) {
   const out = [];
@@ -62,7 +82,14 @@ let warnings = 0;
 for (const pkg of packages) {
   const pkgDir = join(ROOT, pkg.path);
   try {
-    execFileSync("pnpm", ["--filter", pkg.name, "run", "build"], {
+    // `${pkg.name}...` (pnpm's "package plus its dependencies" filter
+    // selector), not a bare `pkg.name` filter: @forge/runtime-host
+    // depends on @forge/module-api, whose package.json "types"/"main"
+    // point at compiled dist/ output — a bare single-package filter never
+    // builds that dependency first, so runtime-host's own build fails
+    // with "Cannot find module '@forge/module-api'" against a clean
+    // checkout with no pre-existing dist/ anywhere.
+    execFileSync("pnpm", ["--filter", `${pkg.name}...`, "run", "build"], {
       cwd: ROOT,
       stdio: "inherit",
     });
@@ -90,8 +117,69 @@ for (const pkg of packages) {
   }
 }
 
+for (const asset of wasmPayloads) {
+  let assetPath;
+  try {
+    assetPath = require.resolve(asset.resolve);
+  } catch (err) {
+    console.error(`check-bundle-size: could not resolve "${asset.resolve}" for "${asset.name}": ${err.message}`);
+    hardFailures++;
+    continue;
+  }
+
+  const sizeKB = gzipSync(readFileSync(assetPath), { level: 9 }).length / 1024;
+  const sizeStr = sizeKB.toFixed(2);
+
+  if (sizeKB > asset.hardFailKB) {
+    console.error(
+      `check-bundle-size: ${asset.name} is ${sizeStr} KB gzipped — exceeds the hard-fail budget of ${asset.hardFailKB} KB.`,
+    );
+    hardFailures++;
+  } else if (sizeKB > asset.targetKB) {
+    console.warn(
+      `check-bundle-size: ${asset.name} is ${sizeStr} KB gzipped — over target (${asset.targetKB} KB) but under hard-fail (${asset.hardFailKB} KB).`,
+    );
+    warnings++;
+  } else {
+    console.log(`check-bundle-size: ${asset.name} is ${sizeStr} KB gzipped (target ${asset.targetKB} KB). OK.`);
+  }
+}
+
+for (const app of appBundles) {
+  const appDir = join(ROOT, app.path);
+  try {
+    // Same dependency-inclusive filter as the packages loop above, and
+    // for the same reason: forge-editor depends on @forge/module-api too.
+    execFileSync("pnpm", ["--filter", `${app.packageName}...`, "run", "build"], {
+      cwd: ROOT,
+      stdio: "inherit",
+    });
+  } catch (err) {
+    console.error(`check-bundle-size: build failed for ${app.name}`);
+    process.exit(1);
+  }
+
+  const jsFiles = collectJsFiles(join(appDir, app.buildDir));
+  const sizeKB = gzippedSizeKB(jsFiles);
+  const sizeStr = sizeKB.toFixed(2);
+
+  if (sizeKB > app.hardFailKB) {
+    console.error(
+      `check-bundle-size: ${app.name} is ${sizeStr} KB gzipped — exceeds the hard-fail budget of ${app.hardFailKB} KB.`,
+    );
+    hardFailures++;
+  } else if (sizeKB > app.targetKB) {
+    console.warn(
+      `check-bundle-size: ${app.name} is ${sizeStr} KB gzipped — over target (${app.targetKB} KB) but under hard-fail (${app.hardFailKB} KB).`,
+    );
+    warnings++;
+  } else {
+    console.log(`check-bundle-size: ${app.name} is ${sizeStr} KB gzipped (target ${app.targetKB} KB). OK.`);
+  }
+}
+
 if (hardFailures > 0) {
-  console.error(`\ncheck-bundle-size: ${hardFailures} package(s) over hard-fail budget. See CLAUDE.md Section 7.`);
+  console.error(`\ncheck-bundle-size: ${hardFailures} package(s)/asset(s) over hard-fail budget. See CLAUDE.md Section 7.`);
   process.exit(1);
 }
 

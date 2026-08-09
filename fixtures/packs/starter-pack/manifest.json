@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "name": "@forge-fixtures/starter-pack",
+  "version": "1.0.0",
+  "kind": "artpack",
+  "engine": ">=1.0.0 <2.0.0",
+  "grid": { "tileSize": 32 },
+  "implements": ["forge/topdown-rpg-basic@1"],
+  "tilesets": {
+    "outdoor-base": {
+      "src": "tilesets/outdoor-base.png",
+      "columns": 3,
+      "terrains": ["grass", "dirt", "water"]
+    }
+  },
+  "locales": ["en"]
+}

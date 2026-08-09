@@ -1,8 +1,26 @@
 {
-  "description": "Client bundle-size budgets from CLAUDE.md Section 7 / docs/SPEC.md Section 18.1. Enforced by tools/bench/check-bundle-size.mjs.",
+  "description": "Client bundle-size budgets from CLAUDE.md Section 7 / docs/SPEC.md Section 18.1. Enforced by tools/bench/check-bundle-size.mjs. @forge/runtime-host is split per docs/adr/0004: `packages` measures only the static lifecycle/bridge glue (tsc output, same proxy-metric caveat as the others); `wasmPayloads` separately measures the lazy-loaded QuickJS sandbox interpreter, which is a real npm-resolvable file today even before the M4 bundler exists.",
   "packages": [
     { "name": "@forge/core", "path": "packages/core", "targetKB": 45, "hardFailKB": 60 },
     { "name": "@forge/render-2d", "path": "packages/render-2d", "targetKB": 130, "hardFailKB": 160 },
     { "name": "@forge/runtime-host", "path": "packages/runtime-host", "targetKB": 60, "hardFailKB": 80 }
+  ],
+  "wasmPayloads": [
+    {
+      "name": "quickjs sandbox interpreter (release-sync)",
+      "resolve": "@jitl/quickjs-wasmfile-release-sync/wasm",
+      "targetKB": 250,
+      "hardFailKB": 320
+    }
+  ],
+  "appBundles": [
+    {
+      "name": "forge-editor (initial route)",
+      "packageName": "forge-editor",
+      "path": "packages/editor",
+      "buildDir": "dist-app",
+      "targetKB": 400,
+      "hardFailKB": 550
+    }
   ]
 }

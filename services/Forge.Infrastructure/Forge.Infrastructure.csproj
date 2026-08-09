@@ -7,6 +7,61 @@
     <RootNamespace>Forge.Infrastructure</RootNamespace>
   </PropertyGroup>
 
+  <!--
+    Plain Microsoft.NET.Sdk (not .Sdk.Web) doesn't reference the ASP.NET
+    Core shared framework by default. Needed here for real: cookie
+    authentication options, StatusCodes, and OpenIddict.AspNetCore's own
+    ASP.NET Core integration (M5 Phase 2) all live in it.
+  -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!--
+    Package versions confirmed to exist on nuget.org at scaffold time (this
+    environment has no .NET SDK, so `dotnet restore` itself is unverified —
+    see the CI workflow, which runs the real restore/build/test on a
+    GitHub-hosted runner that has the SDK). EFCore.NamingConventions maps
+    C# PascalCase properties to the snake_case columns docs/SPEC.md Section
+    6.2's DDL uses, since Dapper reporting queries (M6+) will target those
+    same physical column names directly.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.29" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
+    <PackageReference Include="EFCore.NamingConventions" Version="8.0.3" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.29">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <!--
+      Identity + OpenIddict (M5 Phase 2, docs/SPEC.md Section 23.1,
+      CLAUDE.md Section 2.1's pinned auth stack). OpenIddict is on its 7.x
+      line — no 8.0.x-specific build, it multi-targets across EF Core/ASP.NET
+      Core versions within one package version.
+    -->
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.29" />
+    <PackageReference Include="OpenIddict.AspNetCore" Version="7.6.0" />
+    <PackageReference Include="OpenIddict.EntityFrameworkCore" Version="7.6.0" />
+    <!-- M5 Phase 4: the Redis-backed rate limiter (docs/SPEC.md Section 5.5). -->
+    <PackageReference Include="StackExchange.Redis" Version="2.8.16" />
+    <!-- M5 Phase 5: Stripe Checkout/portal/webhooks (docs/SPEC.md Section 23, CLAUDE.md Section 2.1's pinned payments stack). -->
+    <PackageReference Include="Stripe.net" Version="47.4.0" />
+    <!-- M6 Phase 2: package bundle storage (docs/SPEC.md Section 6.2's bundle_url, CLAUDE.md Section 2.1's pinned Blob choice). -->
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.24.0" />
+    <!-- M7 Phase 7: cloud saves, leaderboards, achievements, analytics (docs/SPEC.md Section 17, CLAUDE.md Section 2.1's pinned wide-column choice). Version confirmed on nuget.org at scaffold time — see this file's own remarks on unverified restores. -->
+    <PackageReference Include="Azure.Data.Tables" Version="12.11.0" />
+    <!--
+      M7 Phase 1: the SignalR Redis backplane (CLAUDE.md Section 1.5
+      guardrail 20 — "SignalR requires a backplane the moment a second
+      instance exists, there is no add-it-later"). AddSignalR() itself
+      needs no separate package (it's part of Microsoft.AspNetCore.App,
+      already referenced above); this package is specifically the
+      StackExchange.Redis-backed IHubProtocol relay across instances.
+    -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="8.0.29" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Forge.Domain\Forge.Domain.csproj" />
   </ItemGroup>

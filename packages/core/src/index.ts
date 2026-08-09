@@ -1,7 +1,18 @@
-/**
- * @forge/core is implemented in Milestone M1. See CLAUDE.md Section 8 and
- * docs/SPEC.md Section 20 for the milestone plan and exit criteria.
- */
-export function notImplemented(): never {
-  throw new Error("@forge/core: not implemented (Milestone M1)");
-}
+export * from "./ecs/entity";
+export * from "./ecs/component";
+export * from "./ecs/mask";
+export * from "./ecs/archetype";
+export * from "./ecs/query";
+export * from "./ecs/commandBuffer";
+export * from "./ecs/world";
+export * from "./components/core";
+export * from "./scheduler/phase";
+export * from "./scheduler/tickContext";
+export * from "./scheduler/system";
+export * from "./scheduler/scheduler";
+export * from "./events/eventBus";
+export * from "./events/interceptors";
+export * from "./physics/aabb";
+export * from "./physics/spatialHash";
+export * from "./physics/collisionSystem";
+export * from "./save/serialize";

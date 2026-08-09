@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src"],
+  // "src/smoke" is built separately (scripts/build-smoke-test.mjs, an
+  // esbuild bundle emitted to dist/smoke/smokeTest.bundle.mjs) and
+  // deliberately excluded from this package's own tsc-emitted dist/*.js —
+  // dev-only proof tooling, never part of what a player's browser
+  // downloads. "src/main.ts" is excluded too: it's the app entry Vite
+  // bundles directly from TS source (Vite has its own TS transform, no
+  // need for tsc's dist output at all), and it imports "./generated/*" —
+  // files that only exist once `forge export`/generate-dev-fixture.mjs
+  // has run, which this package's own `pnpm run build` (part of the
+  // repo-wide `pnpm -r run build` CI runs first, before anything has
+  // populated them) must not depend on. Both are still typechecked
+  // normally: tsconfig.typecheck.json includes "src" with no matching
+  // exclusion, and its own package.json script ensures "./generated/*"
+  // exists first.
+  "exclude": ["src/smoke", "src/main.ts"]
+}

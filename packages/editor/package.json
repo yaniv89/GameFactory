@@ -8,8 +8,49 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "echo \"no tests yet for forge-editor\" && exit 0"
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json && vite build",
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "test": "vitest run",
+    "test:browser": "playwright test",
+    "storybook": "storybook dev -p 6007",
+    "build-storybook": "storybook build"
+  },
+  "dependencies": {
+    "@forge/art-pack": "workspace:*",
+    "@forge/core": "workspace:*",
+    "@forge/dialogue": "workspace:*",
+    "@forge/ds": "workspace:*",
+    "@forge/module-api": "workspace:*",
+    "@forge/render-2d": "workspace:*",
+    "@microsoft/signalr": "^8.0.7",
+    "dockview": "^7.0.4",
+    "dockview-react": "^7.0.4",
+    "immer": "^11.1.16",
+    "pixi.js": "^8.19.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-hook-form": "^7.84.0",
+    "y-protocols": "^1.0.6",
+    "yjs": "^13.6.27",
+    "zod": "^4.4.3",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.0",
+    "@storybook/addon-a11y": "^8.6.18",
+    "@storybook/addon-essentials": "^8.6.14",
+    "@storybook/react": "^8.6.18",
+    "@storybook/react-vite": "^8.6.18",
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.3",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^30.0.1",
+    "storybook": "^8.6.18",
+    "vite": "^5.4.21",
+    "vitest": "^3.2.7"
   }
 }

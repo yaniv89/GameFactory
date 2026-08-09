@@ -16,5 +16,10 @@
   },
   "devDependencies": {
     "typescript": "^5.5.4"
+  },
+  "pnpm": {
+    "overrides": {
+      "nanoid": ">=3.3.17"
+    }
   }
 }

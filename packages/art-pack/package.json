@@ -1,0 +1,19 @@
+{
+  "name": "@forge/art-pack",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Art Pack contract (docs/SPEC.md Section 11): manifest types, validation, and (later phases) asset resolution and the pack-swap diff engine.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "vitest": "^3.2.7"
+  }
+}

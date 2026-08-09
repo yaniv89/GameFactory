@@ -44,7 +44,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
             className={["fg-select", className ?? ""].filter(Boolean).join(" ")}
             aria-invalid={Boolean(error)}
             aria-describedby={describedBy}
-            defaultValue={rest.defaultValue ?? (placeholder ? "" : undefined)}
+            defaultValue={rest.value === undefined ? (rest.defaultValue ?? (placeholder ? "" : undefined)) : undefined}
             {...rest}
           >
             {placeholder && (

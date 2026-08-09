@@ -1,0 +1,128 @@
+using Forge.Domain.Marketplace;
+using Xunit;
+
+namespace Forge.Tests.Marketplace;
+
+public sealed class PackageRankingCalculatorTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 8, 9, 0, 0, 0, TimeSpan.Zero);
+
+    private static ListingQualitySignals AllNull(int readmeLength = 0) => new(
+        ActiveInstalls30d: null,
+        BayesianRating: null,
+        LatestVersionPublishedAt: null,
+        MeasuredAverageTickMs: null,
+        LatestVersionSizeBytes: null,
+        ReadmeLength: readmeLength,
+        SupportResponsivenessHours: null);
+
+    [Fact]
+    public void A_Freshly_Published_Small_Well_Documented_Fast_Package_Scores_Near_The_Top()
+    {
+        var signals = AllNull(readmeLength: 1500) with
+        {
+            LatestVersionPublishedAt = Now.AddDays(-1),
+            MeasuredAverageTickMs = 0.0,
+            LatestVersionSizeBytes = 0,
+        };
+
+        var score = PackageRankingCalculator.CalculateScore(signals, Now);
+
+        Assert.Equal(1.0, score, precision: 6);
+    }
+
+    [Fact]
+    public void A_Stale_Bloated_Slow_Undocumented_Package_Scores_Near_The_Bottom()
+    {
+        var signals = AllNull(readmeLength: 0) with
+        {
+            LatestVersionPublishedAt = Now.AddYears(-2),
+            MeasuredAverageTickMs = 5.0, // Well past the 2.0ms kill budget.
+            LatestVersionSizeBytes = 50 * 1024 * 1024, // Well past the 5MB ceiling.
+        };
+
+        var score = PackageRankingCalculator.CalculateScore(signals, Now);
+
+        Assert.Equal(0.0, score, precision: 6);
+    }
+
+    [Fact]
+    public void Only_The_Documentation_Signal_Is_Always_Present_Every_Other_Absent_Signal_Is_Excluded_Not_Zeroed()
+    {
+        // Nothing published yet except a readme worth full marks — if
+        // absent signals were scored as zero instead of excluded and
+        // renormalized, this would come out far below 1.0.
+        var signals = AllNull(readmeLength: 1500);
+
+        var score = PackageRankingCalculator.CalculateScore(signals, Now);
+
+        Assert.Equal(1.0, score, precision: 6);
+    }
+
+    [Fact]
+    public void A_Package_With_Zero_Length_Readme_And_No_Other_Signals_Scores_Zero()
+    {
+        var signals = AllNull(readmeLength: 0);
+
+        Assert.Equal(0.0, PackageRankingCalculator.CalculateScore(signals, Now));
+    }
+
+    [Fact]
+    public void Maintenance_Recency_Decays_Linearly_Between_The_Full_And_Zero_Windows()
+    {
+        // Halfway between the 90-day full-score window and the 365-day
+        // zero-score window. Documentation always contributes too (it's
+        // the one signal with no null case), so the readme length here
+        // is chosen (half of FullCreditReadmeLength) to also score
+        // exactly 0.5 — keeping every contributing signal at 0.5 means
+        // the weighted average is 0.5 regardless of each one's weight.
+        var halfway = Now.AddDays(-(90 + (365 - 90) / 2.0));
+        var signals = AllNull(readmeLength: 750) with { LatestVersionPublishedAt = halfway };
+
+        var score = PackageRankingCalculator.CalculateScore(signals, Now);
+
+        Assert.InRange(score, 0.45, 0.55);
+    }
+
+    [Fact]
+    public void A_Faster_Package_Always_Outranks_An_Otherwise_Identical_Slower_One()
+    {
+        var fast = AllNull(readmeLength: 500) with { MeasuredAverageTickMs = 0.2 };
+        var slow = AllNull(readmeLength: 500) with { MeasuredAverageTickMs = 1.8 };
+
+        Assert.True(
+            PackageRankingCalculator.CalculateScore(fast, Now) > PackageRankingCalculator.CalculateScore(slow, Now));
+    }
+
+    [Fact]
+    public void A_Smaller_Package_Always_Outranks_An_Otherwise_Identical_Larger_One()
+    {
+        var small = AllNull(readmeLength: 500) with { LatestVersionSizeBytes = 10_000 };
+        var large = AllNull(readmeLength: 500) with { LatestVersionSizeBytes = 4_000_000 };
+
+        Assert.True(
+            PackageRankingCalculator.CalculateScore(small, Now) > PackageRankingCalculator.CalculateScore(large, Now));
+    }
+
+    [Fact]
+    public void EffectiveWeights_Reports_Zero_For_Every_Signal_With_No_Data_Source_And_Renormalizes_The_Rest()
+    {
+        var signals = AllNull(readmeLength: 500) with
+        {
+            LatestVersionPublishedAt = Now,
+            MeasuredAverageTickMs = 0.1,
+            LatestVersionSizeBytes = 1000,
+        };
+
+        var weights = PackageRankingCalculator.EffectiveWeights(signals);
+
+        Assert.Equal(0.0, weights["activeInstalls30d"]);
+        Assert.Equal(0.0, weights["rating"]);
+        Assert.Equal(0.0, weights["supportResponsiveness"]);
+        Assert.True(weights["maintenanceRecency"] > 0);
+        Assert.True(weights["performanceBudget"] > 0);
+        Assert.True(weights["bundleSizeCost"] > 0);
+        Assert.True(weights["documentationCompleteness"] > 0);
+        Assert.Equal(1.0, weights.Values.Sum(), precision: 6);
+    }
+}

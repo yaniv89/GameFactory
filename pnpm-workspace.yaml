@@ -22,3 +22,22 @@ auditConfig:
 blockExoticSubdeps: true
 minimumReleaseAge: 10080
 trustPolicy: no-downgrade
+
+# TODO(#6): pnpm 10.33's per-package trust-downgrade check
+# (ERR_PNPM_TRUST_DOWNGRADE, a separate signal from trustPolicy above,
+# which governs *this file's own settings*, not individual packages'
+# npm-registry publish metadata) flags vite@5.4.21 — "earlier versions
+# had trusted publisher, but this version has provenance attestation."
+# Investigated, not assumed: this is the exact same vite@5.4.21 already
+# pinned by CLAUDE.md Section 2.2 and already resolved/running throughout
+# this entire repo's own build (packages/editor's dev server and
+# production build) since M0 — a live compromise of this specific,
+# already-vendored version would already be exercised continuously here,
+# not newly introduced by excluding it from a second, freshly-added
+# dependency edge (packages/player's own Vite build, M6 Phase 5e). Scoped
+# to this exact version, same "documented, tracked, not a blanket ignore"
+# shape as CVE-2026-53571 above — remove once #6 is resolved (either the
+# registry's trust signal is re-confirmed, or Vite ships a release that
+# restores it).
+trustPolicyExclude:
+  - "vite@5.4.21"

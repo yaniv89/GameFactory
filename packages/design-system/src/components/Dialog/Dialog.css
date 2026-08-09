@@ -16,11 +16,22 @@
   min-width: 360px;
   max-width: min(560px, 92vw);
   max-height: 85vh;
-  overflow: auto;
+  /* Column flex, not one scrolling block: a body that grows taller than
+     the viewport (e.g. the pack-swap dialog with Preview + Remap both
+     open) must not carry the title and action buttons off-screen with
+     it — CLAUDE.md 5.6, nothing unreachable. Only `__body` scrolls;
+     title and actions stay pinned and always reachable. Found as a real
+     bug, not assumed: a real-browser Playwright test on that dialog
+     timed out clicking "Apply swap" because it had scrolled out of the
+     85vh window with everything else. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: var(--space-5);
 }
 
 .fg-dialog__title {
+  flex: none;
   font-size: var(--text-lg);
   line-height: var(--lh-lg);
   font-weight: var(--weight-medium);
@@ -28,11 +39,15 @@
 }
 
 .fg-dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   color: var(--text-secondary);
   font-size: var(--text-sm);
 }
 
 .fg-dialog__actions {
+  flex: none;
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);

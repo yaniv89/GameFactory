@@ -23,6 +23,11 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.29" />
+    <!-- M7 Phase 1: drives a real HubConnection against CollabHub over WebApplicationFactory's TestServer (LongPolling transport — TestServer's handler-based pipeline doesn't support a real WebSocket upgrade). -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.29" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.13.0" />
+    <PackageReference Include="Testcontainers.Redis" Version="4.13.0" />
+    <PackageReference Include="Testcontainers.Azurite" Version="4.13.0" />
     <PackageReference Include="coverlet.collector" Version="6.0.4">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
@@ -33,6 +38,7 @@
     <ProjectReference Include="..\Forge.Domain\Forge.Domain.csproj" />
     <ProjectReference Include="..\Forge.Infrastructure\Forge.Infrastructure.csproj" />
     <ProjectReference Include="..\Forge.Api\Forge.Api.csproj" />
+    <ProjectReference Include="..\Forge.Functions.Scan\Forge.Functions.Scan.csproj" />
   </ItemGroup>
 
 </Project>

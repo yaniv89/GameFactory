@@ -1,0 +1,121 @@
+.fg-pack-swap-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 28rem;
+}
+
+.fg-pack-swap-dialog__hint {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.fg-pack-swap-dialog__findings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fg-pack-swap-dialog__finding {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.fg-pack-swap-dialog__severity {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-block-start: 6px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+}
+
+/* Color is never the only signal (CLAUDE.md 5.6): every row also carries
+   the OK/WARN/FAIL text label below, so a colorblind reader loses only
+   the dot, never the meaning. */
+.fg-pack-swap-dialog__finding--ok .fg-pack-swap-dialog__severity {
+  background: var(--accent-create);
+}
+.fg-pack-swap-dialog__finding--warn .fg-pack-swap-dialog__severity {
+  background: var(--accent-caution);
+}
+.fg-pack-swap-dialog__finding--fail .fg-pack-swap-dialog__severity {
+  background: var(--accent-destroy);
+}
+
+.fg-pack-swap-dialog__severity-label {
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.02em;
+}
+
+.fg-pack-swap-dialog__finding--ok .fg-pack-swap-dialog__severity-label {
+  color: var(--accent-create);
+}
+.fg-pack-swap-dialog__finding--warn .fg-pack-swap-dialog__severity-label {
+  color: var(--accent-caution);
+}
+.fg-pack-swap-dialog__finding--fail .fg-pack-swap-dialog__severity-label {
+  color: var(--accent-destroy);
+}
+
+.fg-pack-swap-dialog__detail {
+  margin: var(--space-1) 0 0;
+  color: var(--text-secondary);
+}
+
+.fg-pack-swap-dialog__toggle-row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.fg-pack-swap-dialog__remap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.fg-pack-swap-dialog__section-title {
+  margin: 0 0 var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.fg-pack-swap-dialog__checkpoints {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fg-pack-swap-dialog__checkpoint-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.fg-pack-swap-dialog__checkpoint-row:hover {
+  background: var(--surface-raised);
+}
+
+.fg-pack-swap-dialog__checkpoint-meta {
+  display: flex;
+  flex-direction: column;
+}
+
+.fg-pack-swap-dialog__checkpoint-time {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}

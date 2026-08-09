@@ -1,0 +1,147 @@
+import type { ComponentSchema, ComponentValue } from "../ecs/component";
+import type { World } from "../ecs/world";
+
+/**
+ * Core component schemas, per docs/SPEC.md Section 4.3. Registered against
+ * a World via `registerCoreComponents(world)` — components are core-owned
+ * data only; the systems that act on them (movement integration, collision
+ * resolution, rendering) are `@forge/render-2d` and later phases, not this
+ * file.
+ *
+ * `Stats` (docs/SPEC.md 4.3) is deliberately not here — see
+ * docs/adr/0002-dynamic-shape-components-deferred.md for why its
+ * open-ended `Record<string, number>` shape doesn't fit the fixed-schema
+ * archetype model yet, and what M3 needs to decide before it can.
+ */
+
+export const TransformSchema = {
+  x: "f64",
+  y: "f64",
+  z: "f64",
+  rotation: "f64",
+  scaleX: "f64",
+  scaleY: "f64",
+} as const satisfies ComponentSchema;
+export type Transform = ComponentValue<typeof TransformSchema>;
+
+export const SpriteSchema = {
+  assetId: "i32",
+  frame: "i32",
+  anchorX: "f32",
+  anchorY: "f32",
+  tint: "u32",
+  opacity: "f32",
+} as const satisfies ComponentSchema;
+export type Sprite = ComponentValue<typeof SpriteSchema>;
+
+export const AnimatorSchema = {
+  clipId: "i32",
+  playing: "bool",
+  speed: "f32",
+  loop: "bool",
+  elapsed: "f32",
+} as const satisfies ComponentSchema;
+export type Animator = ComponentValue<typeof AnimatorSchema>;
+
+/** shape: 0 = box, 1 = circle. layer/isTrigger are integers (bool as 0/1). */
+export const ColliderSchema = {
+  shape: "u8",
+  width: "f32",
+  height: "f32",
+  offsetX: "f32",
+  offsetY: "f32",
+  isTrigger: "bool",
+  layer: "u8",
+} as const satisfies ComponentSchema;
+export type Collider = ComponentValue<typeof ColliderSchema>;
+
+export const VelocitySchema = {
+  vx: "f32",
+  vy: "f32",
+  maxSpeed: "f32",
+  friction: "f32",
+} as const satisfies ComponentSchema;
+export type Velocity = ComponentValue<typeof VelocitySchema>;
+
+/** inputMapId indexes into a project's input map table (docs/SPEC.md 7.3 settings.inputMaps). */
+export const PlayerControlledSchema = {
+  inputMapId: "i32",
+} as const satisfies ComponentSchema;
+export type PlayerControlled = ComponentValue<typeof PlayerControlledSchema>;
+
+/**
+ * promptText and graphId are string data in the full spec but this
+ * component's *numeric* fields (range) live in the archetype columns;
+ * string/id lookups are resolved through the asset/graph tables by
+ * promptTextId / graphId, kept here as integer references (i32), matching
+ * the "components must be serializable, no strings-as-typed-array-cells"
+ * constraint of the archetype storage model.
+ */
+export const InteractableSchema = {
+  promptTextId: "i32",
+  range: "f32",
+  graphId: "i32",
+} as const satisfies ComponentSchema;
+export type Interactable = ComponentValue<typeof InteractableSchema>;
+
+export interface CoreComponents {
+  readonly Transform: ReturnType<World["defineComponent"]>;
+  readonly Sprite: ReturnType<World["defineComponent"]>;
+  readonly Animator: ReturnType<World["defineComponent"]>;
+  readonly Collider: ReturnType<World["defineComponent"]>;
+  readonly Velocity: ReturnType<World["defineComponent"]>;
+  readonly PlayerControlled: ReturnType<World["defineComponent"]>;
+  readonly Interactable: ReturnType<World["defineComponent"]>;
+}
+
+/** Registers every core component against `world`. Call once, at world construction. */
+export function registerCoreComponents(world: World): CoreComponents {
+  return {
+    Transform: world.defineComponent("Transform", TransformSchema, {
+      x: 0,
+      y: 0,
+      z: 0,
+      rotation: 0,
+      scaleX: 1,
+      scaleY: 1,
+    }),
+    Sprite: world.defineComponent("Sprite", SpriteSchema, {
+      assetId: -1,
+      frame: 0,
+      anchorX: 0.5,
+      anchorY: 0.5,
+      tint: 0xffffff,
+      opacity: 1,
+    }),
+    Animator: world.defineComponent("Animator", AnimatorSchema, {
+      clipId: -1,
+      playing: 0,
+      speed: 1,
+      loop: 1,
+      elapsed: 0,
+    }),
+    Collider: world.defineComponent("Collider", ColliderSchema, {
+      shape: 0,
+      width: 32,
+      height: 32,
+      offsetX: 0,
+      offsetY: 0,
+      isTrigger: 0,
+      layer: 0,
+    }),
+    Velocity: world.defineComponent("Velocity", VelocitySchema, {
+      vx: 0,
+      vy: 0,
+      maxSpeed: 0,
+      friction: 0,
+    }),
+    PlayerControlled: world.defineComponent("PlayerControlled", PlayerControlledSchema, {
+      inputMapId: 0,
+    }),
+    Interactable: world.defineComponent("Interactable", InteractableSchema, {
+      promptTextId: -1,
+      range: 32,
+      graphId: -1,
+    }),
+  };
+}

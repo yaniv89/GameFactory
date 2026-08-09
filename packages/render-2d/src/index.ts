@@ -1,7 +1,7 @@
-/**
- * @forge/render-2d is implemented in Milestone M1. See CLAUDE.md Section 8 and
- * docs/SPEC.md Section 20 for the milestone plan and exit criteria.
- */
-export function notImplemented(): never {
-  throw new Error("@forge/render-2d: not implemented (Milestone M1)");
-}
+export * from "./camera";
+export * from "./tileGrid";
+export * from "./entityDiff";
+export * from "./interpolation";
+export * from "./spriteSync";
+export * from "./tilemapLayer";
+export * from "./renderHost";

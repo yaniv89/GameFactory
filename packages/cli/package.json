@@ -7,9 +7,20 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "forge": "dist/index.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "echo \"no tests yet for forge\" && exit 0"
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "test": "node scripts/build-smoke-test.mjs && node dist/smoke/smokeTest.bundle.mjs"
+  },
+  "dependencies": {
+    "@forge/player": "workspace:*"
+  },
+  "devDependencies": {
+    "@forge/dialogue": "workspace:*",
+    "@types/node": "^26.1.2",
+    "esbuild": "^0.25.12"
   }
 }

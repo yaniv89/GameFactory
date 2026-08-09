@@ -190,7 +190,15 @@ public static class PublishVersionEndpoint
             // package gets a listing from its very first publish, not
             // only once an author later sets a price (M7 Phase 4's own
             // ListingEndpoint, which updates this row, never creates it).
-            db.Listings.Add(new Listing { PackageId = package.Id, PricingModel = ListingPricingModel.Free, PriceCents = 0 });
+            // Package = package (the navigation), not PackageId = package.Id:
+            // package.Id is a database-generated default
+            // (gen_random_uuid()) still unset at this point — EF Core's
+            // change tracker fixes up the FK from the tracked navigation
+            // once SaveChanges assigns the real id, whereas copying the
+            // scalar id now would just copy Guid.Empty. A real CI run
+            // caught this: "The value of 'Listing.PackageId' is unknown
+            // when attempting to save changes."
+            db.Listings.Add(new Listing { Package = package, PricingModel = ListingPricingModel.Free, PriceCents = 0 });
             await db.SaveChangesAsync(ct); // package.Id must be real before the version row below.
         }
 

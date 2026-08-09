@@ -27,7 +27,14 @@ public static class SetListingEndpoint
 {
     public static IEndpointRouteBuilder MapSetListing(this IEndpointRouteBuilder app)
     {
-        app.MapPut("/api/v1/packages/{name}/listing", Handle)
+        // Scoped package names contain their own "/" (e.g. @acme/farming),
+        // so a plain {name} route parameter can't carry one — same
+        // catch-all-and-manually-split shape PublishVersionEndpoint and
+        // PackageDetailAndVersionsEndpoint already use for exactly this
+        // reason. Caught by a real CI run: a scoped-named package's PUT
+        // request came back 405 MethodNotAllowed, not 200/400, because
+        // {name} only ever captured the segment up to the first "/".
+        app.MapPut("/api/v1/packages/{*path}", Handle)
             .RequireAuthorization(ForgeAuthorizationExtensions.BearerPolicy)
             .WithRateLimit("marketplace", RateLimitKeyStrategy.User, RateLimitPolicies.Api)
             .WithName("SetListing")
@@ -38,12 +45,19 @@ public static class SetListingEndpoint
     }
 
     private static async Task<IResult> Handle(
-        string name,
+        string path,
         SetListingRequest req,
         ForgeDbContext db,
         ICurrentUser currentUser,
         CancellationToken ct)
     {
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length is not (2 or 3) || segments[^1] != "listing")
+        {
+            return TypedResults.NotFound();
+        }
+        var name = string.Join('/', segments[..^1]);
+
         if (!ListingPricingModel.All.Contains(req.PricingModel))
         {
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>

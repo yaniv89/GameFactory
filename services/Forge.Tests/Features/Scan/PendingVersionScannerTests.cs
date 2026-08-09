@@ -234,7 +234,16 @@ public sealed class PendingVersionScannerTests : IClassFixture<ForgeWebApplicati
 
         Assert.True(signals.TwoFactorEnabled);
         Assert.True(signals.IdentityVerified);
-        Assert.Equal(earlierPublishedAt, signals.FirstPublishedAt);
+        // PostgreSQL's timestamptz only stores microsecond precision —
+        // .NET's DateTimeOffset carries 100ns ticks, so an exact
+        // round-trip comparison is flaky on whatever sub-microsecond tick
+        // component the in-memory value happens to have (a real CI run
+        // caught this: expected/actual differed by 200 nanoseconds).
+        // StripeWebhookEndpointTests sidesteps the same class of DB
+        // round-trip precision loss by comparing ToUnixTimeSeconds();
+        // this needs finer-than-a-second precision, so a small tolerance
+        // is the more accurate fix here.
+        Assert.Equal(earlierPublishedAt, signals.FirstPublishedAt, TimeSpan.FromMilliseconds(1));
         Assert.Equal(0.0, signals.RefundRate);
         Assert.False(signals.SecurityAuditPassed);
         Assert.False(signals.SlaAccepted);

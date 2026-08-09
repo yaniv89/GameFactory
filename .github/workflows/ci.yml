@@ -335,8 +335,18 @@ jobs:
   # there. This job is the other M5 Section 8 exit-criterion piece
   # ("load test sustains 200 concurrent editors with zero lost writes")
   # that tripwire was also standing in for.
+  #
+  # M7 Phase 8 also runs its own soak proof here (same Category=Load tag):
+  # services/Forge.Tests/LoadTests/M7ExitCriteriaTests.cs's collaboration
+  # half ("two people co-edit the same tilemap layer for 30 minutes with
+  # no lost work") — a real, extended-duration SignalR/Yjs relay soak, not
+  # a quick smoke test, so it belongs in this job for the same run-time
+  # reason as the M5 load test. That file's marketplace half (publish,
+  # buy, install, get paid) isn't Load-tagged — it's a deep real-service
+  # integration test, not a high-volume one, the same category
+  # ScanOrchestratorTests.cs already runs in the fast job above.
   load-test-gate:
-    name: Load test gate — 200 concurrent editors (Milestone M5 exit criterion)
+    name: Load test gate — M5/M7 exit criteria
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

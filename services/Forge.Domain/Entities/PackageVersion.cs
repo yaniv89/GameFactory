@@ -42,6 +42,19 @@ public sealed class PackageVersion
 
     public string? YankReason { get; set; }
 
+    /// <summary>
+    /// Gate 4's real, measured mean per-tick cost from the sandboxed
+    /// smoke run (<c>SmokeRunReport.Budget.AverageTickMs</c>), persisted
+    /// here the moment that gate passes — docs/SPEC.md Section 16.2 calls
+    /// publishing measured frame cost "novel and valuable... ship it from
+    /// day one," and this is where it's kept once measured rather than
+    /// discarded after the gate's own pass/fail decision. <c>null</c> for
+    /// any version that hasn't (yet) cleared gate 4 with a real
+    /// measurement — <see cref="Marketplace.PackageRankingCalculator"/>
+    /// treats that as "unknown," not "zero," when scoring.
+    /// </summary>
+    public double? MeasuredAverageTickMs { get; set; }
+
     public Package? Package { get; set; }
 
     public ICollection<PackageDependency> Dependencies { get; set; } = new List<PackageDependency>();

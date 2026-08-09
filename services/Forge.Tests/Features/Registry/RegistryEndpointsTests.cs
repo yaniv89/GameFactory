@@ -34,7 +34,7 @@ public sealed class RegistryEndpointsTests : IClassFixture<ForgeWebApplicationFa
     private static JsonElement EmptyManifest() => JsonSerializer.SerializeToElement(new { });
 
     private async Task<(Guid PackageId, Guid AuthorUserId)> SeedPackageAsync(
-        string name, string kind = "module", string displayName = "Test Package", string summary = "A test package.")
+        string name, string kind = "module", string displayName = "Test Package", string summary = "A test package.", string? readmeMarkdown = null)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ForgeDbContext>();
@@ -61,6 +61,7 @@ public sealed class RegistryEndpointsTests : IClassFixture<ForgeWebApplicationFa
             AuthorUserId = author.Id,
             DisplayName = displayName,
             Summary = summary,
+            ReadmeMarkdown = readmeMarkdown,
             LicenseSpdx = "MIT",
             CreatedAt = DateTimeOffset.UtcNow,
         };
@@ -72,7 +73,8 @@ public sealed class RegistryEndpointsTests : IClassFixture<ForgeWebApplicationFa
 
     private async Task<Guid> SeedVersionAsync(
         Guid packageId, string version, string scanStatus = PackageScanStatus.Passed,
-        DateTimeOffset? yankedAt = null, string engineRange = ">=1.0.0 <2.0.0")
+        DateTimeOffset? yankedAt = null, string engineRange = ">=1.0.0 <2.0.0",
+        int sizeBytes = 1024, double? measuredAverageTickMs = null, DateTimeOffset? publishedAt = null)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ForgeDbContext>();
@@ -85,10 +87,11 @@ public sealed class RegistryEndpointsTests : IClassFixture<ForgeWebApplicationFa
             Manifest = EmptyManifest(),
             BundleUrl = $"https://cdn.forge.dev/p/pkg/{version}/bundle.js",
             BundleSha256 = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(version)),
-            SizeBytes = 1024,
+            SizeBytes = sizeBytes,
             ScanStatus = scanStatus,
             YankedAt = yankedAt,
-            PublishedAt = DateTimeOffset.UtcNow,
+            MeasuredAverageTickMs = measuredAverageTickMs,
+            PublishedAt = publishedAt ?? DateTimeOffset.UtcNow,
         };
         db.PackageVersions.Add(packageVersion);
         await db.SaveChangesAsync();
@@ -186,5 +189,60 @@ public sealed class RegistryEndpointsTests : IClassFixture<ForgeWebApplicationFa
 
         var missingVersion = await client.GetAsync("/api/v1/packages/@acme/version-detail/versions/9.9.9");
         Assert.Equal(HttpStatusCode.NotFound, missingVersion.StatusCode);
+    }
+
+    [Fact]
+    public async Task Ranked_Sort_Puts_The_Better_Signaled_Package_First()
+    {
+        var (goodId, _) = await SeedPackageAsync(
+            "@acme/ranked-good", displayName: "Good Package", readmeMarkdown: new string('a', 1500));
+        await SeedVersionAsync(goodId, "1.0.0", sizeBytes: 1024, measuredAverageTickMs: 0.1, publishedAt: DateTimeOffset.UtcNow);
+
+        var (poorId, _) = await SeedPackageAsync(
+            "@acme/ranked-poor", displayName: "Poor Package", readmeMarkdown: null);
+        await SeedVersionAsync(poorId, "1.0.0", sizeBytes: 4_500_000, measuredAverageTickMs: 1.9, publishedAt: DateTimeOffset.UtcNow.AddYears(-2));
+
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync("/api/v1/packages?sort=ranked");
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<PackageListResponse>();
+
+        var goodIndex = body!.Packages.ToList().FindIndex(p => p.Name == "@acme/ranked-good");
+        var poorIndex = body.Packages.ToList().FindIndex(p => p.Name == "@acme/ranked-poor");
+        Assert.True(goodIndex >= 0 && poorIndex >= 0, "Both seeded packages should appear in the ranked list.");
+        Assert.True(goodIndex < poorIndex, "The better-signaled package should rank above the worse one.");
+        Assert.Null(body.NextCursor); // Ranked mode never returns a cursor.
+    }
+
+    [Fact]
+    public async Task Ranked_Sort_Excludes_Packages_With_No_Passed_Version()
+    {
+        var (neverPassedId, _) = await SeedPackageAsync("@acme/ranked-never-passed");
+        await SeedVersionAsync(neverPassedId, "1.0.0", scanStatus: PackageScanStatus.Pending);
+
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync("/api/v1/packages?sort=ranked");
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<PackageListResponse>();
+
+        Assert.DoesNotContain(body!.Packages, p => p.Name == "@acme/ranked-never-passed");
+    }
+
+    [Fact]
+    public async Task Ranked_Sort_Rejects_A_Cursor()
+    {
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync("/api/v1/packages?sort=ranked&cursor=@acme/whatever");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task An_Unknown_Sort_Value_Is_A_Validation_Problem()
+    {
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync("/api/v1/packages?sort=popularity");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 }

@@ -176,10 +176,15 @@ public sealed class PendingVersionScanner(ForgeDbContext db)
     private async Task SetFinalStatusAsync(Guid versionId, string status, SmokeGate.SmokeRunReport report, CancellationToken ct)
     {
         var reportJson = JsonSerializer.Serialize(report, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        // Persists the real measured mean tick cost alongside the
+        // pass/fail verdict on every finalization path, not only Passed —
+        // PackageRankingCalculator (M7 Phase 6) only ever reads this off
+        // whatever the latest resolvable version is, and a Blocked/
+        // Flagged run still produced a real measurement worth keeping.
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"""
             UPDATE package_versions
-            SET scan_status = {status}, scan_report = {reportJson}::jsonb
+            SET scan_status = {status}, scan_report = {reportJson}::jsonb, measured_average_tick_ms = {report.Budget.AverageTickMs}
             WHERE id = {versionId}
             """, ct);
     }

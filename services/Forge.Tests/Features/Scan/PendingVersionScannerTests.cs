@@ -156,6 +156,7 @@ public sealed class PendingVersionScannerTests : IClassFixture<ForgeWebApplicati
         Assert.Equal(PackageScanStatus.Passed, version.ScanStatus);
         Assert.NotNull(version.ScanReport);
         Assert.Equal("passed", version.ScanReport!.Value.GetProperty("verdict").GetString());
+        Assert.Equal(0.5, version.MeasuredAverageTickMs); // M7 Phase 6: the real measurement PackageRankingCalculator reads.
     }
 
     [Fact]

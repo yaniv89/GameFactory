@@ -5,7 +5,6 @@ using System.Text;
 using System.Text.Json;
 using Forge.Api.Features.Marketplace;
 using Forge.Domain.Entities;
-using Forge.Infrastructure.Billing;
 using Forge.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -285,8 +284,8 @@ public sealed class MarketplaceEndpointsTests : IClassFixture<ForgeWebApplicatio
 
         _factory.MarketplaceClient.SeedPayouts(
             stripeAccount,
-            new PayoutRecord("po_paid", 400, "usd", "paid", DateTimeOffset.UtcNow.AddDays(-3)),
-            new PayoutRecord("po_in_transit", 200, "usd", "in_transit", DateTimeOffset.UtcNow));
+            new Infrastructure.Billing.PayoutRecord("po_paid", 400, "usd", "paid", DateTimeOffset.UtcNow.AddDays(-3)),
+            new Infrastructure.Billing.PayoutRecord("po_in_transit", 200, "usd", "in_transit", DateTimeOffset.UtcNow));
 
         var response = await author.Client.GetAsync("/api/v1/authors/me/earnings");
 
@@ -303,7 +302,7 @@ public sealed class MarketplaceEndpointsTests : IClassFixture<ForgeWebApplicatio
         var stripeAccount = $"acct_{Guid.NewGuid():N}";
         await SetStripeAccountAsync(author.UserId, stripeAccount);
         var arrival = DateTimeOffset.UtcNow.AddDays(-1);
-        _factory.MarketplaceClient.SeedPayouts(stripeAccount, new PayoutRecord("po_1", 400, "usd", "paid", arrival));
+        _factory.MarketplaceClient.SeedPayouts(stripeAccount, new Infrastructure.Billing.PayoutRecord("po_1", 400, "usd", "paid", arrival));
 
         var response = await author.Client.GetAsync("/api/v1/authors/me/payouts");
 

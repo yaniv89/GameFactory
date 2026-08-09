@@ -20,6 +20,7 @@
     "@forge/art-pack": "workspace:*",
     "@forge/core": "workspace:*",
     "@forge/dialogue": "workspace:*",
+    "@microsoft/signalr": "^8.0.7",
     "@forge/ds": "workspace:*",
     "@forge/module-api": "workspace:*",
     "@forge/render-2d": "workspace:*",

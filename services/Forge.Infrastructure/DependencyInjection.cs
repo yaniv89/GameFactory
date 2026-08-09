@@ -4,6 +4,7 @@ using Forge.Infrastructure.Email;
 using Forge.Infrastructure.Identity;
 using Forge.Infrastructure.Persistence;
 using Forge.Infrastructure.RateLimiting;
+using Forge.Infrastructure.Realtime;
 using Forge.Infrastructure.Storage;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -110,6 +111,33 @@ public static class DependencyInjection
             return container;
         });
         services.AddSingleton<IPackageBundleStorage, AzureBlobPackageBundleStorage>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// SignalR itself (M7 Phase 1, docs/SPEC.md Section 13.2's
+    /// <c>WS /hubs/collab</c>) plus the Redis backplane, non-negotiable
+    /// the moment a second API instance exists (CLAUDE.md Section 1.5
+    /// guardrail 20 — "there is no add it later for this one, since it
+    /// changes the hub's connection model at the root"). Uses its own
+    /// connection string, not the shared <see cref="IConnectionMultiplexer"/>
+    /// singleton <see cref="AddForgeRateLimiting"/> registers:
+    /// <c>AddStackExchangeRedis</c> owns and pools its own connection
+    /// internally as part of the SignalR Redis protocol implementation,
+    /// same as the framework's own documented setup — sharing the rate
+    /// limiter's multiplexer here would couple two independent
+    /// subsystems' connection lifecycles for no real benefit.
+    /// <see cref="IPresenceStore"/> is separate from this and does reuse
+    /// the shared multiplexer (its own doc comment explains why).
+    /// </summary>
+    public static IServiceCollection AddForgeRealtime(this IServiceCollection services, IConfiguration configuration)
+    {
+        var connectionString = configuration.GetConnectionString("Redis")
+            ?? throw new InvalidOperationException("Missing ConnectionStrings:Redis configuration.");
+
+        services.AddSignalR().AddStackExchangeRedis(connectionString);
+        services.AddSingleton<IPresenceStore, RedisPresenceStore>();
 
         return services;
     }

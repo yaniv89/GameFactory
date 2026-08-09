@@ -2,17 +2,21 @@
 // starting in Milestone M5. Auth (Identity + OpenIddict), the EF Core data
 // layer, workspace-scoped authorization policies, Projects CRUD +
 // CommitRevision, Redis-backed rate limiting, Stripe billing + plan gating,
-// the registry's read surface + dependency resolution (M6 Phase 1), and
-// publishing through gates 1-3 of the Section 10.4 pipeline — manifest
-// validation, static analysis, dependency audit (M6 Phase 2) — exist so
-// far. Gate 4 (the sandboxed smoke run) and gate 5 (the reputation queue,
-// which needs Section 16.3's trust tiers, M7 scope) don't exist yet: a
-// published version stays scan_status=pending, never passed, until gate 4
-// lands in M6 Phase 3 — a stated gap, not a silently skipped one.
+// the registry's read surface + dependency resolution (M6 Phase 1),
+// publishing through all five gates of the Section 10.4 pipeline —
+// manifest validation, static analysis, dependency audit, the sandboxed
+// smoke run (M6 Phase 3), and the reputation queue (M6 Phase 3
+// follow-up) — and the M7 Phase 1 SignalR collaboration hub (presence
+// only so far; Yjs CRDT relay is M7 Phase 2) exist so far. Gate 5's
+// automated-vs-manual review split by Section 16.3 trust tier doesn't
+// exist yet: every publish gets the same review path until M7 Phase 3
+// adds Unverified/Verified/Partner — a stated gap, not a silently
+// skipped one.
 using Forge.Api;
 using Forge.Api.Authorization;
 using Forge.Api.Features.Auth;
 using Forge.Api.Features.Billing;
+using Forge.Api.Features.Collab;
 using Forge.Api.Features.Projects;
 using Forge.Api.Features.Registry;
 using Forge.Api.RateLimiting;
@@ -29,6 +33,7 @@ builder.Services.AddForgeRateLimiting(builder.Configuration);
 builder.Services.AddForgeBilling(builder.Configuration);
 builder.Services.AddForgeRegistry();
 builder.Services.AddForgeBundleStorage(builder.Configuration);
+builder.Services.AddForgeRealtime(builder.Configuration);
 
 var app = builder.Build();
 
@@ -68,6 +73,7 @@ app.MapAuthEndpoints();
 app.MapProjectEndpoints();
 app.MapBillingEndpoints();
 app.MapRegistryEndpoints();
+app.MapCollabHub();
 
 await OpenIddictSeeding.SeedAsync(app);
 

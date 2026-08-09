@@ -1,0 +1,28 @@
+.fg-presence {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding-inline: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.fg-presence__dot {
+  inline-size: 8px;
+  block-size: 8px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.fg-presence__dot--online {
+  background: var(--accent-create);
+}
+
+.fg-presence[data-status="error"] .fg-presence__dot {
+  background: var(--accent-destroy);
+}
+
+.fg-presence__label {
+  white-space: nowrap;
+}

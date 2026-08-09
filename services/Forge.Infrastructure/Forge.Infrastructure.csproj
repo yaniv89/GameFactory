@@ -49,6 +49,15 @@
     <PackageReference Include="Stripe.net" Version="47.4.0" />
     <!-- M6 Phase 2: package bundle storage (docs/SPEC.md Section 6.2's bundle_url, CLAUDE.md Section 2.1's pinned Blob choice). -->
     <PackageReference Include="Azure.Storage.Blobs" Version="12.24.0" />
+    <!--
+      M7 Phase 1: the SignalR Redis backplane (CLAUDE.md Section 1.5
+      guardrail 20 — "SignalR requires a backplane the moment a second
+      instance exists, there is no add-it-later"). AddSignalR() itself
+      needs no separate package (it's part of Microsoft.AspNetCore.App,
+      already referenced above); this package is specifically the
+      StackExchange.Redis-backed IHubProtocol relay across instances.
+    -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="8.0.29" />
   </ItemGroup>
 
   <ItemGroup>

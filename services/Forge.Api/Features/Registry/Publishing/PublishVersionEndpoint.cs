@@ -12,15 +12,21 @@ namespace Forge.Api.Features.Registry.Publishing;
 /// <summary>
 /// docs/SPEC.md Section 13.2: <c>POST /api/v1/packages/{name}/versions</c>.
 /// Runs gates 1–3 of Section 10.4's pipeline (manifest validation, static
-/// analysis, dependency audit) and, on success, writes an immutable
-/// version row and bundle. Gate 4 (sandboxed smoke run) hasn't landed yet
-/// (M6 Phase 3) — a version that clears gates 1–3 here is stored with
-/// <see cref="PackageScanStatus.Passed"/>'s neighbor,
-/// <see cref="PackageScanStatus.Pending"/>, not <c>Passed</c>, so
-/// <see cref="Registry.IDependencyResolver"/> correctly refuses to
-/// resolve it (it only considers <c>Passed</c> candidates) until the
-/// pipeline actually finishes. This is a deliberate, honest gap, not an
-/// oversight — see M6 Phase 2's own scoping notes.
+/// analysis, dependency audit) synchronously and, on success, writes an
+/// immutable version row and bundle with
+/// <see cref="PackageScanStatus.Pending"/>, not <see cref="PackageScanStatus.Passed"/>.
+/// Gate 4 (the sandboxed smoke run, M6 Phase 3) runs asynchronously
+/// afterward — <c>Forge.Functions.Scan</c>'s <c>ScanPendingVersionsFunction</c>
+/// picks up <c>Pending</c> versions on a queue trigger and promotes them
+/// to <c>Passed</c> or <c>Flagged</c> — so <see cref="Registry.IDependencyResolver"/>
+/// correctly refuses to resolve a version this endpoint just wrote (it
+/// only considers <c>Passed</c> candidates) until that pipeline finishes.
+/// Gate 5 (Section 10.4's reputation gate — automated pass for
+/// established authors, manual review queue for new ones) doesn't exist
+/// yet: every version takes the same path through gate 4 regardless of
+/// the publishing author's history, until M7 Phase 3 adds the
+/// Unverified/Verified/Partner trust tiers that gate needs. A stated
+/// gap, not a silent one.
 ///
 /// Mapped onto the same catch-all path shape
 /// <see cref="PackageDetailAndVersionsEndpoint"/> uses for reads (scoped

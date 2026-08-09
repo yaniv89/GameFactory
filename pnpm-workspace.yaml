@@ -2,14 +2,6 @@ packages:
   - "packages/*"
   - "packages/modules/*"
 
-# TODO(#2): CVE-2026-53571 (GHSA-fx2h-pf6j-xcff) affects every Vite 5.x
-# release and is only patched in Vite >=6.4.3, one major above the Vite 5
-# pin in CLAUDE.md Section 2.2. Scoped suppression, not a blanket ignore —
-# remove this entry once #2 is resolved.
-auditConfig:
-  ignoreCves:
-    - CVE-2026-53571
-
 # Supply-chain hardening (Semgrep pnpm-workspace rules, run by the semgrep
 # CI gate — CLAUDE.md Section 4.9):
 #   - blockExoticSubdeps: reject transitive deps installed from untrusted
@@ -23,21 +15,13 @@ blockExoticSubdeps: true
 minimumReleaseAge: 10080
 trustPolicy: no-downgrade
 
-# TODO(#6): pnpm 10.33's per-package trust-downgrade check
-# (ERR_PNPM_TRUST_DOWNGRADE, a separate signal from trustPolicy above,
-# which governs *this file's own settings*, not individual packages'
-# npm-registry publish metadata) flags vite@5.4.21 — "earlier versions
-# had trusted publisher, but this version has provenance attestation."
-# Investigated, not assumed: this is the exact same vite@5.4.21 already
-# pinned by CLAUDE.md Section 2.2 and already resolved/running throughout
-# this entire repo's own build (packages/editor's dev server and
-# production build) since M0 — a live compromise of this specific,
-# already-vendored version would already be exercised continuously here,
-# not newly introduced by excluding it from a second, freshly-added
-# dependency edge (packages/player's own Vite build, M6 Phase 5e). Scoped
-# to this exact version, same "documented, tracked, not a blanket ignore"
-# shape as CVE-2026-53571 above — remove once #6 is resolved (either the
-# registry's trust signal is re-confirmed, or Vite ships a release that
-# restores it).
-trustPolicyExclude:
-  - "vite@5.4.21"
+# Issue #6 (resolved): pnpm 10.33's per-package trust-downgrade check
+# (ERR_PNPM_TRUST_DOWNGRADE) flagged vite@5.4.21 — "earlier versions had
+# trusted publisher, but this version has provenance attestation." Confirmed
+# benign via real npm registry metadata (consistent SLSA v1 provenance
+# across 5.4.18-5.4.21, genuine vitejs/vite repository, official
+# maintainers) — a category migration to a stronger trust signal, not a
+# compromise indicator. That version is no longer pinned (docs/adr/0007
+# bumped to vite@6.4.3 for issue #2's CVE-2026-53571 fix), so the
+# now-stale exclude entry is removed; if the newly pinned version trips
+# the same check, re-add a scoped entry then rather than pre-emptively.

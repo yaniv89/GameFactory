@@ -184,6 +184,9 @@ importers:
         specifier: workspace:*
         version: link:../../module-api
     devDependencies:
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
       vitest:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@26.1.2)(jsdom@30.0.1)(lightningcss@1.33.0)
@@ -207,6 +210,37 @@ importers:
       vitest:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@26.1.2)(jsdom@30.0.1)(lightningcss@1.33.0)
+
+  packages/player:
+    dependencies:
+      '@forge/core':
+        specifier: workspace:*
+        version: link:../core
+      '@forge/module-api':
+        specifier: workspace:*
+        version: link:../module-api
+      '@forge/render-2d':
+        specifier: workspace:*
+        version: link:../render-2d
+      '@forge/runtime-host':
+        specifier: workspace:*
+        version: link:../runtime-host
+      pixi.js:
+        specifier: ^8.19.0
+        version: 8.19.0
+      quickjs-emscripten:
+        specifier: ^0.32.0
+        version: 0.32.0
+    devDependencies:
+      '@forge/dialogue':
+        specifier: workspace:*
+        version: link:../modules/dialogue
+      '@types/node':
+        specifier: ^26.1.2
+        version: 26.1.2
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
 
   packages/render-2d:
     dependencies:

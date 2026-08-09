@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src"],
+  // "src/smoke" is built separately (scripts/build-smoke-test.mjs, an
+  // esbuild bundle emitted to dist/smoke/smokeTest.bundle.mjs) and
+  // deliberately excluded from this package's own tsc-emitted dist/*.js —
+  // dev-only proof tooling, never part of what a player's browser
+  // downloads. Still typechecked normally: tsconfig.typecheck.json
+  // includes "src" with no matching exclusion.
+  "exclude": ["src/smoke"]
+}

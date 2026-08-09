@@ -4,6 +4,7 @@ using Forge.Infrastructure.Email;
 using Forge.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.SignalR.StackExchangeRedis;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -84,6 +85,25 @@ namespace Forge.Tests;
 ///    tests exercise the real <c>BlobContainerClient</c> and its
 ///    create-only-if-not-exists immutability check, not a stand-in that
 ///    would silently pass even if that check were broken.
+///
+/// 6. <c>ConnectionStrings:Redis</c> strikes again, differently, for
+///    SignalR's own Redis backplane (M7 Phase 1's <c>AddForgeRealtime</c>):
+///    <c>AddStackExchangeRedis</c> doesn't resolve an
+///    <see cref="IConnectionMultiplexer"/> from DI at all — it connects
+///    its own, built from whatever connection string
+///    <c>Program.cs</c> passed it at startup, so overriding the shared
+///    multiplexer above (point 3) never reaches it. Caught by a real CI
+///    failure, not anticipated up front: a hub's
+///    <c>Clients.Caller.SendAsync</c> call always round-trips through the
+///    Redis backplane's pub/sub, even for a single connected client in a
+///    single-process test host, so a backplane pointed at
+///    <c>appsettings.json</c>'s placeholder just swallows every send.
+///    Fixed via <c>RedisOptions.ConnectionFactory</c>, the package's own
+///    documented override point for supplying an already-connected
+///    multiplexer — registered through <c>services.Configure&lt;RedisOptions&gt;</c>
+///    here, which composes onto (and, running later, wins over)
+///    <c>AddForgeRealtime</c>'s own configuration rather than replacing a
+///    single DI registration the way points 1-5 do.
 /// </summary>
 public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
@@ -147,8 +167,37 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
             db.Database.EnsureCreated();
 
             var redisConnectionString = _redis.GetConnectionString();
+            // One real, lazily-created connection to the test container,
+            // shared by both registrations below — not two independent
+            // ones to the same target.
+            var testMultiplexer = new Lazy<IConnectionMultiplexer>(() => ConnectionMultiplexer.Connect(redisConnectionString));
             services.RemoveAll<IConnectionMultiplexer>();
-            services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
+            services.AddSingleton(_ => testMultiplexer.Value);
+
+            // M7 Phase 1's AddForgeRealtime calls AddStackExchangeRedis
+            // with the connection string Program.cs read from
+            // appsettings.json at startup (a placeholder that points
+            // nowhere in CI) — that call configures RedisOptions.Configuration
+            // directly, which the IConnectionMultiplexer override above
+            // never touches (SignalR's Redis backplane owns and connects
+            // its own StackExchange.Redis client, it doesn't resolve one
+            // from DI). Caught by a real CI run: CollabHubTests'
+            // two-member presence test timed out waiting for
+            // "presence:roster" — the hub's Clients.Caller.SendAsync
+            // call always goes through the Redis backplane's pub/sub,
+            // even for a single-process test host, so a backplane that
+            // can't reach real Redis means that send goes nowhere, not
+            // that it falls back to a direct in-process delivery.
+            // RedisOptions.ConnectionFactory is the documented override
+            // point for reusing an already-connected multiplexer instead
+            // of letting AddStackExchangeRedis parse/reconnect from the
+            // wrong connection string; registered here (via
+            // services.Configure, which composes rather than replaces)
+            // so it runs after and wins over AddForgeRealtime's own call.
+            services.Configure<RedisOptions>(options =>
+            {
+                options.ConnectionFactory = _ => Task.FromResult(testMultiplexer.Value);
+            });
 
             var blobConnectionString = _azurite.GetConnectionString();
             services.RemoveAll<BlobContainerClient>();

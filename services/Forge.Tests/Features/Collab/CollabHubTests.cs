@@ -157,9 +157,13 @@ public sealed class CollabHubTests : IClassFixture<ForgeWebApplicationFactory>
         var joined = await ownerSawJoin.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(editor.UserId, joined.UserId);
 
+        // Captured before StopAsync(): HubConnection resets ConnectionId
+        // to null once stopped, so reading it after disconnecting would
+        // compare against null instead of the id CollabHub actually saw.
+        var editorConnectionId = editorConnection.ConnectionId;
         await editorConnection.StopAsync();
         var leftConnectionId = await ownerSawLeave.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.Equal(editorConnection.ConnectionId, leftConnectionId);
+        Assert.Equal(editorConnectionId, leftConnectionId);
         await editorConnection.DisposeAsync();
     }
 }

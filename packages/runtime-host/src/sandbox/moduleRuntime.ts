@@ -1,4 +1,4 @@
-import type { QuickJSContext, QuickJSHandle, QuickJSRuntime } from "quickjs-emscripten";
+import type { QuickJSContext, QuickJSHandle, QuickJSRuntime, QuickJSWASMModule } from "quickjs-emscripten";
 import { installCapabilityBridge } from "./bridge";
 import type { CapabilityHandler } from "./capabilities";
 
@@ -14,7 +14,10 @@ import type { CapabilityHandler } from "./capabilities";
  * runtime. The *value* import of `quickjs-emscripten` (`getQuickJS`) is
  * dynamic, inside `create()` only, so that importing this file doesn't
  * pull the ~228 KB WASM payload into any bundle that never actually
- * instantiates a module — see docs/adr/0004.
+ * instantiates a module — see docs/adr/0004. Skipped entirely when a
+ * caller supplies `ModuleRuntimeOptions.wasmModule` directly (see its own
+ * doc comment) — that path never touches `getQuickJS()`'s network/XHR
+ * loading at all.
  */
 export interface ModuleRuntimeOptions {
   /** Max WASM heap this module's runtime may allocate, in bytes. */
@@ -31,6 +34,26 @@ export interface ModuleRuntimeOptions {
    * language intrinsics. See docs/security/SANDBOX-DESIGN.md Section 4.
    */
   capabilities?: readonly CapabilityHandler[];
+  /**
+   * A pre-built QuickJS WASM module to construct this runtime from,
+   * instead of the default `getQuickJS()` singleton (which lazily
+   * `import()`s `quickjs-emscripten` and lets its own emscripten loader
+   * fetch the `.wasm` payload over the network or XHR). Editor and normal
+   * browser use never sets this — the default is correct there.
+   *
+   * The standalone `forge export` player (M6 Phase 5) has to: Chrome
+   * blocks both `fetch()` and `XMLHttpRequest` of a same-directory file
+   * under a `file://` origin (confirmed against
+   * `@jitl/quickjs-wasmfile-release-sync`'s own emscripten loader, not
+   * assumed), so the exported build's boot code instead reads its `.wasm`
+   * bytes as an embedded asset and constructs its own module via
+   * `quickjs-emscripten-core`'s `newQuickJSWASMModuleFromVariant(newVariant(RELEASE_SYNC,
+   * { wasmBinary }))` — documented, first-party API for exactly this,
+   * not a hack — and passes the result here. Isolation is unaffected
+   * either way: the WASM module object is only ever used to mint new
+   * `QuickJSRuntime`s, one per module instance, same as always.
+   */
+  wasmModule?: QuickJSWASMModule;
 }
 
 export interface EvalSuccess {
@@ -61,8 +84,11 @@ export class ModuleRuntime {
   }
 
   static async create(options: ModuleRuntimeOptions): Promise<ModuleRuntime> {
-    const { getQuickJS } = await import("quickjs-emscripten");
-    const QuickJS = await getQuickJS();
+    let QuickJS = options.wasmModule;
+    if (!QuickJS) {
+      const { getQuickJS } = await import("quickjs-emscripten");
+      QuickJS = await getQuickJS();
+    }
     const runtime = QuickJS.newRuntime();
     runtime.setMemoryLimit(options.memoryLimitBytes);
     runtime.setMaxStackSize(options.maxStackSizeBytes);

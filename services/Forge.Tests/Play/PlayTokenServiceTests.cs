@@ -1,7 +1,7 @@
 using Forge.Infrastructure.Play;
 using Xunit;
 
-namespace Forge.Tests.Infrastructure.Play;
+namespace Forge.Tests.Play;
 
 public sealed class PlayTokenServiceTests
 {

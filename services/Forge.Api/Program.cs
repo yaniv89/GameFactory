@@ -18,6 +18,7 @@ using Forge.Api.Features.Auth;
 using Forge.Api.Features.Billing;
 using Forge.Api.Features.Collab;
 using Forge.Api.Features.Marketplace;
+using Forge.Api.Features.Play;
 using Forge.Api.Features.Projects;
 using Forge.Api.Features.Registry;
 using Forge.Api.RateLimiting;
@@ -36,6 +37,7 @@ builder.Services.AddForgeMarketplaceBilling(builder.Configuration);
 builder.Services.AddForgeRegistry();
 builder.Services.AddForgeBundleStorage(builder.Configuration);
 builder.Services.AddForgeRealtime(builder.Configuration);
+builder.Services.AddForgePlayServices(builder.Configuration);
 
 var app = builder.Build();
 
@@ -77,6 +79,7 @@ app.MapBillingEndpoints();
 app.MapRegistryEndpoints();
 app.MapCollabHub();
 app.MapMarketplaceEndpoints();
+app.MapPlayEndpoints();
 
 await OpenIddictSeeding.SeedAsync(app);
 

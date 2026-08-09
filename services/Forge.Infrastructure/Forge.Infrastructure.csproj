@@ -49,6 +49,8 @@
     <PackageReference Include="Stripe.net" Version="47.4.0" />
     <!-- M6 Phase 2: package bundle storage (docs/SPEC.md Section 6.2's bundle_url, CLAUDE.md Section 2.1's pinned Blob choice). -->
     <PackageReference Include="Azure.Storage.Blobs" Version="12.24.0" />
+    <!-- M7 Phase 7: cloud saves, leaderboards, achievements, analytics (docs/SPEC.md Section 17, CLAUDE.md Section 2.1's pinned wide-column choice). Version confirmed on nuget.org at scaffold time — see this file's own remarks on unverified restores. -->
+    <PackageReference Include="Azure.Data.Tables" Version="12.11.0" />
     <!--
       M7 Phase 1: the SignalR Redis backplane (CLAUDE.md Section 1.5
       guardrail 20 — "SignalR requires a backplane the moment a second

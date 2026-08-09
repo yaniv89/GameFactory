@@ -1,3 +1,4 @@
+using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using Forge.Infrastructure.Billing;
 using Forge.Infrastructure.Email;
@@ -104,6 +105,13 @@ namespace Forge.Tests;
 ///    here, which composes onto (and, running later, wins over)
 ///    <c>AddForgeRealtime</c>'s own configuration rather than replacing a
 ///    single DI registration the way points 1-5 do.
+///
+/// 7. <c>ConnectionStrings:Table</c> (M7 Phase 7's Play Services) reuses
+///    the same Azurite container as point 5 rather than spinning up a
+///    second one — Azurite emulates blob/queue/table together under one
+///    account, so the fix is the same direct-registration-replacement
+///    pattern as <c>BlobContainerClient</c> just above, not a new
+///    container.
 /// </summary>
 public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
@@ -213,6 +221,20 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
                 container.CreateIfNotExists();
                 return container;
             });
+
+            // M7 Phase 7: same Azurite container as point 5 above backs
+            // Table Storage too (Azurite emulates blob/queue/table under
+            // one account) — no second container, just a second client
+            // pointed at the same connection string. Same eager-read
+            // race as every other ConnectionStrings:* override in this
+            // class (point 2's own remarks): AddForgePlayServices already
+            // built a TableServiceClient from appsettings.json's
+            // placeholder by the time this delegate runs, so the fix is
+            // the same one used for BlobContainerClient just above —
+            // replace the registration directly rather than trying to
+            // win a race through IConfiguration.
+            services.RemoveAll<TableServiceClient>();
+            services.AddSingleton(_ => new TableServiceClient(blobConnectionString));
         });
     }
 

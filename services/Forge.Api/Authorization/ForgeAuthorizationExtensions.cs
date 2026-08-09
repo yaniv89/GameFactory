@@ -1,5 +1,6 @@
 using Forge.Api.Features.Projects;
 using Forge.Domain.Entities;
+using Forge.Infrastructure.Play;
 using Microsoft.AspNetCore.Authorization;
 using OpenIddict.Validation.AspNetCore;
 
@@ -15,6 +16,9 @@ public static class ForgeAuthorizationExtensions
 {
     /// <summary>Every resource API endpoint (as opposed to /connect/authorize, which needs the Identity cookie scheme specifically) authenticates via the OpenIddict-issued Bearer access token.</summary>
     public const string BearerPolicy = "Bearer";
+
+    /// <summary>M7 Phase 7's Play Services surface — a published game's runtime authenticates its anonymous <see cref="Domain.Entities.Player"/> identity via <see cref="PlayTokenAuthenticationHandler"/> instead, never the editor's OpenIddict Bearer token (<see cref="Domain.Entities.Player"/>'s own doc comment on why these are deliberately separate identities).</summary>
+    public const string PlayTokenPolicy = "play:token";
 
     /// <summary>
     /// Wires <see cref="ICurrentUser"/>, the workspace-role requirement
@@ -74,7 +78,10 @@ public static class ForgeAuthorizationExtensions
             .AddPolicy("workspace:pro", policy => policy
                 .AddAuthenticationSchemes(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)
                 .RequireAuthenticatedUser()
-                .Requirements.Add(new PlanGateRequirement(WorkspaceResourceKind.Workspace, "workspaceId")));
+                .Requirements.Add(new PlanGateRequirement(WorkspaceResourceKind.Workspace, "workspaceId")))
+            .AddPolicy(PlayTokenPolicy, policy => policy
+                .AddAuthenticationSchemes(PlayTokenAuthenticationHandler.SchemeName)
+                .RequireAuthenticatedUser());
 
         return services;
     }

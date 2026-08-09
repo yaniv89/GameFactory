@@ -58,4 +58,30 @@ public static class RateLimitPolicies
     /// pool with something else IP-keyed.
     /// </summary>
     public static readonly RateLimitPolicy Registry = new(Limit: 300, Window: TimeSpan.FromMinutes(1));
+
+    /// <summary>
+    /// Anonymous play-identity minting (docs/SPEC.md Section 17),
+    /// IP-keyed — tighter than <see cref="Auth"/>: there's no
+    /// email/password cost to minting a new anonymous player identity,
+    /// so this is the only real friction against a script spraying fresh
+    /// ones.
+    /// </summary>
+    public static readonly RateLimitPolicy PlayIdentity = new(Limit: 20, Window: TimeSpan.FromMinutes(10));
+
+    /// <summary>
+    /// Authenticated Play Services calls (saves/achievements/analytics),
+    /// player-keyed — generous like <see cref="Api"/>, but its own pool
+    /// so a runaway published-game client can't cost the editor API
+    /// surface anything.
+    /// </summary>
+    public static readonly RateLimitPolicy Play = new(Limit: 300, Window: TimeSpan.FromMinutes(1));
+
+    /// <summary>
+    /// Leaderboard score submissions specifically, player-keyed and
+    /// tighter than <see cref="Play"/> — docs/SPEC.md Section 17's own
+    /// anti-cheat mitigation list names "rate limits" first, and a
+    /// fixed-step-simulation game has no legitimate reason to submit more
+    /// than a handful of scores a minute.
+    /// </summary>
+    public static readonly RateLimitPolicy LeaderboardSubmit = new(Limit: 10, Window: TimeSpan.FromMinutes(1));
 }

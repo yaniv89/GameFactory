@@ -24,9 +24,13 @@ namespace Forge.Infrastructure.Persistence;
 ///
 /// Models the M5 subset (identity, workspaces, subscriptions,
 /// projects/revisions), M6 Phase 1's registry tables (packages,
-/// package_versions, package_dependencies), and M7 Phase 4's commerce
-/// tables (listings, licenses, purchases). Asset tables (assets,
-/// published_builds) are still later scope.
+/// package_versions, package_dependencies), M7 Phase 4's commerce
+/// tables (listings, licenses, purchases), and M7 Phase 7's <see cref="Domain.Entities.Player"/>
+/// identity table — the only piece of Play Services (docs/SPEC.md
+/// Section 17) that lives in PostgreSQL; saves/leaderboards/achievements/
+/// analytics are Azure Table Storage (<c>Forge.Infrastructure.Play</c>),
+/// never modeled here. Asset tables (assets, published_builds) are still
+/// later scope.
 /// </summary>
 public sealed class ForgeDbContext(DbContextOptions<ForgeDbContext> options)
     : IdentityDbContext<ForgeIdentityUser, IdentityRole<Guid>, Guid>(options)
@@ -62,6 +66,8 @@ public sealed class ForgeDbContext(DbContextOptions<ForgeDbContext> options)
     public DbSet<License> Licenses => Set<License>();
 
     public DbSet<Purchase> Purchases => Set<Purchase>();
+
+    public DbSet<Player> Players => Set<Player>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

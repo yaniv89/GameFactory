@@ -1,11 +1,14 @@
+using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using Forge.Infrastructure.Billing;
 using Forge.Infrastructure.Email;
 using Forge.Infrastructure.Identity;
 using Forge.Infrastructure.Persistence;
+using Forge.Infrastructure.Play;
 using Forge.Infrastructure.RateLimiting;
 using Forge.Infrastructure.Realtime;
 using Forge.Infrastructure.Storage;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -107,6 +110,44 @@ public static class DependencyInjection
 
         var stripeClient = new StripeClient(secretKey);
         services.AddSingleton<IStripeMarketplaceClient>(_ => new StripeMarketplaceClient(stripeClient));
+
+        return services;
+    }
+
+    /// <summary>
+    /// M7 Phase 7: Play Services (docs/SPEC.md Section 17) — anonymous
+    /// player identity's <see cref="PlayTokenService"/>/<see cref="PlayTokenAuthenticationHandler"/>,
+    /// and the Azure Table Storage client backing cloud saves,
+    /// leaderboards, achievements, and analytics ingestion
+    /// (<see cref="SaveSlotStore"/>/<see cref="LeaderboardStore"/>/
+    /// <see cref="AchievementStore"/>/<see cref="AnalyticsEventStore"/>).
+    /// <c>ConnectionStrings:Table</c> is a separate config key from
+    /// <c>ConnectionStrings:Blob</c> even though both point at the same
+    /// Azurite/Azure Storage account in local dev and in this repo's own
+    /// tests (Azurite emulates blob/queue/table together under one
+    /// account) — a real Azure Storage account's blob and table
+    /// endpoints share the account key too, but keeping the config keys
+    /// separate documents each store's own dependency rather than
+    /// implying <c>AddForgeBundleStorage</c>'s blob connection secretly
+    /// also has to be table-capable.
+    /// </summary>
+    public static IServiceCollection AddForgePlayServices(this IServiceCollection services, IConfiguration configuration)
+    {
+        var tokenSecret = configuration["PlayServices:TokenSecret"]
+            ?? throw new InvalidOperationException("Missing PlayServices:TokenSecret configuration.");
+        services.AddSingleton(new PlayTokenOptions(tokenSecret));
+        services.AddSingleton<PlayTokenService>();
+
+        services.AddAuthentication()
+            .AddScheme<AuthenticationSchemeOptions, PlayTokenAuthenticationHandler>(PlayTokenAuthenticationHandler.SchemeName, _ => { });
+
+        var tableConnectionString = configuration.GetConnectionString("Table")
+            ?? throw new InvalidOperationException("Missing ConnectionStrings:Table configuration.");
+        services.AddSingleton(_ => new TableServiceClient(tableConnectionString));
+        services.AddSingleton<SaveSlotStore>();
+        services.AddSingleton<LeaderboardStore>();
+        services.AddSingleton<AchievementStore>();
+        services.AddSingleton<AnalyticsEventStore>();
 
         return services;
     }

@@ -1,4 +1,5 @@
 using Forge.Api.Authorization;
+using Forge.Infrastructure.Play;
 using Forge.Infrastructure.RateLimiting;
 
 namespace Forge.Api.RateLimiting;
@@ -40,6 +41,11 @@ public sealed class RateLimitingMiddleware(RequestDelegate next)
             // omitting a token.
             RateLimitKeyStrategy.User => "anonymous",
             RateLimitKeyStrategy.IpAddress => context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            // Same "still needs *some* budget" reasoning as the User case
+            // above — an endpoint that somehow reaches this middleware
+            // without a valid PlayToken principal isn't this middleware's
+            // job to reject (RequireAuthorization already would have).
+            RateLimitKeyStrategy.Player => context.User.FindFirst(PlayClaimTypes.PlayerId)?.Value ?? "anonymous",
             _ => "unknown",
         };
 

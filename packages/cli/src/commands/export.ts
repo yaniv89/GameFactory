@@ -2,22 +2,41 @@ import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import type { PlayerProjectData } from "@forge/player";
+import type { PlayerInstalledModule, PlayerProjectData } from "@forge/player";
 import { findRepoRoot } from "../repoRoot.js";
 
 const REPO_ROOT = findRepoRoot();
 const PLAYER_DIR = join(REPO_ROOT, "packages/player");
 const ALLOWLIST_PATH = join(REPO_ROOT, "tools/security/licenses.json");
 
+/** One entry of `ExportProjectInput.installedModules` — everything `PlayerInstalledModule` has except `guestBundleSource`, which `runExport` resolves itself (see its own doc comment). */
+type ExportInstalledModuleInput = Omit<PlayerInstalledModule, "guestBundleSource">;
+
+/**
+ * What a project file on disk actually declares — `PlayerProjectData`
+ * minus each module's `guestBundleSource`. Requiring an author (or a
+ * hand-authored fixture) to pre-compute and paste in a module's compiled
+ * guest bundle text would be impractical and would silently drift from
+ * that module's real source the moment it changed — `runExport` resolves
+ * each declared module's own `dist/guest-bundle.js` fresh, every export,
+ * the same way a real package-registry-backed resolution would slot in
+ * later (M6 Phase 1/2's registry already exists; wiring export to fetch
+ * from it instead of node_modules is a separate, future piece — this is
+ * the local/workspace-resolved version of the same idea).
+ */
+export type ExportProjectInput = Omit<PlayerProjectData, "installedModules"> & {
+  readonly installedModules: readonly ExportInstalledModuleInput[];
+};
+
 export interface ExportOptions {
-  /** Path to a PlayerProjectData JSON file — see packages/player/src/playerProjectData.ts. Not the editor's own ProjectDocument shape (there is no serializer from that to a file yet; docs/SPEC.md Section 7's full on-disk format is a separate, larger gap — fixtures/projects/* are hand-authored PlayerProjectData files directly, same as this command expects). */
+  /** Path to an ExportProjectInput JSON file — see packages/player/src/playerProjectData.ts for the field shapes. Not the editor's own ProjectDocument shape (there is no serializer from that to a file yet; docs/SPEC.md Section 7's full on-disk format is a separate, larger gap — fixtures/projects/* are hand-authored ExportProjectInput files directly, same as this command expects). */
   readonly projectPath: string;
   readonly outDir: string;
 }
 
-function validatePlayerProjectData(value: unknown, sourcePath: string): asserts value is PlayerProjectData {
+function validateExportProjectInput(value: unknown, sourcePath: string): asserts value is ExportProjectInput {
   const fail = (reason: string): never => {
-    throw new Error(`forge export: "${sourcePath}" is not a valid PlayerProjectData — ${reason}`);
+    throw new Error(`forge export: "${sourcePath}" is not a valid project file — ${reason}`);
   };
   if (typeof value !== "object" || value === null) fail("expected a JSON object");
   const data = value as Record<string, unknown>;
@@ -40,12 +59,39 @@ function validatePlayerProjectData(value: unknown, sourcePath: string): asserts 
   }
   const modules = data.installedModules as Array<Record<string, unknown>>;
   for (const installedModule of modules) {
-    for (const field of ["name", "version", "guestBundleSource"]) {
+    for (const field of ["name", "version"]) {
       if (typeof installedModule[field] !== "string" || installedModule[field] === "") {
         fail(`installed module is missing a non-empty string "${field}"`);
       }
     }
+    if (typeof installedModule.config !== "object" || installedModule.config === null) {
+      fail(`installed module "${String(installedModule.name)}" is missing a "config" object`);
+    }
   }
+}
+
+/** Resolves `<moduleName>/dist/guest-bundle.js` from the player package's own node_modules — see `ExportProjectInput`'s doc comment for why this isn't pre-supplied in the project file. */
+function readModuleGuestBundle(moduleName: string): string {
+  const require = createRequire(join(PLAYER_DIR, "package.json"));
+  let path: string;
+  try {
+    path = require.resolve(`${moduleName}/dist/guest-bundle.js`);
+  } catch (err) {
+    throw new Error(
+      `forge export: could not resolve "${moduleName}/dist/guest-bundle.js" — is it installed as a dependency of packages/player, and has its own \`build\` script run? (${err instanceof Error ? err.message : String(err)})`,
+    );
+  }
+  return readFileSync(path, "utf8");
+}
+
+function hydrateProjectData(input: ExportProjectInput): PlayerProjectData {
+  return {
+    ...input,
+    installedModules: input.installedModules.map((installedModule) => ({
+      ...installedModule,
+      guestBundleSource: readModuleGuestBundle(installedModule.name),
+    })),
+  };
 }
 
 function readWasmBinaryBase64(): string {
@@ -122,8 +168,8 @@ function writeLicensesFile(outDir: string): void {
 
 export function runExport(options: ExportOptions): void {
   const raw: unknown = JSON.parse(readFileSync(options.projectPath, "utf8"));
-  validatePlayerProjectData(raw, options.projectPath);
-  const projectData = raw;
+  validateExportProjectInput(raw, options.projectPath);
+  const projectData = hydrateProjectData(raw);
 
   writeGeneratedFiles(projectData);
 

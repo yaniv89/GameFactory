@@ -9,6 +9,7 @@ public static class MarketplaceEndpointsExtensions
         app.MapPurchaseCheckoutSession();
         app.MapLicenses();
         app.MapEarnings();
+        app.MapPayouts();
         return app;
     }
 }

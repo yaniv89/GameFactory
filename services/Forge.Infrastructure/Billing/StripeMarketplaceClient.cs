@@ -10,9 +10,11 @@ namespace Forge.Infrastructure.Billing;
 /// <c>SessionLineItemPriceDataProductDataOptions</c>,
 /// <c>SessionPaymentIntentDataOptions</c>,
 /// <c>SessionPaymentIntentDataTransferDataOptions</c>,
-/// <c>AccountCapabilitiesOptions</c>/<c>AccountCapabilitiesTransfersOptions</c>)
-/// could not be confirmed against the real Stripe.net 47.4.0 source in
-/// this sandbox — every source/docs host that would confirm them
+/// <c>AccountCapabilitiesOptions</c>/<c>AccountCapabilitiesTransfersOptions</c>,
+/// and — added in M7 Phase 5 — <c>PayoutService</c>/<c>PayoutListOptions</c>/
+/// <c>RequestOptions.StripeAccount</c>/<c>Payout.ArrivalDate</c>) could not
+/// be confirmed against the real Stripe.net 47.4.0 source in this sandbox
+/// — every source/docs host that would confirm them
 /// (github.com raw paths that 404'd on every guessed layout,
 /// docs.stripe.com, fuget.org, jsdelivr, the GitHub API) is blocked by
 /// this environment's network egress proxy. This is the same
@@ -105,5 +107,33 @@ public sealed class StripeMarketplaceClient(StripeClient stripeClient) : IStripe
         var service = new SessionService(stripeClient);
         var session = await service.CreateAsync(options, cancellationToken: ct);
         return new PurchaseCheckoutSessionResult(session.Url, session.PaymentIntentId);
+    }
+
+    /// <summary>
+    /// <see cref="RequestOptions.StripeAccount"/> is Stripe's documented
+    /// "act as the connected account" mechanism — every platform-side
+    /// Stripe.net call so far in this file has operated on the
+    /// platform's own account, but a connected account's payouts only
+    /// exist in that account's own context, not the platform's.
+    /// docs/SPEC.md Section 16.1's "Net 30, minimum $50" payout schedule
+    /// is deliberately NOT configured from here: Stripe's payout-schedule
+    /// API (interval/delay_days) controls cadence, not a dollar-amount
+    /// floor — there is no Stripe API field that means "minimum $50," so
+    /// modeling one would be presenting a guess as a real setting (CLAUDE.md
+    /// Section 0's "never guess and present the guess as fact"). That
+    /// schedule is real Connect-dashboard/account configuration, a stated
+    /// gap here rather than a wrong implementation.
+    /// </summary>
+    public async Task<IReadOnlyList<PayoutRecord>> ListPayoutsAsync(string connectedStripeAccountId, CancellationToken ct)
+    {
+        var service = new PayoutService(stripeClient);
+        var payouts = await service.ListAsync(
+            new PayoutListOptions { Limit = 100 },
+            new RequestOptions { StripeAccount = connectedStripeAccountId },
+            cancellationToken: ct);
+
+        return payouts.Data
+            .Select(p => new PayoutRecord(p.Id, (int)p.Amount, p.Currency, p.Status, new DateTimeOffset(p.ArrivalDate, TimeSpan.Zero)))
+            .ToList();
     }
 }

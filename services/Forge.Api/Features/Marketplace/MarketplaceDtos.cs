@@ -13,3 +13,5 @@ public sealed record PurchaseCheckoutSessionResponse(string Url);
 public sealed record LicenseResponse(Guid Id, string PackageName, string GrantedVia, DateTimeOffset GrantedAt, DateTimeOffset? ExpiresAt);
 
 public sealed record AuthorEarningsResponse(int TotalEarnedCents, int PendingPayoutCents, string Currency, int SucceededSaleCount);
+
+public sealed record PayoutHistoryEntryResponse(string StripePayoutId, int AmountCents, string Currency, string Status, DateTimeOffset ArrivalDate);

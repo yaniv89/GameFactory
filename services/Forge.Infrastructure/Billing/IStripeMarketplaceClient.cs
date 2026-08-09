@@ -23,6 +23,21 @@ public sealed record CreatePurchaseCheckoutSessionRequest(
 public sealed record PurchaseCheckoutSessionResult(string SessionUrl, string StripePaymentIntentId);
 
 /// <summary>
+/// One row of a connected account's real Stripe payout history — money
+/// actually swept from the connected account's Stripe balance to the
+/// author's bank account, not the earlier destination-charge transfer
+/// that only moves funds into that Stripe balance (docs/SPEC.md Section
+/// 16.1 draws exactly this distinction: "Payment processing: Stripe
+/// Connect, passed through" vs. "Payout schedule: Net 30, minimum $50" —
+/// two different hops of the same dollar). <see cref="Status"/> is
+/// Stripe's own payout status string (<c>paid</c>, <c>pending</c>,
+/// <c>in_transit</c>, <c>canceled</c>, <c>failed</c>) passed through
+/// unedited rather than re-modeled, so a status Stripe adds later isn't
+/// silently coerced into an unrelated one here.
+/// </summary>
+public sealed record PayoutRecord(string StripePayoutId, int AmountCents, string Currency, string Status, DateTimeOffset ArrivalDate);
+
+/// <summary>
 /// docs/SPEC.md Section 16.1's "Stripe Connect, passed through" for
 /// marketplace purchases — distinct from <see cref="IStripeBillingClient"/>
 /// (subscription billing, M5 Phase 5): different Stripe API surface
@@ -59,4 +74,15 @@ public interface IStripeMarketplaceClient
     /// platform never separately re-transfers funds itself.
     /// </summary>
     Task<PurchaseCheckoutSessionResult> CreatePurchaseCheckoutSessionAsync(CreatePurchaseCheckoutSessionRequest request, CancellationToken ct);
+
+    /// <summary>
+    /// Real payout history for a connected account, queried live from
+    /// Stripe rather than mirrored into a second, platform-owned ledger
+    /// that could drift out of sync with what Stripe itself considers
+    /// authoritative — the same reasoning docs/SPEC.md Section 5.5 (no
+    /// duplicated source of truth for state another system already owns)
+    /// applies here, not just to in-process caches. Most-recent-first,
+    /// same ordering Stripe's own List API returns by default.
+    /// </summary>
+    Task<IReadOnlyList<PayoutRecord>> ListPayoutsAsync(string connectedStripeAccountId, CancellationToken ct);
 }

@@ -14,6 +14,7 @@ public sealed class FakeStripeMarketplaceClient : IStripeMarketplaceClient
 {
     private readonly List<CreateConnectAccountLinkRequest> _connectRequests = [];
     private readonly List<CreatePurchaseCheckoutSessionRequest> _checkoutRequests = [];
+    private readonly Dictionary<string, List<PayoutRecord>> _payoutsByAccount = [];
 
     public IReadOnlyList<CreateConnectAccountLinkRequest> ConnectRequests
     {
@@ -23,6 +24,12 @@ public sealed class FakeStripeMarketplaceClient : IStripeMarketplaceClient
     public IReadOnlyList<CreatePurchaseCheckoutSessionRequest> CheckoutRequests
     {
         get { lock (_checkoutRequests) return [.. _checkoutRequests]; }
+    }
+
+    /// <summary>Seeds what <see cref="ListPayoutsAsync"/> returns for a given connected account — no real Stripe payout ever exists in this sandbox, so tests set up whatever scenario they need directly.</summary>
+    public void SeedPayouts(string connectedStripeAccountId, params PayoutRecord[] payouts)
+    {
+        lock (_payoutsByAccount) _payoutsByAccount[connectedStripeAccountId] = [.. payouts];
     }
 
     public Task<ConnectAccountLinkResult> CreateConnectAccountLinkAsync(CreateConnectAccountLinkRequest request, CancellationToken ct)
@@ -38,5 +45,14 @@ public sealed class FakeStripeMarketplaceClient : IStripeMarketplaceClient
         var sessionUrl = $"https://checkout.stripe.com/fake/{Guid.NewGuid():N}";
         var paymentIntentId = $"pi_{Guid.NewGuid():N}";
         return Task.FromResult(new PurchaseCheckoutSessionResult(sessionUrl, paymentIntentId));
+    }
+
+    public Task<IReadOnlyList<PayoutRecord>> ListPayoutsAsync(string connectedStripeAccountId, CancellationToken ct)
+    {
+        lock (_payoutsByAccount)
+        {
+            IReadOnlyList<PayoutRecord> result = _payoutsByAccount.TryGetValue(connectedStripeAccountId, out var payouts) ? [.. payouts] : [];
+            return Task.FromResult(result);
+        }
     }
 }

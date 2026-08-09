@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Forge.Api.Features.Marketplace;
 using Forge.Domain.Entities;
+using Forge.Infrastructure.Billing;
 using Forge.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,9 +16,11 @@ namespace Forge.Tests.Features.Marketplace;
 /// <summary>
 /// M7 Phase 4: Connect account linking, listing price management, purchase
 /// Checkout Session creation, license listing, author earnings, and the
-/// webhook-driven completion that actually grants a license — over real
-/// HTTP against <see cref="FakeStripeMarketplaceClient"/> (no real Stripe
-/// test-mode API key exists in this environment, same posture as
+/// webhook-driven completion that actually grants a license. M7 Phase 5
+/// adds real payout history and a PendingPayoutCents that actually
+/// subtracts what Stripe has already paid out — over real HTTP against
+/// <see cref="FakeStripeMarketplaceClient"/> (no real Stripe test-mode
+/// API key exists in this environment, same posture as
 /// <see cref="Features.Billing.BillingEndpointsTests"/>). Signature
 /// verification for the webhook test is real HMAC-SHA256, the same
 /// approach <see cref="Features.Billing.StripeWebhookEndpointTests"/>
@@ -267,6 +270,61 @@ public sealed class MarketplaceEndpointsTests : IClassFixture<ForgeWebApplicatio
         var body = await response.Content.ReadFromJsonAsync<AuthorEarningsResponse>();
         Assert.Equal(400, body!.TotalEarnedCents); // Only the succeeded purchase counts.
         Assert.Equal(1, body.SucceededSaleCount);
+        Assert.Equal(400, body.PendingPayoutCents); // No linked Stripe account — nothing could have been paid out yet.
+    }
+
+    [Fact]
+    public async Task Earnings_Endpoint_Subtracts_Paid_Payouts_From_Pending()
+    {
+        var author = await AuthTestHelper.SignupAndAuthenticateAsync(_factory);
+        var stripeAccount = $"acct_{Guid.NewGuid():N}";
+        await SetStripeAccountAsync(author.UserId, stripeAccount);
+        var (packageId, _) = await SeedPackageWithListingAsync(author.UserId, ListingPricingModel.OneTime, 500);
+        var buyer = await AuthTestHelper.SignupAndAuthenticateAsync(_factory);
+        await SeedPurchaseAsync(packageId, buyer.WorkspaceId, buyer.UserId, PurchaseStatus.Succeeded, amountCents: 500, authorShareCents: 1000);
+
+        _factory.MarketplaceClient.SeedPayouts(
+            stripeAccount,
+            new PayoutRecord("po_paid", 400, "usd", "paid", DateTimeOffset.UtcNow.AddDays(-3)),
+            new PayoutRecord("po_in_transit", 200, "usd", "in_transit", DateTimeOffset.UtcNow));
+
+        var response = await author.Client.GetAsync("/api/v1/authors/me/earnings");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<AuthorEarningsResponse>();
+        Assert.Equal(1000, body!.TotalEarnedCents);
+        Assert.Equal(600, body.PendingPayoutCents); // 1000 earned minus the 400 that's actually paid; in_transit doesn't count yet.
+    }
+
+    [Fact]
+    public async Task Payouts_Endpoint_Returns_The_Authors_Real_Payout_History()
+    {
+        var author = await AuthTestHelper.SignupAndAuthenticateAsync(_factory);
+        var stripeAccount = $"acct_{Guid.NewGuid():N}";
+        await SetStripeAccountAsync(author.UserId, stripeAccount);
+        var arrival = DateTimeOffset.UtcNow.AddDays(-1);
+        _factory.MarketplaceClient.SeedPayouts(stripeAccount, new PayoutRecord("po_1", 400, "usd", "paid", arrival));
+
+        var response = await author.Client.GetAsync("/api/v1/authors/me/payouts");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var payouts = await response.Content.ReadFromJsonAsync<List<PayoutHistoryEntryResponse>>();
+        var payout = Assert.Single(payouts!);
+        Assert.Equal("po_1", payout.StripePayoutId);
+        Assert.Equal(400, payout.AmountCents);
+        Assert.Equal("paid", payout.Status);
+    }
+
+    [Fact]
+    public async Task Payouts_Endpoint_Is_Empty_For_An_Author_With_No_Linked_Stripe_Account()
+    {
+        var author = await AuthTestHelper.SignupAndAuthenticateAsync(_factory);
+
+        var response = await author.Client.GetAsync("/api/v1/authors/me/payouts");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var payouts = await response.Content.ReadFromJsonAsync<List<PayoutHistoryEntryResponse>>();
+        Assert.Empty(payouts!);
     }
 
     [Fact]

@@ -1,4 +1,6 @@
 import type { World } from "../ecs/world";
+import type { InputState } from "../input/inputState";
+import type { SceneManager } from "../scene/sceneManager";
 
 /** Per docs/SPEC.md Section 9.3. Passed to every system's `run()` for one phase execution. */
 export interface TickContext {
@@ -11,4 +13,8 @@ export interface TickContext {
   /** Fixed-step counter. Advances once per fixed step, not once per rendered frame. */
   readonly frame: number;
   readonly world: World;
+  /** Sampled once per fixed step, before `PreUpdate` — see `InputState`'s own doc comment. */
+  readonly input: InputState;
+  /** `currentSceneId` reflects the last transition applied at a tick boundary — see `SceneManager`'s own doc comment. */
+  readonly scene: SceneManager;
 }

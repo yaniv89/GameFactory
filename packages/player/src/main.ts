@@ -66,8 +66,22 @@ async function main(): Promise<void> {
   window.addEventListener("keydown", (event) => {
     keysHeld.add(event.key);
     if (event.key.toLowerCase() === "e") game.interact();
+    // Real, host-fed input for any installed module's action-mapped
+    // TickContext.input (github.com/yaniv89/GameFactory/issues/3) —
+    // .code (layout-independent), unlike keysHeld above, which is the
+    // player's own hardcoded WASD/arrow movement and predates this.
+    game.scheduler.input.handleKeyDown(event.code);
   });
-  window.addEventListener("keyup", (event) => keysHeld.delete(event.key));
+  window.addEventListener("keyup", (event) => {
+    keysHeld.delete(event.key);
+    game.scheduler.input.handleKeyUp(event.code);
+  });
+  canvas.addEventListener("pointerdown", (event) => game.scheduler.input.handlePointerDown(event.button));
+  canvas.addEventListener("pointerup", (event) => game.scheduler.input.handlePointerUp(event.button));
+  canvas.addEventListener("pointermove", (event) => {
+    const rect = canvas.getBoundingClientRect();
+    game.scheduler.input.handlePointerMove(event.clientX - rect.left, event.clientY - rect.top);
+  });
   window.addEventListener("beforeunload", persist);
   setInterval(persist, AUTOSAVE_INTERVAL_MS);
 }

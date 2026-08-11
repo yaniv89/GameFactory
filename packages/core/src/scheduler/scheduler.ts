@@ -1,5 +1,8 @@
 import type { Query } from "../ecs/query";
 import type { World } from "../ecs/world";
+import type { EventBusImpl } from "../events/eventBus";
+import { InputState } from "../input/inputState";
+import { SceneManager } from "../scene/sceneManager";
 import { FIXED_STEP_MS, FIXED_STEP_PHASES, MAX_ACCUMULATED_MS, PER_FRAME_PHASES, type Phase } from "./phase";
 
 /**
@@ -19,6 +22,19 @@ interface MutableTickContext {
   elapsed: number;
   frame: number;
   world: World;
+  input: InputState;
+  scene: SceneManager;
+}
+
+export interface SchedulerOptions {
+  /** Defaults to a fresh `InputState` with no action map — a host wires real bindings via `setActionMap`/`handleKeyDown` etc. after construction, or passes its own instance here. */
+  readonly input?: InputState;
+  /** Defaults to a fresh `SceneManager` with `initialSceneId` (`""` if omitted) and no event bus, meaning `"scene:changed"` is tracked internally but not emitted anywhere. Ignored if `scene` is also provided. */
+  readonly initialSceneId?: string;
+  /** Takes precedence over `initialSceneId` if both are given. */
+  readonly scene?: SceneManager;
+  /** Wired into a scheduler-constructed `SceneManager` so `"scene:changed"` reaches whatever the host already uses for module/system communication. Ignored if `scene` is provided directly — that instance's own event wiring (or lack of it) is used as-is. See `SceneManager`'s constructor param for why this accepts any caller-parameterized `EventBusImpl<EventMap>`. */
+  readonly events?: EventBusImpl<any>;
 }
 
 /**
@@ -37,16 +53,33 @@ export class Scheduler {
   private readonly queryCache = new Map<string, Query>();
   private readonly registeredIds = new Set<string>();
   private readonly ctx: MutableTickContext;
+  private readonly inputState: InputState;
+  private readonly sceneManager: SceneManager;
 
   private accumulatorMs = 0;
   private elapsedSeconds = 0;
   private fixedStepCountValue = 0;
 
-  constructor(private readonly world: World) {
-    this.ctx = { dt: FIXED_STEP_MS / 1000, alpha: 0, elapsed: 0, frame: 0, world };
+  constructor(
+    private readonly world: World,
+    options: SchedulerOptions = {},
+  ) {
+    this.inputState = options.input ?? new InputState();
+    this.sceneManager = options.scene ?? new SceneManager(options.initialSceneId ?? "", options.events);
+    this.ctx = { dt: FIXED_STEP_MS / 1000, alpha: 0, elapsed: 0, frame: 0, world, input: this.inputState, scene: this.sceneManager };
     for (const phase of [...FIXED_STEP_PHASES, ...PER_FRAME_PHASES]) {
       this.systemsByPhase.set(phase, []);
     }
+  }
+
+  /** The `InputState` this scheduler's `TickContext.input` is backed by — same instance every call, for a host to feed raw events into or for the sandbox bridge to read from between ticks. */
+  get input(): InputState {
+    return this.inputState;
+  }
+
+  /** The `SceneManager` this scheduler's `TickContext.scene` is backed by — see `input` above for why this is exposed directly rather than only reachable through a running system. */
+  get scene(): SceneManager {
+    return this.sceneManager;
   }
 
   /** Total simulated seconds elapsed across every fixed step run so far. */
@@ -116,7 +149,17 @@ export class Scheduler {
       this.ctx.elapsed = this.elapsedSeconds;
       this.ctx.frame = this.fixedStepCountValue;
       this.ctx.alpha = 0;
+      // Sampled once here, before PreUpdate, and held constant for every
+      // phase this fixed step runs — per InputState's own doc comment and
+      // @forge/module-api's InputSnapshot contract.
+      this.inputState.beginTick();
       for (const phase of FIXED_STEP_PHASES) this.runPhase(phase);
+      // Applied once here, after every fixed-step phase has run — a
+      // system calling ctx.scene.transitionTo() mid-tick must not see
+      // currentSceneId change out from under a later system in the same
+      // step. Same "settle at a defined boundary" discipline World.flush()
+      // already uses for structural changes.
+      this.sceneManager.applyPendingTransition();
       this.accumulatorMs -= FIXED_STEP_MS;
       this.elapsedSeconds += FIXED_STEP_MS / 1000;
       this.fixedStepCountValue++;

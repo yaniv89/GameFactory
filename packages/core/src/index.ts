@@ -12,6 +12,8 @@ export * from "./scheduler/system";
 export * from "./scheduler/scheduler";
 export * from "./events/eventBus";
 export * from "./events/interceptors";
+export * from "./input/inputState";
+export * from "./scene/sceneManager";
 export * from "./physics/aabb";
 export * from "./physics/spatialHash";
 export * from "./physics/collisionSystem";

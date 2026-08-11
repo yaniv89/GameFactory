@@ -1,8 +1,21 @@
-import type { EntityId, Query, World } from "@forge/core";
+import type { EntityId, InputState, Query, SceneManager, World } from "@forge/core";
 
 export interface EntitySnapshotEntry {
   readonly id: EntityId;
   readonly components: Readonly<Record<string, Readonly<Record<string, number>>>>;
+}
+
+/** JSON-safe snapshot of `InputState` for one tick — backs the guest's `InputSnapshot` (`@forge/module-api`). Ships every currently-down/pressed/released action name rather than only the ones a particular system queries: per docs/adr/0005, a guest system reads purely from its one per-tick snapshot with no further host round trips, and `isActionDown(action)` takes an arbitrary guest-chosen string the host can't predict ahead of time. */
+export interface InputSnapshotData {
+  readonly down: readonly string[];
+  readonly pressed: readonly string[];
+  readonly released: readonly string[];
+  readonly pointer: { readonly x: number; readonly y: number };
+}
+
+/** JSON-safe snapshot of `SceneManager.currentSceneId` for one tick — backs the guest's `SceneApi.currentSceneId`. `transitionTo()` is a write, not part of this read-only snapshot; see `__forge_sceneTransitionTo` in moduleBridge.ts. */
+export interface SceneSnapshotData {
+  readonly currentSceneId: string;
 }
 
 export interface TickSnapshot {
@@ -11,6 +24,21 @@ export interface TickSnapshot {
   readonly elapsed: number;
   readonly frame: number;
   readonly entities: readonly EntitySnapshotEntry[];
+  readonly input: InputSnapshotData;
+  readonly scene: SceneSnapshotData;
+}
+
+export function serializeInputSnapshot(input: InputState): InputSnapshotData {
+  return {
+    down: Array.from(input.downActionNames),
+    pressed: Array.from(input.pressedActionNames),
+    released: Array.from(input.releasedActionNames),
+    pointer: { x: input.pointerPosition.x, y: input.pointerPosition.y },
+  };
+}
+
+export function serializeSceneSnapshot(scene: SceneManager): SceneSnapshotData {
+  return { currentSceneId: scene.currentSceneId };
 }
 
 /**

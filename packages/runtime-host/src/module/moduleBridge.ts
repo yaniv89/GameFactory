@@ -16,7 +16,7 @@ import { NetworkHandler } from "../sandbox/capabilities/network";
 import { LocalStorageHandler } from "../sandbox/capabilities/storageLocal";
 import { ModuleRuntime, type EvalOutcome } from "../sandbox/moduleRuntime";
 import { buildModulePrelude } from "./prelude";
-import { serializeEntitySnapshot, type TickSnapshot } from "./snapshot";
+import { serializeEntitySnapshot, serializeInputSnapshot, serializeSceneSnapshot, type TickSnapshot } from "./snapshot";
 import { applyWriteBatch, type QueuedWrite } from "./writeBatch";
 
 const VALID_PHASES = new Set<string>(PHASE_ORDER);
@@ -277,6 +277,8 @@ export class ModuleBridge {
         elapsed: ctx.elapsed,
         frame: ctx.frame,
         entities: serializeEntitySnapshot(this.options.world, entities, queryComponents),
+        input: serializeInputSnapshot(ctx.input),
+        scene: serializeSceneSnapshot(ctx.scene),
       };
       const payloadHandle = context.newString(JSON.stringify(snapshot));
       const outcome = this.runtime.callFunction(runHandle, [payloadHandle]);
@@ -462,6 +464,18 @@ export class ModuleBridge {
           throw new Error(`__forge_world: unknown method "${method}"`);
       }
       return context.newString(JSON.stringify(result === undefined ? null : result));
+    });
+
+    // A write, unlike ctx.scene.currentSceneId (read purely from that
+    // tick's snapshot per docs/adr/0005) — mirrors __forge_world's
+    // create/destroy/add/remove: one direct, synchronous host call.
+    // Reads the live SceneManager off the shared Scheduler rather than a
+    // per-tick snapshot value, since a module can call transitionTo() at
+    // any point (setup(), an event handler, mid-system), not only while a
+    // system's batched run() is executing.
+    this.installFn("__forge_sceneTransitionTo", (sceneIdHandle) => {
+      const sceneId = context.getString(sceneIdHandle);
+      this.options.scheduler.scene.transitionTo(sceneId);
     });
 
     this.installFn("__forge_registerModuleNative", (moduleHandle) => {

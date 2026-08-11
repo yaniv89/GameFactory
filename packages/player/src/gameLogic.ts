@@ -87,8 +87,19 @@ export interface GameLogic {
 export async function bootGameLogic(options: GameLogicOptions): Promise<GameLogic> {
   const world = new World();
   registerCoreComponents(world);
-  const scheduler = new Scheduler(world);
   const events = new EventBusImpl();
+  // `initialSceneId` makes `ctx.scene.currentSceneId` real for every
+  // installed module from the first tick, and `events` means a module's
+  // `ctx.scene.transitionTo()` call genuinely fires "scene:changed" on the
+  // same bus modules already use for everything else (dialogue, etc.) —
+  // see github.com/yaniv89/GameFactory/issues/3. What's NOT wired up yet:
+  // this player app itself doesn't react to "scene:changed" by loading a
+  // different scene's tiles/entities — `isWalkable` and the spawned NPC/
+  // dialogue entities below still reflect only `options.projectData`'s
+  // `startSceneId` scene for this app's own lifetime. Tracked as a
+  // separate follow-up (multi-scene tile/entity swapping in the
+  // standalone player), not silently faked here.
+  const scheduler = new Scheduler(world, { events, initialSceneId: options.projectData.startSceneId });
   const interceptors = new InterceptorRegistry();
 
   scheduler.addSystem(createPlayerMovementSystem(world, options.isWalkable, options.keysHeld));

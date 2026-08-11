@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { registerCoreComponents } from "../src/components/core";
+import { EventBusImpl } from "../src/events/eventBus";
+import { InputState } from "../src/input/inputState";
+import { SceneManager } from "../src/scene/sceneManager";
 import { World } from "../src/ecs/world";
 import { FIXED_STEP_MS } from "../src/scheduler/phase";
 import { Scheduler } from "../src/scheduler/scheduler";
@@ -231,5 +234,96 @@ describe("Scheduler: query integration", () => {
 
     scheduler.tick(FIXED_STEP_MS);
     expect(sawItInUpdate).toBe(true);
+  });
+});
+
+describe("Scheduler: input and scene wiring", () => {
+  it("exposes the same InputState/SceneManager instances via ctx and via the input/scene getters", () => {
+    const scheduler = new Scheduler(makeWorld());
+    let observedInput: InputState | undefined;
+    let observedScene: SceneManager | undefined;
+    scheduler.addSystem(
+      stubSystem({
+        id: "observer",
+        phase: "Update",
+        skipIfEmpty: false,
+        run: (ctx) => {
+          observedInput = ctx.input;
+          observedScene = ctx.scene;
+        },
+      }),
+    );
+
+    scheduler.tick(FIXED_STEP_MS);
+
+    expect(observedInput).toBe(scheduler.input);
+    expect(observedScene).toBe(scheduler.scene);
+  });
+
+  it("samples input.beginTick() before PreUpdate — a press since the last tick() call is visible as wasActionPressed for the whole fixed step", () => {
+    const scheduler = new Scheduler(makeWorld(), { input: new InputState({ jump: [{ type: "key", code: "Space" }] }) });
+    scheduler.input.handleKeyDown("Space");
+
+    const seenInPreUpdate: boolean[] = [];
+    const seenInPhysics: boolean[] = [];
+    scheduler.addSystem(
+      stubSystem({ id: "pre", phase: "PreUpdate", skipIfEmpty: false, run: (ctx) => seenInPreUpdate.push(ctx.input.wasActionPressed("jump")) }),
+    );
+    scheduler.addSystem(
+      stubSystem({ id: "physics", phase: "Physics", skipIfEmpty: false, run: (ctx) => seenInPhysics.push(ctx.input.wasActionPressed("jump")) }),
+    );
+
+    scheduler.tick(FIXED_STEP_MS);
+
+    expect(seenInPreUpdate).toEqual([true]);
+    expect(seenInPhysics).toEqual([true]); // held constant across the whole fixed step
+  });
+
+  it("a later fixed step within the same tick() call no longer sees a stale press edge (nothing new happened between synthetic steps)", () => {
+    const scheduler = new Scheduler(makeWorld(), { input: new InputState({ jump: [{ type: "key", code: "Space" }] }) });
+    scheduler.input.handleKeyDown("Space");
+
+    const perStep: boolean[] = [];
+    scheduler.addSystem(
+      stubSystem({ id: "pre", phase: "PreUpdate", skipIfEmpty: false, run: (ctx) => perStep.push(ctx.input.wasActionPressed("jump")) }),
+    );
+
+    scheduler.tick(FIXED_STEP_MS * 3); // 3 fixed steps in one call, no new events between them
+
+    expect(perStep).toEqual([true, false, false]);
+  });
+
+  it("a system's ctx.scene.transitionTo() mid-tick is not visible to a later system in the same fixed step, but is visible on the next one", () => {
+    const events = new EventBusImpl<{ "scene:changed": { from: string; to: string } }>();
+    const scheduler = new Scheduler(makeWorld(), { initialSceneId: "village", events });
+
+    const seenByLaterSystem: string[] = [];
+    scheduler.addSystem(
+      stubSystem({
+        id: "requester",
+        phase: "PreUpdate",
+        skipIfEmpty: false,
+        run: (ctx) => ctx.scene.transitionTo("dungeon"),
+      }),
+    );
+    scheduler.addSystem(
+      stubSystem({
+        id: "observer",
+        phase: "Physics",
+        skipIfEmpty: false,
+        run: (ctx) => seenByLaterSystem.push(ctx.scene.currentSceneId),
+      }),
+    );
+
+    const changes: Array<{ from: string; to: string }> = [];
+    events.on("scene:changed", (payload) => changes.push(payload));
+
+    scheduler.tick(FIXED_STEP_MS);
+    expect(seenByLaterSystem).toEqual(["village"]); // not yet applied within this same fixed step
+    expect(scheduler.scene.currentSceneId).toBe("dungeon"); // applied at the tick boundary
+    expect(changes).toEqual([{ from: "village", to: "dungeon" }]);
+
+    scheduler.tick(FIXED_STEP_MS);
+    expect(seenByLaterSystem).toEqual(["village", "dungeon"]);
   });
 });

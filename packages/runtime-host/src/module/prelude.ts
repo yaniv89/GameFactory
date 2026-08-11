@@ -48,33 +48,38 @@ export function buildModulePrelude(
   var ENGINE_VERSION = ${JSON.stringify(engineVersion)};
   var CONFIG = Object.freeze(${JSON.stringify(config)});
 
-  function notImplemented(what) {
-    return function () {
-      throw new Error(
-        "TickContext." + what + " is not implemented yet (tracked: " +
-        "https://github.com/yaniv89/GameFactory/issues/3) — no Input or Scene " +
-        "system exists in @forge/core until M4"
-      );
+  // Built fresh per system-per-tick call from that tick's JSON snapshot
+  // (docs/adr/0005) — isActionDown/wasActionPressed/wasActionReleased are
+  // plain membership checks against the snapshot's down/pressed/released
+  // action-name arrays, not a further host round trip: the host can't
+  // predict which action name a guest system will query, so the whole
+  // current tick's input state ships once, same "batch the whole tick's
+  // worth of data" shape @forge/core's own InputState.downActionNames
+  // getters already exist for.
+  function makeInputSnapshot(inputData) {
+    var down = {};
+    for (var i = 0; i < inputData.down.length; i++) down[inputData.down[i]] = true;
+    var pressed = {};
+    for (var j = 0; j < inputData.pressed.length; j++) pressed[inputData.pressed[j]] = true;
+    var released = {};
+    for (var k = 0; k < inputData.released.length; k++) released[inputData.released[k]] = true;
+    var pointer = { x: inputData.pointer.x, y: inputData.pointer.y };
+    return {
+      isActionDown: function (action) { return !!down[action]; },
+      wasActionPressed: function (action) { return !!pressed[action]; },
+      wasActionReleased: function (action) { return !!released[action]; },
+      get pointerPosition() { return pointer; }
     };
   }
 
-  function makeInputSnapshot() {
+  // currentSceneId is read straight from the snapshot (a plain value, no
+  // round trip); transitionTo() is a write, so it goes through the native
+  // __forge_sceneTransitionTo bridge call instead — same read/write split
+  // __forge_world already draws for ctx.world's live (non-snapshot) uses.
+  function makeSceneApi(sceneData) {
     return {
-      isActionDown: notImplemented("input.isActionDown"),
-      wasActionPressed: notImplemented("input.wasActionPressed"),
-      wasActionReleased: notImplemented("input.wasActionReleased"),
-      get pointerPosition() {
-        notImplemented("input.pointerPosition")();
-      }
-    };
-  }
-
-  function makeSceneApi() {
-    return {
-      get currentSceneId() {
-        notImplemented("scene.currentSceneId")();
-      },
-      transitionTo: notImplemented("scene.transitionTo")
+      get currentSceneId() { return sceneData.currentSceneId; },
+      transitionTo: function (sceneId) { __forge_sceneTransitionTo(sceneId); }
     };
   }
 
@@ -238,8 +243,8 @@ export function buildModulePrelude(
           elapsed: snapshot.elapsed,
           frame: snapshot.frame,
           world: world,
-          input: makeInputSnapshot(),
-          scene: makeSceneApi()
+          input: makeInputSnapshot(snapshot.input),
+          scene: makeSceneApi(snapshot.scene)
         };
         def.run(ctx, entityView);
         return JSON.stringify({ writes: writes });

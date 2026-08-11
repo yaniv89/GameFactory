@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { registerCoreComponents } from "../src/components/core";
 import { createCollisionSystem, type CollisionEventMap, type CollisionPairEvent } from "../src/physics/collisionSystem";
 import { EventBusImpl } from "../src/events/eventBus";
+import { InputState } from "../src/input/inputState";
+import { SceneManager } from "../src/scene/sceneManager";
 import { World } from "../src/ecs/world";
 import type { TickContext } from "../src/scheduler/tickContext";
 
@@ -12,7 +14,7 @@ function makeWorld() {
 }
 
 function ctx(world: World): TickContext {
-  return { dt: 1 / 60, alpha: 0, elapsed: 0, frame: 0, world };
+  return { dt: 1 / 60, alpha: 0, elapsed: 0, frame: 0, world, input: new InputState(), scene: new SceneManager("") };
 }
 
 describe("createCollisionSystem", () => {

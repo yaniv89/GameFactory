@@ -1,4 +1,4 @@
-import { EventBusImpl, FIXED_STEP_MS, InterceptorRegistry, Scheduler, World } from "@forge/core";
+import { EventBusImpl, FIXED_STEP_MS, InputState, InterceptorRegistry, Scheduler, World, type SchedulerOptions } from "@forge/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ModuleBridge } from "../src/module/moduleBridge";
 import { buildWasmModuleFromEmbeddedBytes } from "./testWasmModule";
@@ -12,10 +12,10 @@ const BASE_OPTIONS = {
   computeBudgetMs: 500,
 };
 
-function makeHarness() {
+function makeHarness(schedulerOptions?: SchedulerOptions) {
   const world = new World();
-  const scheduler = new Scheduler(world);
   const events = new EventBusImpl();
+  const scheduler = new Scheduler(world, { events, ...schedulerOptions });
   const interceptors = new InterceptorRegistry();
   return { world, scheduler, events, interceptors };
 }
@@ -348,6 +348,90 @@ describe("ModuleBridge: setup() error surfacing", () => {
     if (!outcome.ok) {
       expect(outcome.error.message).toMatch(/did not call __forge_registerModule/);
     }
+  });
+});
+
+describe("ModuleBridge: ctx.input / ctx.scene (github.com/yaniv89/GameFactory/issues/3)", () => {
+  it("a guest system reads real, host-fed input state: isActionDown, wasActionPressed/Released, pointerPosition", async () => {
+    const harness = makeHarness({ input: new InputState({ jump: [{ type: "key", code: "Space" }] }) });
+    const bridge = await createBridge("test-input", harness);
+
+    const outcome = await bridge.setup(`
+      (function () {
+        function setup(ctx) {
+          ctx.defineComponent("Observed", {
+            down: { type: "number" }, pressed: { type: "number" }, released: { type: "number" },
+            px: { type: "number" }, py: { type: "number" }
+          }, { down: 0, pressed: 0, released: 0, px: 0, py: 0 });
+          ctx.addSystem({
+            id: "observe",
+            phase: "Update",
+            query: ["Observed"],
+            run: function (tctx, entities) {
+              entities.forEach(function (id) {
+                tctx.world.set(id, "Observed", {
+                  down: tctx.input.isActionDown("jump") ? 1 : 0,
+                  pressed: tctx.input.wasActionPressed("jump") ? 1 : 0,
+                  released: tctx.input.wasActionReleased("jump") ? 1 : 0,
+                  px: tctx.input.pointerPosition.x,
+                  py: tctx.input.pointerPosition.y
+                });
+              });
+            }
+          });
+        }
+        __forge_registerModule({ setup: setup });
+      })();
+    `);
+    expect(outcome.ok).toBe(true);
+
+    const entity = harness.world.create({ Observed: { down: 0, pressed: 0, released: 0, px: 0, py: 0 } });
+    harness.world.flush();
+
+    harness.scheduler.input.handleKeyDown("Space");
+    harness.scheduler.input.handlePointerMove(12, 34);
+    harness.scheduler.tick(FIXED_STEP_MS);
+
+    expect(harness.world.get(entity, "Observed")).toEqual({ down: 1, pressed: 1, released: 0, px: 12, py: 34 });
+
+    harness.scheduler.input.handleKeyUp("Space");
+    harness.scheduler.tick(FIXED_STEP_MS);
+
+    expect(harness.world.get(entity, "Observed")).toEqual({ down: 0, pressed: 0, released: 1, px: 12, py: 34 });
+  });
+
+  it("ctx.scene.currentSceneId reflects the scheduler's current scene, and a guest's transitionTo() takes effect on the next tick", async () => {
+    const harness = makeHarness({ initialSceneId: "village" });
+    const bridge = await createBridge("test-scene", harness);
+
+    const outcome = await bridge.setup(`
+      (function () {
+        function setup(ctx) {
+          ctx.defineComponent("Marker", { n: { type: "number" } }, { n: 0 });
+          ctx.addSystem({
+            id: "requestTransitionOnce",
+            phase: "Update",
+            query: ["Marker"],
+            skipIfEmpty: false,
+            run: function (tctx) {
+              if (tctx.frame === 0) tctx.scene.transitionTo("dungeon");
+            }
+          });
+        }
+        __forge_registerModule({ setup: setup });
+      })();
+    `);
+    expect(outcome.ok).toBe(true);
+    harness.world.create({});
+    harness.world.flush();
+
+    const changes: unknown[] = [];
+    harness.events.on("scene:changed", (payload) => changes.push(payload));
+
+    expect(harness.scheduler.scene.currentSceneId).toBe("village");
+    harness.scheduler.tick(FIXED_STEP_MS); // frame 0: guest requests the transition
+    expect(harness.scheduler.scene.currentSceneId).toBe("dungeon"); // applied at this same tick's boundary
+    expect(changes).toEqual([{ from: "village", to: "dungeon" }]);
   });
 });
 

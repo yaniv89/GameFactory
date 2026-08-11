@@ -64,7 +64,7 @@ Do not introduce a dependency outside this list without asking. Every new depend
 | Concern | Choice | Notes |
 |---|---|---|
 | Framework | React 18 + TypeScript 5.x | `strict: true`, no exceptions |
-| Build | Vite 5 | |
+| Build | Vite 6 | Bumped from Vite 5 in `docs/adr/0007` (CVE-2026-53571, patched only in >=6.4.3; no Vite 5.x fix exists) |
 | State | Zustand + Immer | Command-log undo, not snapshot |
 | Collaboration | Yjs + y-protocols | Over the SignalR transport |
 | Canvas | PixiJS v8 | Shared with the runtime. One renderer only |

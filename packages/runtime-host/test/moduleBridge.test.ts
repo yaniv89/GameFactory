@@ -44,7 +44,7 @@ describe("ModuleBridge: systems (docs/adr/0005 batched snapshot)", () => {
     const harness = makeHarness();
     const bridge = await createBridge("test-move", harness);
 
-    const outcome = bridge.setup(`
+    const outcome = await bridge.setup(`
       (function () {
         function setup(ctx) {
           ctx.defineComponent("Transform", {
@@ -82,7 +82,7 @@ describe("ModuleBridge: systems (docs/adr/0005 batched snapshot)", () => {
     const harness = makeHarness();
     const bridge = await createBridge("test-spawn", harness);
 
-    const outcome = bridge.setup(`
+    const outcome = await bridge.setup(`
       (function () {
         function setup(ctx) {
           ctx.defineComponent("Marker", { n: { type: "number" } }, { n: 0 });
@@ -119,7 +119,7 @@ describe("ModuleBridge: systems (docs/adr/0005 batched snapshot)", () => {
     const bridgeA = await createBridge("test-throws", harness);
     const bridgeB = await createBridge("test-survives", harness);
 
-    bridgeA.setup(`
+    await bridgeA.setup(`
       (function () {
         function setup(ctx) {
           ctx.defineComponent("A", { n: { type: "number" } }, { n: 0 });
@@ -130,7 +130,7 @@ describe("ModuleBridge: systems (docs/adr/0005 batched snapshot)", () => {
     `);
 
     const counter = { value: 0 };
-    bridgeB.setup(`
+    await bridgeB.setup(`
       (function () {
         function setup(ctx) {
           ctx.defineComponent("B", { n: { type: "number" } }, { n: 0 });
@@ -154,7 +154,7 @@ describe("ModuleBridge: interceptors", () => {
     const harness = makeHarness();
     const bridge = await createBridge("test-interceptor", harness);
 
-    const outcome = bridge.setup(`
+    const outcome = await bridge.setup(`
       (function () {
         function setup(ctx) {
           ctx.addInterceptor("combat:damage", 10, function (value) {
@@ -179,7 +179,7 @@ describe("ModuleBridge: interceptors", () => {
     const owner = await createBridge("test-dialogue", harness); // owns and triggers the point
     const translator = await createBridge("test-translator", harness); // filters it
 
-    owner.setup(`
+    await owner.setup(`
       (function () {
         function setup(ctx) {
           ctx.events.on("dialogue:start", function () {
@@ -190,7 +190,7 @@ describe("ModuleBridge: interceptors", () => {
         __forge_registerModule({ setup: setup });
       })();
     `);
-    translator.setup(`
+    await translator.setup(`
       (function () {
         function setup(ctx) {
           ctx.addInterceptor("dialogue:line", 10, function (value) {
@@ -211,7 +211,7 @@ describe("ModuleBridge: interceptors", () => {
   it("ctx.runInterceptor returns the value unchanged when no filter is registered for the point", async () => {
     const harness = makeHarness();
     const bridge = await createBridge("test-no-filters", harness);
-    const outcome = bridge.setup(`
+    const outcome = await bridge.setup(`
       (function () {
         function setup(ctx) {
           var result = ctx.runInterceptor("dialogue:line", { speaker: "A", text: "hi", locale: "en" });
@@ -228,7 +228,7 @@ describe("ModuleBridge: interceptors", () => {
   it("an interceptor that throws fails open — the value passes through unchanged", async () => {
     const harness = makeHarness();
     const bridge = await createBridge("test-bad-interceptor", harness);
-    bridge.setup(`
+    await bridge.setup(`
       (function () {
         function setup(ctx) {
           ctx.addInterceptor("combat:damage", 10, function () { throw new Error("nope"); });
@@ -250,7 +250,7 @@ describe("ModuleBridge: events", () => {
   it("a guest handler registered via ctx.events.on receives host- and guest-emitted events", async () => {
     const harness = makeHarness();
     const bridge = await createBridge("test-events", harness);
-    bridge.setup(`
+    await bridge.setup(`
       (function () {
         function setup(ctx) {
           ctx.events.on("ping", function (payload) {
@@ -271,7 +271,7 @@ describe("ModuleBridge: events", () => {
   it("ctx.events.off unsubscribes the guest handler", async () => {
     const harness = makeHarness();
     const bridge = await createBridge("test-events-off", harness);
-    bridge.setup(`
+    await bridge.setup(`
       (function () {
         function setup(ctx) {
           function onPing(payload) { globalThis.__pings = (globalThis.__pings || 0) + 1; }
@@ -295,7 +295,7 @@ describe("ModuleBridge: ctx.world (docs/adr/0006)", () => {
     const harness = makeHarness();
     const bridge = await createBridge("test-ctx-world", harness);
 
-    const outcome = bridge.setup(`
+    const outcome = await bridge.setup(`
       (function () {
         function setup(ctx) {
           ctx.defineComponent("Health", { hp: { type: "number" } }, { hp: 10 });
@@ -325,7 +325,7 @@ describe("ModuleBridge: storage capability", () => {
   it("ctx.storage is always present and round-trips a value", async () => {
     const harness = makeHarness();
     const bridge = await createBridge("test-storage", harness);
-    const outcome = bridge.setup(`
+    const outcome = await bridge.setup(`
       (function () {
         function setup(ctx) {
           ctx.storage.set("coins", 7);
@@ -343,10 +343,71 @@ describe("ModuleBridge: setup() error surfacing", () => {
   it("a module that never calls __forge_registerModule fails setup() with a clear message", async () => {
     const harness = makeHarness();
     const bridge = await createBridge("test-no-register", harness);
-    const outcome = bridge.setup(`(function () { /* forgot to register */ })();`);
+    const outcome = await bridge.setup(`(function () { /* forgot to register */ })();`);
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) {
       expect(outcome.error.message).toMatch(/did not call __forge_registerModule/);
+    }
+  });
+});
+
+describe("ModuleBridge: async setup() (github.com/yaniv89/GameFactory/issues/4)", () => {
+  it("awaits a setup() that registers a system only after an internal await, before setup() resolves", async () => {
+    const harness = makeHarness();
+    const bridge = await createBridge("test-async-setup", harness);
+
+    const outcome = await bridge.setup(`
+      (function () {
+        async function setup(ctx) {
+          ctx.defineComponent("Counter", { n: { type: "number" } }, { n: 0 });
+          // Deliberately register the system only after a real await, so
+          // this proves callFunctionAsync actually drives the promise
+          // chain to completion rather than returning as soon as setup()
+          // synchronously produces a Promise.
+          await Promise.resolve();
+          ctx.addSystem({
+            id: "increment",
+            phase: "Update",
+            query: ["Counter"],
+            run: function (tctx, entities) {
+              entities.forEach(function (id) {
+                var c = tctx.world.get(id, "Counter");
+                tctx.world.set(id, "Counter", { n: c.n + 1 });
+              });
+            }
+          });
+        }
+        __forge_registerModule({ setup: setup });
+      })();
+    `);
+    expect(outcome.ok).toBe(true);
+
+    const entity = harness.world.create({ Counter: { n: 0 } });
+    harness.world.flush();
+    harness.scheduler.tick(FIXED_STEP_MS);
+
+    // If setup() had resolved this Promise's await instead of waiting for
+    // it, the system above would never have been registered and this tick
+    // would be a no-op.
+    expect(harness.world.get(entity, "Counter")).toEqual({ n: 1 });
+  });
+
+  it("surfaces an async setup() rejection as a failed outcome, same shape as a synchronous throw", async () => {
+    const harness = makeHarness();
+    const bridge = await createBridge("test-async-setup-reject", harness);
+
+    const outcome = await bridge.setup(`
+      (function () {
+        async function setup(ctx) {
+          await Promise.resolve();
+          throw new Error("async setup failed");
+        }
+        __forge_registerModule({ setup: setup });
+      })();
+    `);
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) {
+      expect(outcome.error.message).toBe("async setup failed");
     }
   });
 });
@@ -357,7 +418,7 @@ describe("ModuleBridge: wasmModule override (M6 Phase 5d)", () => {
     const harness = makeHarness();
     const bridge = await createBridge("test-wasm-override", harness, { wasmModule });
 
-    const outcome = bridge.setup(`
+    const outcome = await bridge.setup(`
       (function () {
         function setup(ctx) {
           ctx.defineComponent("Counter", { n: { type: "number" } }, { n: 0 });

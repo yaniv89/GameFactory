@@ -1,4 +1,4 @@
-import { registerCoreComponents, World } from "@forge/core";
+import { InputState, registerCoreComponents, SceneManager, World, type TickContext } from "@forge/core";
 import { describe, expect, it } from "vitest";
 import { createTransformSnapshotSystem, lerp, TransformSnapshotStore } from "../src/interpolation";
 
@@ -6,6 +6,10 @@ function makeWorld() {
   const world = new World();
   registerCoreComponents(world);
   return world;
+}
+
+function ctx(world: World): TickContext {
+  return { dt: 1 / 60, alpha: 0, elapsed: 0, frame: 0, world, input: new InputState(), scene: new SceneManager("") };
 }
 
 describe("lerp", () => {
@@ -27,7 +31,7 @@ describe("TransformSnapshotStore / createTransformSnapshotSystem", () => {
 
     const store = new TransformSnapshotStore();
     const system = createTransformSnapshotSystem(world, store);
-    system.run({ dt: 1 / 60, alpha: 0, elapsed: 0, frame: 0, world }, world.query(["Transform"]));
+    system.run(ctx(world), world.query(["Transform"]));
 
     expect(store.get(entity)).toEqual({ x: 3, y: 4, rotation: 0 });
   });
@@ -40,9 +44,9 @@ describe("TransformSnapshotStore / createTransformSnapshotSystem", () => {
     const store = new TransformSnapshotStore();
     const system = createTransformSnapshotSystem(world, store);
     const query = world.query(["Transform"]);
-    const ctx = { dt: 1 / 60, alpha: 0, elapsed: 0, frame: 0, world };
+    const tickCtx = ctx(world);
 
-    system.run(ctx, query);
+    system.run(tickCtx, query);
     // Simulates a Physics-phase system integrating movement after the snapshot ran.
     world.set(entity, "Transform", { x: 10 });
 
@@ -57,11 +61,11 @@ describe("TransformSnapshotStore / createTransformSnapshotSystem", () => {
     const store = new TransformSnapshotStore();
     const system = createTransformSnapshotSystem(world, store);
     const query = world.query(["Transform"]);
-    const ctx = { dt: 1 / 60, alpha: 0, elapsed: 0, frame: 0, world };
+    const tickCtx = ctx(world);
 
-    system.run(ctx, query);
+    system.run(tickCtx, query);
     world.set(entity, "Transform", { x: 10 });
-    system.run(ctx, query);
+    system.run(tickCtx, query);
 
     expect(store.get(entity)).toEqual({ x: 10, y: 0, rotation: 0 });
   });
@@ -74,14 +78,14 @@ describe("TransformSnapshotStore / createTransformSnapshotSystem", () => {
     const store = new TransformSnapshotStore();
     const system = createTransformSnapshotSystem(world, store);
     const query = world.query(["Transform"]);
-    const ctx = { dt: 1 / 60, alpha: 0, elapsed: 0, frame: 0, world };
+    const tickCtx = ctx(world);
 
-    system.run(ctx, query);
+    system.run(tickCtx, query);
     expect(store.get(entity)).toBeDefined();
 
     world.destroy(entity);
     world.flush();
-    system.run(ctx, query);
+    system.run(tickCtx, query);
 
     expect(store.get(entity)).toBeUndefined();
   });
@@ -94,14 +98,14 @@ describe("TransformSnapshotStore / createTransformSnapshotSystem", () => {
     const store = new TransformSnapshotStore();
     const system = createTransformSnapshotSystem(world, store);
     const query = world.query(["Transform"]);
-    const ctx = { dt: 1 / 60, alpha: 0, elapsed: 0, frame: 0, world };
+    const tickCtx = ctx(world);
 
-    system.run(ctx, query);
+    system.run(tickCtx, query);
     expect(store.get(entity)).toBeDefined();
 
     world.remove(entity, "Transform");
     world.flush();
-    system.run(ctx, query);
+    system.run(tickCtx, query);
 
     expect(store.get(entity)).toBeUndefined();
   });

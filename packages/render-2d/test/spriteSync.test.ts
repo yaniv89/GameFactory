@@ -1,4 +1,4 @@
-import { registerCoreComponents, World, type TickContext } from "@forge/core";
+import { InputState, registerCoreComponents, SceneManager, World, type TickContext } from "@forge/core";
 import { describe, expect, it } from "vitest";
 import { TransformSnapshotStore } from "../src/interpolation";
 import { createSpriteSyncSystem, type SpriteLike } from "../src/spriteSync";
@@ -31,7 +31,7 @@ function makeWorld() {
 }
 
 function ctxAt(alpha: number): TickContext {
-  return { dt: 1 / 60, alpha, elapsed: 0, frame: 0, world: undefined as never };
+  return { dt: 1 / 60, alpha, elapsed: 0, frame: 0, world: undefined as never, input: new InputState(), scene: new SceneManager("") };
 }
 
 describe("createSpriteSyncSystem", () => {

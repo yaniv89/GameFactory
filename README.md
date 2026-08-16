@@ -27,7 +27,7 @@ Milestones M0–M7 (see `CLAUDE.md` Section 8) are implemented, tested, and merg
 ## Prerequisites
 
 - Node.js ≥ 22, pnpm ≥ 10 (`corepack enable` or install per `packageManager` in `package.json`)
-- .NET 8 SDK
+- .NET 10 SDK
 - Docker (or another way to run Postgres 16, Redis 7, and an Azurite-compatible blob emulator) for the full stack below
 
 ## Running the full stack locally

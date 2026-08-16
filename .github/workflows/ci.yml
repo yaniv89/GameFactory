@@ -270,7 +270,7 @@ jobs:
       - if: matrix.language == 'csharp'
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "10.0.x"
       - if: matrix.language == 'csharp'
         run: dotnet build Forge.sln
       - uses: github/codeql-action/analyze@c4dd10e44af883a891fe31ced449bcb4a6728b9b # v3
@@ -285,7 +285,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "10.0.x"
       # docs/SPEC.md Section 10.4 gate 4 (M6 Phase 3): SmokeRunGateTests
       # and ScanOrchestratorTests spawn the real, built
       # packages/runtime-host smoke-run CLI as a subprocess — not a fake
@@ -350,7 +350,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "10.0.x"
       - run: dotnet restore Forge.sln
       - run: dotnet build Forge.sln --no-restore --configuration Release
       - name: Load test — concurrent editors, zero lost writes (docs/SPEC.md Section 18.4)
@@ -413,7 +413,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "10.0.x"
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:

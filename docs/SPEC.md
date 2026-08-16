@@ -8,7 +8,7 @@ Date: 2026-08-05
 |---|---|
 | Status | Draft for review |
 | Scope decision | 2D top-down RPG / adventure as beachhead genre |
-| Primary stack | .NET 8, React 18, TypeScript 5, PostgreSQL 16, Azure |
+| Primary stack | .NET 10, React 18, TypeScript 5, PostgreSQL 16, Azure |
 | Codename | Forge |
 **Reading order:** Sections 1 to 4 define what is being built and why. Sections 5 to 11 are the core technical architecture. Sections 12 to 17 cover surrounding systems. Sections 18 to 22 cover operational concerns, phasing and risk.
 ---
@@ -153,7 +153,7 @@ Note that `Inventory` and `Dialogue` are Modules, not core. They are first-party
 └───────────┼────────────────────────────────────────────────────┘
             │ HTTPS / WSS
 ┌───────────▼────────────────────────────────────────────────────┐
-│                      API LAYER (.NET 8)                        │
+│                      API LAYER (.NET 10)                       │
 │  Minimal API + SignalR hub                                     │
 │  ┌──────────┬───────────┬──────────┬──────────┬─────────────┐  │
 │  │ Projects │ Marketplace│ Assets  │ Publish  │ Collab hub  │  │
@@ -182,14 +182,14 @@ Note that `Inventory` and `Dialogue` are Modules, not core. They are first-party
 ### 5.2 Service responsibilities
 | Service | Responsibility | Technology |
 |---|---|---|
-| **Identity** | Auth, sessions, workspace membership, seats | .NET 8, ASP.NET Core Identity + OIDC |
-| **Project** | CRUD on project documents, version history, locking | .NET 8 Minimal API, EF Core 8, PostgreSQL JSONB |
+| **Identity** | Auth, sessions, workspace membership, seats | .NET 10, ASP.NET Core Identity + OIDC |
+| **Project** | CRUD on project documents, version history, locking | .NET 10 Minimal API, EF Core 10, PostgreSQL JSONB |
 | **Collab** | Real-time multi-user editing, presence, CRDT relay | SignalR hub, Yjs server-side awareness |
-| **Asset** | Upload, validation, transcode, CDN publish | .NET 8 + Azure Functions, Blob Storage |
-| **Marketplace** | Listings, purchases, licensing, payouts, reviews | .NET 8, PostgreSQL, Stripe Connect |
-| **Registry** | Module and Pack versions, semver resolution, integrity hashes | .NET 8, PostgreSQL, Blob |
+| **Asset** | Upload, validation, transcode, CDN publish | .NET 10 + Azure Functions, Blob Storage |
+| **Marketplace** | Listings, purchases, licensing, payouts, reviews | .NET 10, PostgreSQL, Stripe Connect |
+| **Registry** | Module and Pack versions, semver resolution, integrity hashes | .NET 10, PostgreSQL, Blob |
 | **Build** | Bundle, atlas, minify, export, sign | Azure Functions (isolated worker), Node sidecar |
-| **Play** | Serve published games, cloud saves, leaderboards, telemetry | .NET 8 Minimal API, Azure Table Storage, CDN |
+| **Play** | Serve published games, cloud saves, leaderboards, telemetry | .NET 10 Minimal API, Azure Table Storage, CDN |
 ### 5.3 Why this split
 - The **editor is a pure SPA**. It talks to the API and never requires server-rendered pages. This keeps the door open for a fully offline desktop build later using the same codebase.
 - **Build work is offloaded to Functions** because bundling is bursty, CPU-bound and untrusted. It must never run in the API process. ⚠ Build workers process third-party Module source. They run with no network egress except to Blob Storage, and with a hard CPU and memory cap.
@@ -1139,7 +1139,7 @@ Instant iteration is the primary reason a creator chooses a browser tool over a 
 ---
 ## 13. Backend API
 ### 13.1 Conventions
-- .NET 8 Minimal API, vertical slice organization, one folder per feature.
+- .NET 10 Minimal API, vertical slice organization, one folder per feature.
 - All endpoints under `/api/v1`. Versioning by URL path, since the editor and the CLI are long-lived clients.
 - Auth via OIDC bearer tokens. Workspace-scoped authorization policies.
 - Problem Details (RFC 9457) for every error response.

@@ -23,3 +23,19 @@ var host = new HostBuilder()
     .Build();
 
 await host.RunAsync();
+
+// As of the .NET 9 SDK, the compiler-generated Program class backing top-
+// level statements is public by default (a deliberate change upstream,
+// specifically to let WebApplicationFactory<Program> work without the
+// explicit partial-class declaration Forge.Api.csproj's own Program.cs
+// still carries from when that workaround was necessary). That default
+// collides here: Forge.Tests references both this assembly and Forge.Api
+// unqualified, and two same-named public Program types across referenced
+// assemblies is CS0433, not a warning. Forcing this one back to internal
+// — merging with the compiler-generated partial declaration, same
+// mechanism Forge.Api's public one uses in reverse — is correct, not just
+// a build-error workaround: nothing in Forge.Tests (or anywhere else)
+// actually needs this Program type; it references this assembly only for
+// SmokeRunGate/PendingVersionScanner (Forge.Functions.Scan.csproj's own
+// doc comment).
+internal partial class Program;

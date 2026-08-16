@@ -22,12 +22,12 @@ forge/
 
 ## Status
 
-Milestones M0–M7 (see `CLAUDE.md` Section 8) are implemented, tested, and merged — engine, sandbox, Module API, editor shell, backend/persistence, registry/publish/Art Packs, and collaboration/marketplace. The editor SPA is now wired end to end to `Forge.Api` (real sign-up/sign-in, project list/create, server-persisted saves, live presence) — see "Running the full stack locally" below to try it. Two stated, deliberate gaps remain, tracked rather than silently assumed done: the refresh token is still returned in the `/connect/token` JSON body instead of an `httpOnly` cookie (CLAUDE.md Section 4.7's target design), and the player app does not yet react to `scene:changed` by swapping tile/entity content on a runtime scene transition.
+Milestones M0–M7 (see `CLAUDE.md` Section 8) are implemented, tested, and merged — engine, sandbox, Module API, editor shell, backend/persistence, registry/publish/Art Packs, and collaboration/marketplace. The editor SPA is now wired end to end to `Forge.Api` (real sign-up/sign-in, project list/create, server-persisted saves, live presence) — see "Running the full stack locally" below to try it. The refresh token lives in an `httpOnly` cookie, not the `/connect/token` JSON body (CLAUDE.md Section 4.7's target design). The standalone player reacts to a runtime `scene:changed` transition (a module's own `ctx.scene.transitionTo()`, or a native system) by swapping the current scene's tiles and NPC entities and repositioning the player, closing the last stated gap in this list.
 
 ## Prerequisites
 
 - Node.js ≥ 22, pnpm ≥ 10 (`corepack enable` or install per `packageManager` in `package.json`)
-- .NET 8 SDK
+- .NET 10 SDK
 - Docker (or another way to run Postgres 16, Redis 7, and an Azurite-compatible blob emulator) for the full stack below
 
 ## Running the full stack locally

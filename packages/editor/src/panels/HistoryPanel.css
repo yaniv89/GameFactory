@@ -1,0 +1,54 @@
+.fg-history__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.fg-history__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  background: var(--surface-raised);
+  border: 1px solid var(--line-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  min-height: 44px;
+}
+
+.fg-history__row-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.fg-history__label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-primary);
+  font-size: var(--text-base);
+}
+
+.fg-history__timestamp {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.fg-history__badge {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.fg-history__badge--current {
+  color: var(--text-primary);
+  border-color: var(--accent-select);
+}

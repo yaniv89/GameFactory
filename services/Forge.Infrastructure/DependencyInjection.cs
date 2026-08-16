@@ -14,9 +14,12 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore; // OpenIddictServerAspNetCoreHelpers.GetHttpRequest(OpenIddictServerTransaction) lives here, not in OpenIddict.Server.AspNetCore, despite the extended type's own namespace.
 using OpenIddict.Abstractions;
+using OpenIddict.Server;
 using StackExchange.Redis;
 using Stripe;
+using static OpenIddict.Server.OpenIddictServerEvents;
 
 namespace Forge.Infrastructure;
 
@@ -329,6 +332,41 @@ public static class DependencyInjection
                     // terminate TLS upstream and must keep this check on.
                     aspNetCoreBuilder.DisableTransportSecurityRequirement();
                 }
+
+                // The read half of the httpOnly-refresh-cookie pair
+                // (RefreshTokenCookie.cs's own doc comment has the full
+                // "why"; the write half is RefreshTokenCookieMiddleware,
+                // NOT an OpenIddict event handler — see that class's doc
+                // comment for why the obvious event-handler approach
+                // doesn't work here). The client never sends refresh_token
+                // as a form field for a refresh grant — authClient.ts has
+                // nothing to send, the cookie is httpOnly — so this reads
+                // it from the cookie and populates context.Request.RefreshToken
+                // before OpenIddict's own grant validation runs.
+                // SetOrder(int.MaxValue) so the built-in form-body
+                // extraction has already run and left the field empty for
+                // this handler to fill in; confirmed safe (unlike the
+                // outgoing side) because ExtractTokenRequestContext has no
+                // short-circuiting finalization handler ahead of a
+                // Custom-ordered one the way ProcessSignInContext does.
+                options.AddEventHandler<ExtractTokenRequestContext>(builder => builder
+                    .UseInlineHandler(context =>
+                    {
+                        if (context.Request is not null
+                            && context.Request.GrantType == OpenIddictConstants.GrantTypes.RefreshToken
+                            && string.IsNullOrEmpty(context.Request.RefreshToken))
+                        {
+                            var httpContext = context.Transaction.GetHttpRequest()?.HttpContext;
+                            if (httpContext is not null
+                                && httpContext.Request.Cookies.TryGetValue(RefreshTokenCookie.Name, out var cookieValue)
+                                && !string.IsNullOrEmpty(cookieValue))
+                            {
+                                context.Request.RefreshToken = cookieValue;
+                            }
+                        }
+                        return default;
+                    })
+                    .SetOrder(int.MaxValue));
             })
             .AddValidation(options =>
             {

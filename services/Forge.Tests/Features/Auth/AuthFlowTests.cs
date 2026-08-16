@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using Forge.Api;
 using Forge.Api.Features.Auth;
+using Forge.Infrastructure.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
 
@@ -94,8 +95,22 @@ public sealed class AuthFlowTests : IClassFixture<ForgeWebApplicationFactory>
         var tokenPayload = await tokenResponse.Content.ReadFromJsonAsync<JsonElement>();
         var accessToken = tokenPayload.GetProperty("access_token").GetString();
         Assert.False(string.IsNullOrEmpty(accessToken));
-        var refreshToken = tokenPayload.TryGetProperty("refresh_token", out var rt) ? rt.GetString() : null;
-        Assert.False(string.IsNullOrEmpty(refreshToken));
+
+        // The refresh token must never appear in the JSON body — it lives
+        // only in the httpOnly forge_rt cookie (CLAUDE.md Section 4.7).
+        // This is the assertion that would fail if that guarantee ever
+        // regressed back to putting it in the response body.
+        Assert.False(
+            tokenPayload.TryGetProperty("refresh_token", out _),
+            "refresh_token must not appear in the /connect/token response body — it belongs in the httpOnly cookie only.");
+
+        Assert.True(tokenResponse.Headers.TryGetValues("Set-Cookie", out var setCookieHeaders), "No Set-Cookie header on the token response.");
+        var refreshCookieHeader = Assert.Single(setCookieHeaders!, h => h.StartsWith(RefreshTokenCookie.Name + "=", StringComparison.Ordinal));
+        Assert.Contains("httponly", refreshCookieHeader, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("samesite=strict", refreshCookieHeader, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("path=/connect", refreshCookieHeader, StringComparison.OrdinalIgnoreCase);
+        var refreshCookieValue = refreshCookieHeader.Split(';')[0][(RefreshTokenCookie.Name.Length + 1)..];
+        Assert.False(string.IsNullOrEmpty(refreshCookieValue));
 
         // 6. /me, Bearer-authenticated with the token just issued.
         var meRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/me");
@@ -110,16 +125,34 @@ public sealed class AuthFlowTests : IClassFixture<ForgeWebApplicationFactory>
         Assert.Equal(signup.WorkspaceId, workspace.WorkspaceId);
         Assert.Equal("owner", workspace.Role);
 
-        // 7. Logout revokes the refresh token — reusing it must fail.
-        var logoutResponse = await client.PostAsJsonAsync("/connect/logout", new { refreshToken });
+        // 7. Logout revokes the refresh token server-side — no body, the
+        // cookie the client just received (WebApplicationFactoryClientOptions
+        // defaults HandleCookies to true, so this same client already
+        // carries it) is what gets read and revoked.
+        var logoutResponse = await client.PostAsync("/connect/logout", content: null);
         Assert.Equal(HttpStatusCode.NoContent, logoutResponse.StatusCode);
 
-        var refreshAttempt = await client.PostAsync("/connect/token", new FormUrlEncodedContent(new Dictionary<string, string>
+        // A stolen cookie replayed on a *different* client after logout
+        // must still fail — proving the token is actually revoked
+        // server-side, not just forgotten by the browser that logged out
+        // (RefreshTokenCookie.cs's doc comment). HandleCookies=false here:
+        // this client must send exactly the Cookie header we set, nothing
+        // auto-managed.
+        using var replayClient = _factory.CreateClient(new WebApplicationFactoryClientOptions
         {
-            ["grant_type"] = "refresh_token",
-            ["refresh_token"] = refreshToken!,
-            ["client_id"] = OpenIddictSeeding.EditorClientId,
-        }));
+            AllowAutoRedirect = false,
+            HandleCookies = false,
+        });
+        var replayRequest = new HttpRequestMessage(HttpMethod.Post, "/connect/token")
+        {
+            Content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["grant_type"] = "refresh_token",
+                ["client_id"] = OpenIddictSeeding.EditorClientId,
+            }),
+        };
+        replayRequest.Headers.Add("Cookie", $"{RefreshTokenCookie.Name}={refreshCookieValue}");
+        var refreshAttempt = await replayClient.SendAsync(replayRequest);
         Assert.False(refreshAttempt.IsSuccessStatusCode);
     }
 

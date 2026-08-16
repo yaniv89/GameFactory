@@ -135,6 +135,66 @@ describe("TilemapLayer", () => {
     expect(container.children[0]!.texture).toBe(TEXTURE_FOR_TILE_1);
   });
 
+  it("setTiles replaces every cell at once — creates, updates, and clears sprites in one call", () => {
+    const container = new FakeContainer();
+    // 2x1 grid: tile 1 (has a sprite), tile 0 (no sprite).
+    const layer = new TilemapLayer({
+      gridWidth: 2,
+      gridHeight: 1,
+      tileSize: 32,
+      tiles: [1, 0],
+      container,
+      createTileSprite: () => new FakeTileSprite(),
+      resolveTileTexture,
+    });
+    const survivingSprite = container.children[0];
+
+    // Swap the whole scene: cell 0 changes texture (same sprite reused),
+    // cell 1 goes from empty to non-empty (a sprite is created).
+    layer.setTiles([2, 1]);
+
+    expect(container.children).toHaveLength(2);
+    expect(container.children[0]).toBe(survivingSprite);
+    expect(layer.getTile(0, 0)).toBe(2);
+    expect(layer.getTile(1, 0)).toBe(1);
+    const textures = container.children.map((s) => s.texture);
+    expect(textures).toContain(TEXTURE_FOR_TILE_2);
+    expect(textures).toContain(TEXTURE_FOR_TILE_1);
+  });
+
+  it("setTiles removes a sprite for a cell that becomes empty", () => {
+    const container = new FakeContainer();
+    const layer = new TilemapLayer({
+      gridWidth: 1,
+      gridHeight: 1,
+      tileSize: 32,
+      tiles: [1],
+      container,
+      createTileSprite: () => new FakeTileSprite(),
+      resolveTileTexture,
+    });
+
+    layer.setTiles([0]);
+
+    expect(container.children).toHaveLength(0);
+    expect(layer.spriteCount).toBe(0);
+  });
+
+  it("setTiles rejects tile data whose length doesn't match the grid", () => {
+    const container = new FakeContainer();
+    const layer = new TilemapLayer({
+      gridWidth: 2,
+      gridHeight: 2,
+      tileSize: 32,
+      tiles: [0, 0, 0, 0],
+      container,
+      createTileSprite: () => new FakeTileSprite(),
+      resolveTileTexture,
+    });
+
+    expect(() => layer.setTiles([1, 1, 1])).toThrow(/does not match/);
+  });
+
   it("refreshTextures re-resolves every placed sprite's texture against a new resolver", () => {
     const container = new FakeContainer();
     const layer = new TilemapLayer({

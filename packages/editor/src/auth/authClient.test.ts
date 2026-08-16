@@ -117,7 +117,7 @@ describe("authClient", () => {
 
     const pending = JSON.parse(sessionStorage.getItem("forge_pkce_pending")!) as { verifier: string; state: string };
 
-    fetchMock.mockResolvedValueOnce(jsonResponse({ access_token: "at-1", refresh_token: "rt-1", expires_in: 900 })); // /connect/token
+    fetchMock.mockResolvedValueOnce(jsonResponse({ access_token: "at-1", expires_in: 900 })); // /connect/token — refresh token is set as an httpOnly cookie, never in this body
     const session = await completeLoginFromCallback(
       new URL(`http://localhost/auth/callback?code=real-code&state=${pending.state}`),
     );
@@ -141,7 +141,7 @@ describe("authClient", () => {
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
     await login("ada@example.com", "password12345");
     const pending = JSON.parse(sessionStorage.getItem("forge_pkce_pending")!) as { state: string };
-    fetchMock.mockResolvedValueOnce(jsonResponse({ access_token: "at-1", refresh_token: "rt-1", expires_in: 900 }));
+    fetchMock.mockResolvedValueOnce(jsonResponse({ access_token: "at-1", expires_in: 900 }));
     await completeLoginFromCallback(new URL(`http://localhost/auth/callback?code=c&state=${pending.state}`));
     fetchMock.mockClear();
 
@@ -151,16 +151,16 @@ describe("authClient", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("ensureFreshAccessToken refreshes when the access token is expired, using the held refresh token", async () => {
+  it("ensureFreshAccessToken refreshes when the access token is expired, relying on the httpOnly refresh cookie rather than any held token", async () => {
     const { login, completeLoginFromCallback, ensureFreshAccessToken } = await freshAuthClient();
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
     await login("ada@example.com", "password12345");
     const pending = JSON.parse(sessionStorage.getItem("forge_pkce_pending")!) as { state: string };
-    fetchMock.mockResolvedValueOnce(jsonResponse({ access_token: "at-1", refresh_token: "rt-1", expires_in: -1 })); // already expired
+    fetchMock.mockResolvedValueOnce(jsonResponse({ access_token: "at-1", expires_in: -1 })); // already expired
     await completeLoginFromCallback(new URL(`http://localhost/auth/callback?code=c&state=${pending.state}`));
     fetchMock.mockClear();
 
-    fetchMock.mockResolvedValueOnce(jsonResponse({ access_token: "at-2", expires_in: 900 })); // refresh_token omitted: server may not rotate every time
+    fetchMock.mockResolvedValueOnce(jsonResponse({ access_token: "at-2", expires_in: 900 }));
     const token = await ensureFreshAccessToken();
 
     expect(token).toBe("at-2");
@@ -168,15 +168,31 @@ describe("authClient", () => {
     expect(url).toBe("/connect/token");
     const body = init!.body as URLSearchParams;
     expect(body.get("grant_type")).toBe("refresh_token");
-    expect(body.get("refresh_token")).toBe("rt-1");
+    // No refresh_token field: the browser attaches the httpOnly forge_rt
+    // cookie to this same-origin request automatically. Client JS never
+    // holds the value, so there is nothing here to assert it sent.
+    expect(body.has("refresh_token")).toBe(false);
   });
 
-  it("refreshAccessToken clears the session and throws when the refresh token is no longer valid", async () => {
+  it("ensureFreshAccessToken refreshes via the cookie on first call with no prior session (e.g. after a page reload)", async () => {
+    const { ensureFreshAccessToken } = await freshAuthClient();
+    fetchMock.mockResolvedValueOnce(jsonResponse({ access_token: "at-restored", expires_in: 900 }));
+
+    const token = await ensureFreshAccessToken();
+
+    expect(token).toBe("at-restored");
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe("/connect/token");
+    const body = init!.body as URLSearchParams;
+    expect(body.get("grant_type")).toBe("refresh_token");
+  });
+
+  it("refreshAccessToken clears the session and throws when there is no valid refresh cookie", async () => {
     const { login, completeLoginFromCallback, refreshAccessToken, getSession } = await freshAuthClient();
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
     await login("ada@example.com", "password12345");
     const pending = JSON.parse(sessionStorage.getItem("forge_pkce_pending")!) as { state: string };
-    fetchMock.mockResolvedValueOnce(jsonResponse({ access_token: "at-1", refresh_token: "rt-1", expires_in: 900 }));
+    fetchMock.mockResolvedValueOnce(jsonResponse({ access_token: "at-1", expires_in: 900 }));
     await completeLoginFromCallback(new URL(`http://localhost/auth/callback?code=c&state=${pending.state}`));
 
     fetchMock.mockResolvedValueOnce(jsonResponse({ detail: "The token is no longer valid." }, { status: 400 }));
@@ -184,12 +200,12 @@ describe("authClient", () => {
     expect(getSession()).toBeUndefined();
   });
 
-  it("logout() clears the session immediately and posts the held refresh token for server-side revocation", async () => {
+  it("logout() clears the session immediately and posts to /connect/logout with no body — the httpOnly cookie is what gets revoked server-side", async () => {
     const { login, completeLoginFromCallback, logout, getSession } = await freshAuthClient();
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
     await login("ada@example.com", "password12345");
     const pending = JSON.parse(sessionStorage.getItem("forge_pkce_pending")!) as { state: string };
-    fetchMock.mockResolvedValueOnce(jsonResponse({ access_token: "at-1", refresh_token: "rt-1", expires_in: 900 }));
+    fetchMock.mockResolvedValueOnce(jsonResponse({ access_token: "at-1", expires_in: 900 }));
     await completeLoginFromCallback(new URL(`http://localhost/auth/callback?code=c&state=${pending.state}`));
     fetchMock.mockClear();
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
@@ -197,9 +213,8 @@ describe("authClient", () => {
     await logout();
 
     expect(getSession()).toBeUndefined();
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/connect/logout",
-      expect.objectContaining({ method: "POST", body: JSON.stringify({ refreshToken: "rt-1" }) }),
-    );
+    expect(fetchMock).toHaveBeenCalledWith("/connect/logout", expect.objectContaining({ method: "POST" }));
+    const [, init] = fetchMock.mock.calls[0]!;
+    expect(init).not.toHaveProperty("body");
   });
 });

@@ -47,14 +47,14 @@ Do not introduce a dependency outside this list without asking. Every new depend
 ### 2.1 Backend
 | Concern | Choice | Notes |
 |---|---|---|
-| Runtime | .NET 8 LTS | Minimal API, not MVC controllers |
-| ORM | EF Core 8 | Compiled queries on hot paths |
+| Runtime | .NET 10 LTS | Minimal API, not MVC controllers. Bumped from .NET 8 in `docs/adr/0008` |
+| ORM | EF Core 10 | Compiled queries on hot paths |
 | Micro-ORM | Dapper 2 | Read-heavy reporting queries only |
 | Database | PostgreSQL 16 | JSONB for project documents |
 | Cache / queue | Redis 7 | Presence, rate limits, job queue, SignalR backplane |
 | Blob | Azure Blob Storage | Assets, bundles, published builds |
 | Wide-column | Azure Table Storage | Cloud saves, leaderboards, telemetry |
-| Jobs | Azure Functions (isolated worker, .NET 8) | Build, scan, transcode |
+| Jobs | Azure Functions (isolated worker, .NET 10) | Build, scan, transcode |
 | Realtime | SignalR | CRDT relay and presence |
 | Payments | Stripe Connect | Marketplace payouts |
 | Auth | ASP.NET Core Identity + OpenIddict | OIDC, PKCE for the SPA |

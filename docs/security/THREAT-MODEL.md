@@ -18,7 +18,7 @@ Forge executes untrusted third-party code in players' browsers and processes unt
           │ HTTPS/WSS, OIDC bearer       │ HTTPS, no editor session
           ▼                              ▼
 ┌───────────────────────────────────────────────────────────────────────────┐
-│                           API (.NET 8, api.forge.dev)                     │
+│                           API (.NET 10, api.forge.dev)                    │
 │   Every request re-derives authorization from the token subject.         │
 │   Never trusts a client-supplied workspaceId/projectId as a grant.       │
 └───────────────────────────────────────────────────────────────────────────┘

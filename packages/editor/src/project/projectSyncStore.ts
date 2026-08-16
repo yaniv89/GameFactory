@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { ApiError, NetworkError } from "../api/httpClient";
-import { commitRevision, getProjectDocument, type ProjectDocumentEnvelope } from "../api/projectsApi";
+import { commitRevision, getProjectDocument, restoreRevision, type ProjectDocumentEnvelope } from "../api/projectsApi";
 import { migrateDocument, useProjectStore, type ProjectDocument } from "../store/projectStore";
 
 export type SyncStatus = "idle" | "opening" | "saving" | "saved" | "conflict" | "error" | "offline";
@@ -15,6 +15,7 @@ interface ProjectSyncState {
   readonly conflictActualRevision: number | undefined;
   openProject: (projectId: string, projectTitle: string) => Promise<void>;
   saveProject: (label?: string) => Promise<void>;
+  restoreRevision: (revisionId: number, label?: string) => Promise<void>;
   closeProject: () => void;
 }
 
@@ -65,6 +66,43 @@ export const useProjectSyncStore = create<ProjectSyncState>()((set, get) => ({
         isCheckpoint: false,
         document,
       });
+      set({ status: "saved", headRevision: result.revisionId });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        set({
+          status: "conflict",
+          error: error.message,
+          conflictActualRevision: error.extensions?.actualHeadRevision as number | undefined,
+        });
+        return;
+      }
+      set(toErrorState(error));
+    }
+  },
+
+  /**
+   * Restoring is forward-only on the server (RestoreRevisionEndpoint.cs's
+   * own doc comment: nothing already committed is ever lost — it commits
+   * the old document as a brand-new head). The one real loss risk lives
+   * entirely client-side: this replaces whatever's on the canvas right
+   * now, including any local edits since the last save that no revision
+   * captured. Callers (HistoryPanelContainer) are expected to confirm with
+   * the person before calling this, the same way `App.tsx`'s conflict
+   * dialog confirms before "Discard my changes and reload".
+   */
+  restoreRevision: async (revisionId, label) => {
+    const { projectId, headRevision } = get();
+    if (!projectId) return;
+    if (isOffline()) {
+      set({ status: "offline" });
+      return;
+    }
+    set({ status: "saving", error: undefined, conflictActualRevision: undefined });
+    try {
+      const result = await restoreRevision(projectId, revisionId, { expectedHeadRevision: headRevision, label });
+      const envelope = await getProjectDocument(projectId);
+      const document = migrateDocument(envelope?.document as Partial<ProjectDocument> | undefined);
+      useProjectStore.getState().loadDocument(document);
       set({ status: "saved", headRevision: result.revisionId });
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {

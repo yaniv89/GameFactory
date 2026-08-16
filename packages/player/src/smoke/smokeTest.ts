@@ -13,6 +13,7 @@ import { TransformSchema } from "@forge/core";
 import { newQuickJSWASMModuleFromVariant, newVariant, RELEASE_SYNC, type QuickJSWASMModule } from "quickjs-emscripten";
 import { bootGameLogic } from "../gameLogic.js";
 import type { PlayerProjectData } from "../playerProjectData.js";
+import { WALL_TILE_ID } from "../tilePalette.js";
 
 const require = createRequire(import.meta.url);
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -38,13 +39,22 @@ const GRID_WIDTH = 20;
 const GRID_HEIGHT = 15;
 const TILE_SIZE = 32;
 
+const SCENE_1_PLAYER_START = { x: 2, y: 2 };
+// Deliberately a different cell than scene-1's wall — the "scene:changed"
+// assertions below need scene-1's old wall location to stop blocking and
+// scene-2's own wall to start, not just "isWalkable returns something".
+const SCENE_2_PLAYER_START = { x: 10, y: 10 };
+
 function buildFixtureProjectData(guestBundleSource: string): PlayerProjectData {
-  const tiles = new Array(GRID_WIDTH * GRID_HEIGHT).fill(0);
-  const playerStartX = 2;
-  const playerStartY = 2;
-  // A wall tile directly east of the player's start, so isWalkable
+  const scene1Tiles = new Array(GRID_WIDTH * GRID_HEIGHT).fill(0);
+  // A wall tile directly east of scene-1's player start, so isWalkable
   // actually has something real to block.
-  tiles[playerStartY * GRID_WIDTH + (playerStartX + 1)] = 1;
+  scene1Tiles[SCENE_1_PLAYER_START.y * GRID_WIDTH + (SCENE_1_PLAYER_START.x + 1)] = WALL_TILE_ID;
+
+  const scene2Tiles = new Array(GRID_WIDTH * GRID_HEIGHT).fill(0);
+  // Scene-2's own wall, at a cell scene-1 left open — proves isWalkable
+  // is reading whichever scene is actually current, not a boot-time copy.
+  scene2Tiles[SCENE_2_PLAYER_START.y * GRID_WIDTH + (SCENE_2_PLAYER_START.x + 1)] = WALL_TILE_ID;
 
   return {
     projectId: "smoke-test-project",
@@ -55,19 +65,34 @@ function buildFixtureProjectData(guestBundleSource: string): PlayerProjectData {
       {
         id: "scene-1",
         name: "Test Scene",
-        tiles,
+        tiles: scene1Tiles,
         entities: [
-          { id: "player", kind: "player-start", tileX: playerStartX, tileY: playerStartY },
+          { id: "player", kind: "player-start", tileX: SCENE_1_PLAYER_START.x, tileY: SCENE_1_PLAYER_START.y },
           {
             id: "npc-1",
             kind: "npc",
-            tileX: playerStartX,
+            tileX: SCENE_1_PLAYER_START.x,
             // 4 tiles south = 128 world units — outside gameWorld.ts's
             // INTERACT_RANGE (40) at boot, so "walking into range" is a
             // real state change the test below exercises, not
             // already-true-at-boot.
-            tileY: playerStartY + 4,
+            tileY: SCENE_1_PLAYER_START.y + 4,
             dialogue: { speaker: "Guard", text: "Halt!" },
+          },
+        ],
+      },
+      {
+        id: "scene-2",
+        name: "Second Scene",
+        tiles: scene2Tiles,
+        entities: [
+          { id: "player-2", kind: "player-start", tileX: SCENE_2_PLAYER_START.x, tileY: SCENE_2_PLAYER_START.y },
+          {
+            id: "npc-2",
+            kind: "npc",
+            tileX: SCENE_2_PLAYER_START.x,
+            tileY: SCENE_2_PLAYER_START.y + 4,
+            dialogue: { speaker: "Merchant", text: "Welcome!" },
           },
         ],
       },
@@ -76,7 +101,12 @@ function buildFixtureProjectData(guestBundleSource: string): PlayerProjectData {
       {
         name: "@forge/dialogue",
         version: "1.0.0",
-        config: { trees: [{ id: "npc-1", nodes: [{ speaker: "Guard", text: "Halt!" }] }] },
+        config: {
+          trees: [
+            { id: "npc-1", nodes: [{ speaker: "Guard", text: "Halt!" }] },
+            { id: "npc-2", nodes: [{ speaker: "Merchant", text: "Welcome!" }] },
+          ],
+        },
         guestBundleSource,
       },
     ],
@@ -87,17 +117,9 @@ function buildFixtureProjectData(guestBundleSource: string): PlayerProjectData {
 async function main(): Promise<void> {
   const [wasmModule, guestBundleSource] = await Promise.all([buildWasmModuleFromEmbeddedBytes(), Promise.resolve(readDialogueGuestBundle())]);
   const projectData = buildFixtureProjectData(guestBundleSource);
-  const scene = projectData.scenes[0]!;
-
-  const isWalkable = (worldX: number, worldY: number): boolean => {
-    const tileX = Math.floor(worldX / TILE_SIZE);
-    const tileY = Math.floor(worldY / TILE_SIZE);
-    if (tileX < 0 || tileY < 0 || tileX >= GRID_WIDTH || tileY >= GRID_HEIGHT) return false;
-    return scene.tiles[tileY * GRID_WIDTH + tileX] !== 1;
-  };
   const keysHeld = new Set<string>();
 
-  const game = await bootGameLogic({ projectData, wasmModule, isWalkable, keysHeld });
+  const game = await bootGameLogic({ projectData, wasmModule, keysHeld });
 
   // 1. Real entities exist, real modules booted for real (through the
   // actual sandbox — wasmModule proves no network path was involved).
@@ -112,8 +134,11 @@ async function main(): Promise<void> {
   const transformBefore = game.world.get<typeof TransformSchema>(game.playerEntity!, "Transform")!;
   for (let i = 0; i < 60; i++) game.tick(1000 / 60);
   const transformAfterBlocked = game.world.get<typeof TransformSchema>(game.playerEntity!, "Transform")!;
-  const wallWorldX = (2 + 1) * TILE_SIZE;
-  assert.ok(transformAfterBlocked.x < wallWorldX, `expected the player to be blocked before the wall tile at x=${wallWorldX}, got x=${transformAfterBlocked.x}`);
+  const scene1WallWorldX = (SCENE_1_PLAYER_START.x + 1) * TILE_SIZE;
+  assert.ok(
+    transformAfterBlocked.x < scene1WallWorldX,
+    `expected the player to be blocked before the wall tile at x=${scene1WallWorldX}, got x=${transformAfterBlocked.x}`,
+  );
   assert.ok(transformAfterBlocked.x > transformBefore.x, "expected the player to have moved at all before hitting the wall");
   keysHeld.delete("d");
 
@@ -143,6 +168,48 @@ async function main(): Promise<void> {
   assert.notEqual(shownPayload, undefined, "expected dialogue:shown once the player walked into interact range and pressed interact");
   assert.equal(shownPayload!.speaker, "Guard");
   assert.equal(shownPayload!.text, "Halt!");
+
+  // 4. The whole point of this smoke test's second scene: transitioning
+  // away from scene-1 (via the host directly calling
+  // scheduler.scene.transitionTo — the same mechanism a sandboxed
+  // module's ctx.scene.transitionTo() drives, per SceneManager's own doc
+  // comment) actually swaps this app's live state, not just
+  // SceneManager's own internal bookkeeping.
+  const playerEntityBeforeTransition = game.playerEntity;
+  game.scheduler.scene.transitionTo("scene-2");
+  game.tick(1000 / 60); // SceneManager applies the transition, and "scene:changed" fires, at the end of this tick's fixed step.
+
+  assert.equal(game.scheduler.scene.currentSceneId, "scene-2", "expected the scene manager to have applied the transition");
+  assert.equal(game.playerEntity, playerEntityBeforeTransition, "expected the player to be the same entity across scenes, not respawned");
+  assert.deepEqual(
+    [...game.npcEntityByPlacementId.keys()],
+    ["npc-2"],
+    "expected scene-1's npc-1 to be despawned and scene-2's npc-2 to take its place",
+  );
+  assert.deepEqual([...game.dialogueCapableNpcIds], ["npc-2"], "expected npc-2, not npc-1, to be tracked as dialogue-capable after the transition");
+
+  const transformAfterTransition = game.world.get<typeof TransformSchema>(game.playerEntity!, "Transform")!;
+  const scene2PlayerWorldX = SCENE_2_PLAYER_START.x * TILE_SIZE + TILE_SIZE / 2;
+  const scene2PlayerWorldY = SCENE_2_PLAYER_START.y * TILE_SIZE + TILE_SIZE / 2;
+  assert.equal(transformAfterTransition.x, scene2PlayerWorldX, "expected the player to be repositioned to scene-2's own player-start placement");
+  assert.equal(transformAfterTransition.y, scene2PlayerWorldY, "expected the player to be repositioned to scene-2's own player-start placement");
+
+  // isWalkable now has to reflect scene-2's tiles, not scene-1's: the cell
+  // that blocked movement before the transition is open in scene-2, and
+  // scene-2's own wall (a different cell) blocks it instead. Proven by
+  // actually walking, the same way step 2 proved it for scene-1, not by
+  // reaching into gameLogic.ts's private isWalkable closure.
+  keysHeld.add("d");
+  const scene2TransformBefore = game.world.get<typeof TransformSchema>(game.playerEntity!, "Transform")!;
+  for (let i = 0; i < 60; i++) game.tick(1000 / 60);
+  const scene2TransformAfterBlocked = game.world.get<typeof TransformSchema>(game.playerEntity!, "Transform")!;
+  const scene2WallWorldX = (SCENE_2_PLAYER_START.x + 1) * TILE_SIZE;
+  assert.ok(
+    scene2TransformAfterBlocked.x < scene2WallWorldX,
+    `expected the player to be blocked before scene-2's own wall tile at x=${scene2WallWorldX}, got x=${scene2TransformAfterBlocked.x}`,
+  );
+  assert.ok(scene2TransformAfterBlocked.x > scene2TransformBefore.x, "expected the player to have moved at all in scene-2 before hitting its wall");
+  keysHeld.delete("d");
 
   game.dispose();
   console.log("smoke-test: PASS");

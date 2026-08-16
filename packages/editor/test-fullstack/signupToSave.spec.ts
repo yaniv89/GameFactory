@@ -42,12 +42,16 @@ test.describe("Full stack: sign up, create a project, save, see presence", () =>
     // A brand-new project has no revisions yet — GetDocumentEndpoint 404s
     // and the editor starts from a blank document, not an error state.
     await expect(page.getByText(projectTitle)).toBeVisible({ timeout: 10000 });
-    await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
+    // exact: true — the History panel's empty-state action is also named
+    // "Save now", which substring-matches an unqualified { name: "Save" }
+    // and makes this locator resolve to two elements (strict-mode
+    // violation) once that panel has finished its own (empty) load.
+    await expect(page.getByRole("button", { name: "Save", exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "Create a scene" }).click();
     await expect(page.getByRole("treeitem", { name: "Scene 1" })).toBeVisible();
 
-    await page.getByRole("button", { name: "Save" }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
     // Never optimistic (CLAUDE.md 5.3) — this only appears once the server
     // has actually confirmed the commit.
     await expect(page.getByText("Saved", { exact: true })).toBeVisible({ timeout: 10000 });

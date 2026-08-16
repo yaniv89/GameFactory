@@ -45,3 +45,8 @@ packages/*/temp/
 # overwritten by every local `forge export`/test run, dirtying the tree) ---
 packages/player/src/generated/
 
+
+# --- Claude Code local runtime state. `.claude/settings.json` and
+# `.claude/hooks/` ARE tracked (shared project config); this is the
+# per-checkout worktree scratch dir, which is not. ---
+.claude/worktrees/

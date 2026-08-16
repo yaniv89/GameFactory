@@ -23,6 +23,7 @@
     "@forge/dialogue": "workspace:*",
     "@forge/ds": "workspace:*",
     "@forge/module-api": "workspace:*",
+    "@forge/project-export": "workspace:*",
     "@forge/render-2d": "workspace:*",
     "@microsoft/signalr": "^8.0.7",
     "dockview": "^7.0.4",

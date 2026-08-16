@@ -2,77 +2,23 @@ import { current } from "immer";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
-import { GRID_HEIGHT, GRID_WIDTH } from "../canvas/gridConstants";
+import {
+  GRID_WIDTH,
+  emptyTiles,
+  migrateDocument as migrateDocumentShape,
+  type EntityDialogue,
+  type EntityPlacement,
+  type ProjectDocument,
+  type SceneSummary,
+} from "@forge/project-export";
 import type { FormValues } from "../inspector/jsonSchema";
 
-function emptyTiles(): number[] {
-  return new Array(GRID_WIDTH * GRID_HEIGHT).fill(0);
-}
-
-export interface EntityDialogue {
-  readonly speaker: string;
-  readonly text: string;
-}
-
-export interface EntityPlacement {
-  readonly id: string;
-  readonly kind: "player-start" | "npc";
-  readonly tileX: number;
-  readonly tileY: number;
-  /** Only meaningful for `kind: "npc"` — the one-line dialogue it says on interact (Phase 7). */
-  readonly dialogue?: EntityDialogue;
-}
-
-export interface SceneSummary {
-  readonly id: string;
-  readonly name: string;
-  /**
-   * Not `readonly EntityPlacement[]`: mirrors `ProjectDocument.scenes`
-   * itself, a plain mutable array holding readonly-fielded objects —
-   * applyCommand mutates the array in place (push/splice), while
-   * individual entities are replaced wholesale on change, never patched.
-   */
-  entities: EntityPlacement[];
-  /**
-   * Row-major (`y * GRID_WIDTH + x`), one tile id per cell — the same
-   * indexing SceneCanvas's own `snapshotTiles`/`tileIndex` already use, so
-   * a scene's persisted tiles and its live `TilemapLayer` never need a
-   * translation step between them. Was purely live, in-memory Pixi state
-   * until now (SceneCanvas's own former doc comment named this a real,
-   * stated gap, not an oversight) — undoable and persisted like every
-   * other document field once `paintTile` below started dispatching real
-   * commands for it instead of mutating the render layer directly.
-   */
-  tiles: number[];
-}
-
-export interface ProjectDocument {
-  scenes: SceneSummary[];
-  /** Installed module name -> its config values. Presence of the key is the install flag. */
-  installedModules: Record<string, FormValues>;
-  /** docs/SPEC.md Section 7.3's `activePack` — the registry name of the currently active Art Pack, or undefined when none is installed. */
-  activePack: string | undefined;
-  /**
-   * Project-level per-asset overrides scoped to the active pack
-   * (docs/SPEC.md Section 11.4 tier 1, Section 7.3's `packOverrides`) —
-   * keyed by the pack-relative asset path (e.g. `"tilesets/outdoor-base.png"`),
-   * valued by the override's own resolved URL. Empty until the asset
-   * upload UI that would populate it exists (M6 Phase 4's later asset-
-   * resolution wiring) — a stated gap, not a silently assumed one.
-   */
-  packOverrides: Record<string, string>;
-  /**
-   * A manual "remap manually" choice (docs/SPEC.md Section 11.5's own
-   * button) for a terrain tag the active pack doesn't declare: source
-   * tag -> the active pack's own substitute tag. Project-wide and
-   * pack-agnostic (keyed by tag, not by which pack was active when the
-   * choice was made) since "terrain tag" is the stable identity a
-   * pack-swap diff already matches tiles by across packs — the same
-   * remap keeps applying if the project swaps packs again later, rather
-   * than needing to be re-entered per pack.
-   */
-  packTerrainRemap: Record<string, string>;
-}
+// Re-exported so every existing importer of these types from this module
+// (11 files across the editor) keeps working unchanged — the types
+// themselves moved to @forge/project-export (docs/adr/0009) so the CLI
+// and a future server build worker can depend on the document shape
+// without depending on the whole editor SPA.
+export type { EntityDialogue, EntityPlacement, ProjectDocument, SceneSummary };
 
 /**
  * docs/SPEC.md Section 11.5's "automatic named checkpoint before
@@ -327,21 +273,12 @@ export function migratePersistedProjectState(
  * `localStorage` document — reused by `project/projectSyncStore.ts` to
  * normalize a document fetched from `GetDocumentEndpoint`, which can be
  * `undefined` entirely (a brand-new project with no revisions yet) or, in
- * principle, an older schema version than this build expects.
+ * principle, an older schema version than this build expects. Moved to
+ * @forge/project-export (docs/adr/0009); re-exported under its original
+ * name so this module's own callers and `project/projectSyncStore.ts`
+ * need no changes.
  */
-export function migrateDocument(document: Partial<ProjectDocument> | undefined): ProjectDocument {
-  return {
-    // Pre-tiles (version <5) scenes have no `tiles` field at all — filled
-    // in with a fresh blank grid, same as a scene/create would produce,
-    // rather than leaving it undefined and crashing the first paint or
-    // sync-effect that indexes into it.
-    scenes: (document?.scenes ?? []).map((scene) => ({ ...scene, tiles: scene.tiles ?? emptyTiles() })),
-    installedModules: document?.installedModules ?? {},
-    activePack: document?.activePack,
-    packOverrides: document?.packOverrides ?? {},
-    packTerrainRemap: document?.packTerrainRemap ?? {},
-  };
-}
+export const migrateDocument = migrateDocumentShape;
 
 export const useProjectStore = create<ProjectStoreState>()(
   persist(

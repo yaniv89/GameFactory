@@ -113,6 +113,9 @@ importers:
       '@forge/module-api':
         specifier: workspace:*
         version: link:../module-api
+      '@forge/project-export':
+        specifier: workspace:*
+        version: link:../project-export
       '@forge/render-2d':
         specifier: workspace:*
         version: link:../render-2d
@@ -280,6 +283,19 @@ importers:
       vite:
         specifier: ^6.4.3
         version: 6.4.3(@types/node@26.1.2)(lightningcss@1.33.0)
+
+  packages/project-export:
+    dependencies:
+      '@forge/player':
+        specifier: workspace:*
+        version: link:../player
+    devDependencies:
+      '@types/node':
+        specifier: ^26.1.2
+        version: 26.1.2
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@26.1.2)(jsdom@30.0.1)(lightningcss@1.33.0)
 
   packages/render-2d:
     dependencies:

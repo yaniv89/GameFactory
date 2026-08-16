@@ -1,5 +1,6 @@
 import { registerCoreComponents, Scheduler, TransformSchema, World, type EntityId } from "@forge/core";
 import { dialogueModule } from "@forge/dialogue";
+import { buildDialogueTreesFromEntities } from "@forge/project-export";
 import {
   Camera,
   RenderHost,
@@ -358,14 +359,7 @@ function rebuildDialogueRuntime(
   entities: readonly EntityPlacement[],
   onShown: (payload: { speaker: string; text: string }) => void,
 ): DialogueRuntime {
-  const npcsWithDialogue = entities.filter(
-    (entity): entity is EntityPlacement & { dialogue: NonNullable<EntityPlacement["dialogue"]> } =>
-      entity.kind === "npc" && entity.dialogue !== undefined,
-  );
-  const trees = npcsWithDialogue.map((entity) => ({
-    id: entity.id,
-    nodes: [{ speaker: entity.dialogue.speaker, text: entity.dialogue.text }],
-  }));
+  const trees = buildDialogueTreesFromEntities(entities);
 
   const runtime = createModuleRuntime("@forge/dialogue", { trees });
   dialogueModule.setup(runtime.ctx);
@@ -375,8 +369,8 @@ function rebuildDialogueRuntime(
   });
 
   const dialogueEntityByPlacementId = new Map<string, EntityId>();
-  for (const npc of npcsWithDialogue) {
-    dialogueEntityByPlacementId.set(npc.id, runtime.ctx.world.create());
+  for (const tree of trees) {
+    dialogueEntityByPlacementId.set(tree.id, runtime.ctx.world.create());
   }
   runtime.world.flush();
 

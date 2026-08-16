@@ -46,7 +46,7 @@ export interface SceneSummary {
   tiles: number[];
 }
 
-interface ProjectDocument {
+export interface ProjectDocument {
   scenes: SceneSummary[];
   /** Installed module name -> its config values. Presence of the key is the install flag. */
   installedModules: Record<string, FormValues>;
@@ -274,6 +274,15 @@ interface ProjectStoreState {
   deleteCheckpoint: (checkpointId: string) => void;
   undo: () => void;
   redo: () => void;
+  /**
+   * Swaps in a different project's document wholesale and clears undo
+   * history/checkpoints — unlike `document/replace` (a same-project
+   * checkpoint restore), this isn't undoable: the past being discarded
+   * belongs to whatever project was open before, not to this one, so
+   * there is nothing coherent for `undo()` to step back into. Used by
+   * `project/projectSyncStore.ts` when opening a project.
+   */
+  loadDocument: (document: ProjectDocument) => void;
 }
 
 const PERSIST_KEY = "forge:editor:project-document";
@@ -312,7 +321,15 @@ export function migratePersistedProjectState(
   };
 }
 
-function migrateDocument(document: Partial<ProjectDocument> | undefined): ProjectDocument {
+/**
+ * Fills in any field a partial/foreign document is missing, the same
+ * normalization `migratePersistedProjectState` applies to a rehydrated
+ * `localStorage` document — reused by `project/projectSyncStore.ts` to
+ * normalize a document fetched from `GetDocumentEndpoint`, which can be
+ * `undefined` entirely (a brand-new project with no revisions yet) or, in
+ * principle, an older schema version than this build expects.
+ */
+export function migrateDocument(document: Partial<ProjectDocument> | undefined): ProjectDocument {
   return {
     // Pre-tiles (version <5) scenes have no `tiles` field at all — filled
     // in with a fresh blank grid, same as a scene/create would produce,
@@ -554,6 +571,15 @@ export const useProjectStore = create<ProjectStoreState>()(
           if (!entry) return;
           applyCommand(state.document, entry.forward);
           state.past.push(entry);
+        }),
+
+      loadDocument: (document) =>
+        set((state) => {
+          state.document = document;
+          state.past = [];
+          state.future = [];
+          state.checkpoints = [];
+          state.selection = undefined;
         }),
     })),
     {

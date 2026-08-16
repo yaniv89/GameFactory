@@ -1,4 +1,5 @@
-import { expect, test, type Frame, type Page } from "@playwright/test";
+import type { Frame, Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 /**
  * The M4 exit criterion, mechanically: "a first-time user builds a

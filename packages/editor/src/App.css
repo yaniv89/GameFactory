@@ -29,6 +29,21 @@
   font-size: var(--text-sm);
 }
 
+.fg-app__save-status {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.fg-app__save-status[data-status="error"] {
+  color: var(--accent-destroy);
+}
+
+.fg-app__conflict-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-block-start: var(--space-3);
+}
+
 .fg-app__dock {
   flex: 1 1 auto;
   min-height: 0;

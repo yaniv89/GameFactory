@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 /**
  * Proves the cross-origin preview bridge (docs/SPEC.md 10.6) for real, in

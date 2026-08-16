@@ -1,9 +1,10 @@
+import type { SceneChangedEvent } from "@forge/core";
 import { Camera, RenderHost, TilemapLayer, createSpriteSyncSystem, createTransformSnapshotSystem, TransformSnapshotStore } from "@forge/render-2d";
 import { Sprite } from "pixi.js";
 import { buildEntityTextures } from "./entityMarkers.js";
 import type { GameLogic } from "./gameLogic.js";
 import { GRID_HEIGHT, GRID_WIDTH, TILE_SIZE } from "./gridConstants.js";
-import type { PlayerScene } from "./playerProjectData.js";
+import type { PlayerProjectData } from "./playerProjectData.js";
 import { buildPaletteTextures } from "./tilePalette.js";
 
 /** --surface-canvas from tokens.css, as a Pixi-friendly hex number — kept visually consistent with the editor's own canvas, not because the player imports the token itself. */
@@ -31,8 +32,18 @@ function fitZoom(viewportWidth: number, viewportHeight: number): number {
  *
  * No Art Pack asset resolution yet (`tilePalette.ts`'s own doc comment) —
  * a stated gap, tracked for a later phase.
+ *
+ * Takes the whole `PlayerProjectData`, not just the start scene, so a
+ * later `"scene:changed"` can look up whichever scene comes next — see
+ * the `game.events.on("scene:changed", ...)` subscription below, the
+ * tilemap half of `gameLogic.ts`'s own scene-swap reaction (the entity
+ * half needs no equivalent code here at all; see that subscription's own
+ * comment for why).
  */
-export async function bootRenderer(canvas: HTMLCanvasElement, scene: PlayerScene, game: GameLogic): Promise<RenderHandle> {
+export async function bootRenderer(canvas: HTMLCanvasElement, projectData: PlayerProjectData, game: GameLogic): Promise<RenderHandle> {
+  const scene = projectData.scenes.find((candidate) => candidate.id === projectData.startSceneId);
+  if (!scene) throw new Error(`bootRenderer: projectData has no scene "${projectData.startSceneId}"`);
+
   const { clientWidth: width, clientHeight: height } = canvas;
   const host = await RenderHost.create({
     canvas,
@@ -56,6 +67,19 @@ export async function bootRenderer(canvas: HTMLCanvasElement, scene: PlayerScene
     container: host.worldContainer,
     createTileSprite: () => new Sprite(),
     resolveTileTexture: (tileId) => paletteTextures.get(tileId),
+  });
+
+  // The tilemap is the one piece of a scene's content this renderer has to
+  // swap explicitly on "scene:changed" — entity sprites need no equivalent
+  // handling here at all, since createSpriteSyncSystem below is already a
+  // generic [Transform, Sprite] query: gameLogic.ts destroying the old
+  // scene's NPC entities and creating the new scene's is all that system
+  // needs to see to remove and add their sprites on its own.
+  const unsubscribeSceneChanged = game.events.on("scene:changed", (payload) => {
+    const { to } = payload as SceneChangedEvent;
+    const nextScene = projectData.scenes.find((candidate) => candidate.id === to);
+    if (!nextScene) return; // gameLogic.ts's own handler already throws loudly on this; nothing more for the renderer to do.
+    layer.setTiles(nextScene.tiles);
   });
 
   const snapshots = new TransformSnapshotStore();
@@ -102,6 +126,7 @@ export async function bootRenderer(canvas: HTMLCanvasElement, scene: PlayerScene
       layer.cull(camera.visibleWorldBounds());
     },
     dispose(): void {
+      unsubscribeSceneChanged();
       host.app.ticker.remove(onTick);
       host.destroy();
     },

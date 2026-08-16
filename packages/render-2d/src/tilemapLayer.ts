@@ -117,6 +117,26 @@ export class TilemapLayer<S extends TileSpriteLike> {
     this.placeTile(index, tileId);
   }
 
+  /**
+   * Replaces the entire grid's tile ids at once — a whole-scene swap (the
+   * standalone player reacting to `"scene:changed"`), unlike `setTile`'s
+   * one-cell live-paint patch. `tiles.length` must match the existing
+   * grid's cell count; the grid's own dimensions don't change, only which
+   * id occupies each cell.
+   */
+  setTiles(tiles: ArrayLike<number>): void {
+    if (tiles.length !== this.tiles.length) {
+      throw new Error(
+        `TilemapLayer.setTiles: tile data length ${tiles.length} does not match the ${this.gridWidth}x${this.gridHeight} grid (expected ${this.tiles.length})`,
+      );
+    }
+    for (let index = 0; index < tiles.length; index++) {
+      const tileId = tiles[index]!;
+      this.tiles[index] = tileId;
+      this.placeTile(index, tileId);
+    }
+  }
+
   getTile(x: number, y: number): number {
     return this.tiles[tileIndex(x, y, this.gridWidth)]!;
   }

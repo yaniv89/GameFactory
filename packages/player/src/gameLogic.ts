@@ -9,12 +9,13 @@
 // own comment already documents), so this package writes extensions
 // that resolve correctly both at `tsc` compile time and at plain-Node
 // runtime against the compiled output.
-import { EventBusImpl, FIXED_STEP_MS, InterceptorRegistry, registerCoreComponents, Scheduler, World, type EntityId } from "@forge/core";
+import { EventBusImpl, FIXED_STEP_MS, InterceptorRegistry, registerCoreComponents, Scheduler, World, type EntityId, type SceneChangedEvent } from "@forge/core";
 import { ModuleBridge } from "@forge/runtime-host";
 import type { QuickJSWASMModule } from "quickjs-emscripten";
 import { GRID_HEIGHT, GRID_WIDTH, TILE_SIZE } from "./gridConstants.js";
 import { createPlayerMovementSystem, INTERACT_RANGE, spawnNpcMarker, spawnPlayer, type HeldKeys } from "./gameWorld.js";
-import type { PlayerProjectData } from "./playerProjectData.js";
+import type { PlayerProjectData, PlayerScene } from "./playerProjectData.js";
+import { WALL_TILE_ID } from "./tilePalette.js";
 
 /** CLAUDE.md 7's "Per-module frame cost: 1.0 ms warn, 2.0 ms kill" — a real per-tick budget, not the generous one-off `runModuleSmokeTest` uses for a single `setup()` call. A module stuck past this is interrupted, not allowed to freeze the frame. */
 const PER_MODULE_COMPUTE_BUDGET_MS = 2;
@@ -36,7 +37,6 @@ export interface GameLogicOptions {
    * `fetch()` or XHR its way to the default singleton's WASM payload.
    */
   readonly wasmModule?: QuickJSWASMModule;
-  readonly isWalkable: (worldX: number, worldY: number) => boolean;
   /** Live reference — reads the *current* held-keys set on every tick, same contract as `packages/editor/src/preview/gameWorld.ts`'s own `createPlayerMovementSystem`. */
   readonly keysHeld: HeldKeys;
 }
@@ -92,44 +92,103 @@ export async function bootGameLogic(options: GameLogicOptions): Promise<GameLogi
   // installed module from the first tick, and `events` means a module's
   // `ctx.scene.transitionTo()` call genuinely fires "scene:changed" on the
   // same bus modules already use for everything else (dialogue, etc.) —
-  // see github.com/yaniv89/GameFactory/issues/3. What's NOT wired up yet:
-  // this player app itself doesn't react to "scene:changed" by loading a
-  // different scene's tiles/entities — `isWalkable` and the spawned NPC/
-  // dialogue entities below still reflect only `options.projectData`'s
-  // `startSceneId` scene for this app's own lifetime. Tracked as a
-  // separate follow-up (multi-scene tile/entity swapping in the
-  // standalone player), not silently faked here.
+  // see github.com/yaniv89/GameFactory/issues/3. The handler registered
+  // near the end of this function is what makes this app itself react to
+  // that event by swapping tile/entity content, closing the gap this
+  // comment used to describe.
   const scheduler = new Scheduler(world, { events, initialSceneId: options.projectData.startSceneId });
   const interceptors = new InterceptorRegistry();
 
-  scheduler.addSystem(createPlayerMovementSystem(world, options.isWalkable, options.keysHeld));
+  function findScene(sceneId: string): PlayerScene {
+    const scene = options.projectData.scenes.find((candidate) => candidate.id === sceneId);
+    if (!scene) {
+      throw new Error(`bootGameLogic: projectData has no scene with id "${sceneId}"`);
+    }
+    // A wrongly-shaped tiles array would silently misplace every later
+    // tile lookup (isWalkable, rendering) rather than fail loudly — worth
+    // checking since this is the export bundle's own embedded data, not
+    // something a person can just re-edit and retry like the editor's own
+    // live canvas. Checked on every scene lookup, not just the start
+    // scene, since a `ctx.scene.transitionTo()` into a malformed later
+    // scene deserves the same loud failure as a malformed start scene.
+    if (scene.tiles.length !== GRID_WIDTH * GRID_HEIGHT) {
+      throw new Error(
+        `bootGameLogic: scene "${scene.id}" has ${scene.tiles.length} tiles, expected ${GRID_WIDTH * GRID_HEIGHT} (${GRID_WIDTH}x${GRID_HEIGHT})`,
+      );
+    }
+    return scene;
+  }
 
-  const scene = options.projectData.scenes.find((candidate) => candidate.id === options.projectData.startSceneId);
-  if (!scene) {
-    throw new Error(`bootGameLogic: projectData has no scene with id "${options.projectData.startSceneId}" (startSceneId)`);
-  }
-  // A wrongly-shaped tiles array would silently misplace every later tile
-  // lookup (isWalkable, rendering) rather than fail loudly — worth
-  // checking since this is the export bundle's own embedded data, not
-  // something a person can just re-edit and retry like the editor's own
-  // live canvas.
-  if (scene.tiles.length !== GRID_WIDTH * GRID_HEIGHT) {
-    throw new Error(
-      `bootGameLogic: scene "${scene.id}" has ${scene.tiles.length} tiles, expected ${GRID_WIDTH * GRID_HEIGHT} (${GRID_WIDTH}x${GRID_HEIGHT})`,
-    );
-  }
+  // Mutable, unlike everything else captured by the closures below — this
+  // is specifically the piece of state "scene:changed" exists to update.
+  let currentScene = findScene(options.projectData.startSceneId);
+
+  // Reads currentScene fresh on every call rather than closing over a
+  // snapshot: the whole point of reacting to "scene:changed" is that
+  // movement collision has to track whichever scene is actually current,
+  // not just the one this app booted into.
+  const isWalkable = (worldX: number, worldY: number): boolean => {
+    const tileX = Math.floor(worldX / TILE_SIZE);
+    const tileY = Math.floor(worldY / TILE_SIZE);
+    if (tileX < 0 || tileY < 0 || tileX >= GRID_WIDTH || tileY >= GRID_HEIGHT) return false;
+    return currentScene.tiles[tileY * GRID_WIDTH + tileX] !== WALL_TILE_ID;
+  };
+  scheduler.addSystem(createPlayerMovementSystem(world, isWalkable, options.keysHeld));
 
   let playerEntity: EntityId | undefined;
   const npcEntityByPlacementId = new Map<string, EntityId>();
   const dialogueCapableNpcIds = new Set<string>();
-  for (const placement of scene.entities) {
-    const { x, y } = tileCenterWorld(placement.tileX, placement.tileY);
-    if (placement.kind === "player-start") {
-      playerEntity = spawnPlayer(world, x, y);
-    } else {
-      npcEntityByPlacementId.set(placement.id, spawnNpcMarker(world, x, y));
+
+  // Spawns (or, for the player, repositions) `scene`'s entity placements.
+  // Shared between the initial boot and every later "scene:changed"
+  // reaction so there is exactly one place this logic lives, not two
+  // copies to keep in sync by inspection.
+  function applySceneEntities(scene: PlayerScene): void {
+    for (const placement of scene.entities) {
+      const { x, y } = tileCenterWorld(placement.tileX, placement.tileY);
+      if (placement.kind === "player-start") {
+        // The player is the same entity across every scene, not
+        // respawned — this placement just says where they land in this
+        // one. Only spawned fresh the first time any scene declares one.
+        if (playerEntity === undefined) {
+          playerEntity = spawnPlayer(world, x, y);
+        } else {
+          world.set(playerEntity, "Transform", { x, y });
+        }
+        continue;
+      }
+
+      // Dialogue-tracking is folded into the same pass, not a separate
+      // one over `scene.entities` afterward (an earlier version of this
+      // function did it that way only because bridges hadn't booted yet
+      // at the point it ran for the very first scene — a constraint that
+      // doesn't apply to `scene.entities` itself, which needs nothing
+      // from a bridge to answer "does this placement declare dialogue").
+      // No bare tracking entity beyond the NPC marker itself: the
+      // dialogue module's own guest code adds its DialogueState component
+      // lazily, the first time a dialogue actually starts for this entity
+      // (its own `showNode` function's `ctx.world.has(...)` branch) —
+      // mirrors `PreviewApp.tsx`'s `rebuildDialogueRuntime` exactly, just
+      // against the one real shared World instead of a disposable one.
+      const npcEntity = spawnNpcMarker(world, x, y);
+      npcEntityByPlacementId.set(placement.id, npcEntity);
+      if (placement.dialogue) dialogueCapableNpcIds.add(placement.id);
     }
   }
+
+  // The inverse of applySceneEntities for the NPC half only: every NPC
+  // entity is scene-scoped, so leaving a scene destroys them rather than
+  // letting them silently pile up off in some other scene's coordinate
+  // space. The player is left alone here — see applySceneEntities above.
+  function despawnSceneNpcs(): void {
+    for (const npcEntity of npcEntityByPlacementId.values()) {
+      world.destroy(npcEntity);
+    }
+    npcEntityByPlacementId.clear();
+    dialogueCapableNpcIds.clear();
+  }
+
+  applySceneEntities(currentScene);
   world.flush();
 
   const bridges: ModuleBridge[] = [];
@@ -157,27 +216,41 @@ export async function bootGameLogic(options: GameLogicOptions): Promise<GameLogi
     bridges.push(bridge);
   }
 
-  // Dialogue-tracking entities: a bare entity per NPC that declares
-  // dialogue, created directly against the shared World (a plain
-  // @forge/core call — no bridge involved, same as the host-owned
-  // player/NPC marker entities above). The dialogue module's own guest
-  // code adds its DialogueState component lazily, the first time a
-  // dialogue actually starts for that entity (its own `showNode`
-  // function's `ctx.world.has(...)` branch) — mirrors
-  // PreviewApp.tsx's `rebuildDialogueRuntime` exactly, just against the
-  // one real shared World instead of a disposable private one.
-  for (const placement of scene.entities) {
-    if (placement.kind !== "npc" || !placement.dialogue) continue;
-    if (!npcEntityByPlacementId.has(placement.id)) continue;
-    dialogueCapableNpcIds.add(placement.id);
-  }
+  // Reacts to every future scene transition, from any source — a
+  // module's own `ctx.scene.transitionTo()` call, or a native system
+  // calling `scheduler.scene.transitionTo()` directly. Despawns the old
+  // scene's NPCs, spawns (or repositions) the new scene's, and updates
+  // `currentScene` so `isWalkable`'s very next call already reflects the
+  // new grid. All of it settles within the same `tick()` call this event
+  // fires inside: `SceneManager` emits "scene:changed" from
+  // `Scheduler.tick()` after every fixed-step phase has run for that
+  // step, and the `World.destroy()`/`create()` calls made here are
+  // flushed by that same `tick()` call's remaining phases (each phase
+  // ends with `world.flush()`) before control ever returns to the caller
+  // — no extra flush needed here, and nothing left half-applied for a
+  // renderer or another system to observe mid-transition.
+  events.on("scene:changed", (payload) => {
+    const { to } = payload as SceneChangedEvent;
+    const nextScene = findScene(to);
+    despawnSceneNpcs();
+    applySceneEntities(nextScene);
+    currentScene = nextScene;
+  });
 
   return {
     world,
     scheduler,
     events,
     bridges,
-    playerEntity,
+    // A getter, not a plain field: if the very first scene has no
+    // player-start placement, `playerEntity` stays undefined at the time
+    // this object is constructed, and only becomes real once some later
+    // scene (reached via "scene:changed") declares one. A plain field
+    // captured here would freeze at that initial `undefined` forever;
+    // this reads the live outer binding on every access instead.
+    get playerEntity(): EntityId | undefined {
+      return playerEntity;
+    },
     npcEntityByPlacementId,
     dialogueCapableNpcIds,
     tick(dtMs: number): void {

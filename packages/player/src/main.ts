@@ -6,10 +6,8 @@ import { bootGameLogic } from "./gameLogic.js";
 // build, one project's data per export.
 import { PROJECT_DATA } from "./generated/projectData.js";
 import { WASM_BINARY_BASE64 } from "./generated/wasmBinaryBase64.js";
-import { GRID_HEIGHT, GRID_WIDTH, TILE_SIZE } from "./gridConstants.js";
 import { bootRenderer } from "./render.js";
 import { loadGame, saveGame } from "./save.js";
-import { WALL_TILE_ID } from "./tilePalette.js";
 import { buildWasmModuleFromBase64 } from "./wasmBinary.js";
 
 const AUTOSAVE_INTERVAL_MS = 30_000;
@@ -42,26 +40,23 @@ async function main(): Promise<void> {
   const scene = PROJECT_DATA.scenes.find((candidate) => candidate.id === PROJECT_DATA.startSceneId);
   if (!scene) throw new Error(`main: PROJECT_DATA has no scene "${PROJECT_DATA.startSceneId}"`);
 
-  const isWalkable = (worldX: number, worldY: number): boolean => {
-    const tileX = Math.floor(worldX / TILE_SIZE);
-    const tileY = Math.floor(worldY / TILE_SIZE);
-    if (tileX < 0 || tileY < 0 || tileX >= GRID_WIDTH || tileY >= GRID_HEIGHT) return false;
-    return scene.tiles[tileY * GRID_WIDTH + tileX] !== WALL_TILE_ID;
-  };
-
   const keysHeld = new Set<string>();
   const wasmModule = await buildWasmModuleFromBase64(WASM_BINARY_BASE64);
-  const game = await bootGameLogic({ projectData: PROJECT_DATA, wasmModule, isWalkable, keysHeld });
+  const game = await bootGameLogic({ projectData: PROJECT_DATA, wasmModule, keysHeld });
   wireDialogueBubble(game.events);
 
   const loaded = loadGame(PROJECT_DATA, game);
   const orphaned: Readonly<Record<string, unknown>> = loaded?.orphaned ?? {};
 
-  await bootRenderer(canvas, scene, game);
+  await bootRenderer(canvas, PROJECT_DATA, game);
 
+  // save.ts's own persist call needs *the current* scene id, which can now
+  // change out from under this closure via "scene:changed" — read it back
+  // from the scheduler's own SceneManager rather than closing over the
+  // `scene` local above, which only ever reflects the boot-time scene.
   const bootTimeMs = performance.now();
   const currentPlaytimeSec = (): number => (performance.now() - bootTimeMs) / 1000;
-  const persist = (): void => saveGame(PROJECT_DATA, game, scene.id, currentPlaytimeSec(), orphaned);
+  const persist = (): void => saveGame(PROJECT_DATA, game, game.scheduler.scene.currentSceneId, currentPlaytimeSec(), orphaned);
 
   window.addEventListener("keydown", (event) => {
     keysHeld.add(event.key);

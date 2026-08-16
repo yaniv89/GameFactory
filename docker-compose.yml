@@ -1,0 +1,45 @@
+# Local development infrastructure only — never used in CI (which spins up
+# the same images via Testcontainers, see services/Forge.Tests/ForgeWebApplicationFactory.cs)
+# and never deployed anywhere. Image versions/flags mirror that file exactly
+# so local behavior matches what the test suite already exercises.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: forge_dev
+      POSTGRES_USER: forge_dev
+      POSTGRES_PASSWORD: forge_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - forge-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forge_dev -d forge_dev"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+  # Emulates Blob + Table under one account, same as Testcontainers.Azurite
+  # in ForgeWebApplicationFactory.cs. --skipApiVersionCheck matches that
+  # file's own documented reason: the Azure.Storage.Blobs client sends a
+  # newer x-ms-version header than this image's REST layer recognizes.
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    command: "azurite --blobHost 0.0.0.0 --tableHost 0.0.0.0 --queueHost 0.0.0.0 --skipApiVersionCheck"
+    ports:
+      - "10000:10000" # blob
+      - "10001:10001" # queue
+      - "10002:10002" # table
+
+volumes:
+  forge-postgres:

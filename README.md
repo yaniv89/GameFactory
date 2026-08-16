@@ -30,6 +30,10 @@ Milestones M0–M7 (see `CLAUDE.md` Section 8) are implemented, tested, and merg
 - .NET 10 SDK
 - Docker (or another way to run Postgres 16, Redis 7, and an Azurite-compatible blob emulator) for the full stack below
 
+Docker is also what 165 of `services/Forge.Tests`' 257 tests need — every suite that touches real Postgres/Redis/Azurite through Testcontainers (cross-tenant authorization, the load tests, registry/publish gates, billing, play services). Without a running daemon they fail with `DockerUnavailableException` rather than skipping, so `dotnet test` is only meaningful with Docker up.
+
+`.claude/hooks/bootstrap-docker.sh` (wired as a `SessionStart` hook in `.claude/settings.json`) handles that automatically **in the Claude Code cloud sandbox only**, where the daemon isn't started for you and the egress policy blocks Docker Hub's CDN. It is deliberately a hard no-op everywhere else — it exits without doing anything if Docker already works, if you aren't root, or if the sandbox's agent proxy isn't present, and it never modifies an existing `/etc/docker/daemon.json`. On your own machine it will never touch your Docker setup; start Docker however you normally do.
+
 ## Running the full stack locally
 
 Four processes: Postgres/Redis/Azurite/Mailpit (`docker-compose.yml`), `Forge.Api`, and the editor SPA. The editor's Vite dev server proxies `/api`, `/connect`, `/health`, and `/hubs` to `Forge.Api` (`packages/editor/vite.config.ts`) so the browser sees one origin end to end — that's deliberate, not incidental: the Identity login cookie `Forge.Infrastructure/DependencyInjection.cs` sets is `SameSite=Strict`, which only survives a same-origin request. Do not run the editor against a different-origin API without also fixing that proxy; a cross-origin CORS setup would silently break sign-in instead.

@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/bootstrap-docker.sh",
+            "timeout": 120,
+            "statusMessage": "Checking Docker for the Testcontainers test suites..."
+          }
+        ]
+      }
+    ]
+  }
+}

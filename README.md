@@ -32,19 +32,30 @@ Milestones M0–M7 (see `CLAUDE.md` Section 8) are implemented, tested, and merg
 
 ## Running the full stack locally
 
-Three processes: Postgres/Redis/Azurite (`docker-compose.yml`), `Forge.Api`, and the editor SPA. The editor's Vite dev server proxies `/api`, `/connect`, `/health`, and `/hubs` to `Forge.Api` (`packages/editor/vite.config.ts`) so the browser sees one origin end to end — that's deliberate, not incidental: the Identity login cookie `Forge.Infrastructure/DependencyInjection.cs` sets is `SameSite=Strict`, which only survives a same-origin request. Do not run the editor against a different-origin API without also fixing that proxy; a cross-origin CORS setup would silently break sign-in instead.
+Four processes: Postgres/Redis/Azurite/Mailpit (`docker-compose.yml`), `Forge.Api`, and the editor SPA. The editor's Vite dev server proxies `/api`, `/connect`, `/health`, and `/hubs` to `Forge.Api` (`packages/editor/vite.config.ts`) so the browser sees one origin end to end — that's deliberate, not incidental: the Identity login cookie `Forge.Infrastructure/DependencyInjection.cs` sets is `SameSite=Strict`, which only survives a same-origin request. Do not run the editor against a different-origin API without also fixing that proxy; a cross-origin CORS setup would silently break sign-in instead.
 
 1. **Infra** — from the repo root:
    ```sh
    docker compose up -d
    ```
-   Brings up Postgres 16 on `5432`, Redis 7 on `6379`, and an Azurite blob/table/queue emulator on `10000`–`10002`, matching `services/Forge.Tests/ForgeWebApplicationFactory.cs`'s own Testcontainers setup and `appsettings.json`'s default connection strings — no extra configuration needed for local dev.
+   Brings up Postgres 16 on `5432`, Redis 7 on `6379`, an Azurite blob/table/queue emulator on `10000`–`10002`, and Mailpit (a local SMTP catcher) on `1025`/`8025` — matching `services/Forge.Tests/ForgeWebApplicationFactory.cs`'s own Testcontainers setup and `appsettings.json`'s default connection strings, no extra configuration needed for local dev.
 
 2. **API** — from `services/Forge.Api/`:
    ```sh
    dotnet run --urls http://localhost:5080
    ```
-   `5080` is the port `vite.config.ts`'s dev proxy is pinned to (`API_DEV_PORT`) — running the API on a different port breaks the proxy, not the API. In Development, `Program.cs` applies the real, checked-in EF Core migrations (`services/Forge.Infrastructure/Persistence/Migrations/`) on startup — no separate `dotnet ef database update` step needed against the empty Postgres database from step 1. That auto-migrate is deliberately Development-only: a real deployment runs migrations as an explicit step before new instances start, not implicitly inside every instance's own boot (see `Program.cs`'s own comment on why — it's about not racing N replicas, not about migrations being missing). Payments and email are stubbed via the placeholder values already in `appsettings.json` (`Stripe`, `PlayServices` sections); nothing there is a real secret, so no `.env` file is required to sign up, sign in, or create a project. Stripe Checkout/Portal and outbound email will not work without swapping those placeholders for real keys.
+   `5080` is the port `vite.config.ts`'s dev proxy is pinned to (`API_DEV_PORT`) — running the API on a different port breaks the proxy, not the API. In Development, `Program.cs` applies the real, checked-in EF Core migrations (`services/Forge.Infrastructure/Persistence/Migrations/`) on startup — no separate `dotnet ef database update` step needed against the empty Postgres database from step 1. That auto-migrate is deliberately Development-only: a real deployment runs migrations as an explicit step before new instances start, not implicitly inside every instance's own boot (see `Program.cs`'s own comment on why — it's about not racing N replicas, not about migrations being missing).
+
+   **Email** — `appsettings.Development.json`'s `Smtp` section points `Forge.Infrastructure.Email.SmtpEmailSender` at Mailpit, so signup verification and password-reset mail are real, deliverable messages, not just a log line — open **http://localhost:8025** to read them. Nothing in that file is a secret (Mailpit takes no auth).
+
+   **Stripe** — Checkout/Portal, marketplace purchases, and the paid-module publish gate need real Stripe **test-mode** keys (never live keys for local dev). `appsettings.json`'s `Stripe` section is an inert placeholder — never put a real key there, since it's committed. Instead, from `services/Forge.Api/` (already has a `UserSecretsId`, `dotnet user-secrets init` already run):
+   ```sh
+   dotnet user-secrets set "Stripe:SecretKey" "sk_test_..."
+   dotnet user-secrets set "Stripe:WebhookSecret" "whsec_..."       # from `stripe listen --forward-to localhost:5080/api/v1/webhooks/stripe`
+   dotnet user-secrets set "Stripe:ProPriceId" "price_..."          # a real test-mode recurring Price from your Stripe dashboard
+   dotnet user-secrets set "Stripe:StudioPriceId" "price_..."
+   ```
+   User secrets live outside the repo (`~/.microsoft/usersecrets/<UserSecretsId>/secrets.json`) and are layered over `appsettings.json` automatically in Development — no code change needed. Get test-mode keys from your own Stripe dashboard (free, no real account/business needed for test mode); run `stripe listen` alongside `Forge.Api` to forward webhook events to the endpoint above and print the matching `whsec_...` secret.
 
 3. **Editor** — from `packages/editor/`:
    ```sh

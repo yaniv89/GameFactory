@@ -41,5 +41,16 @@ services:
       - "10001:10001" # queue
       - "10002:10002" # table
 
+  # Local SMTP catcher for the signup/verification/password-reset flows'
+  # real mail (appsettings.Development.json's Smtp:Host, picked up by
+  # Forge.Infrastructure.Email.SmtpEmailSender — see that class's own
+  # doc comment). Nothing is actually delivered anywhere; open
+  # http://localhost:8025 to read what was "sent".
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - "1025:1025" # SMTP
+      - "8025:8025" # web UI
+
 volumes:
   forge-postgres:

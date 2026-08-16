@@ -32,7 +32,7 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddForgeInfrastructure(builder.Configuration);
-builder.Services.AddForgeAuth(builder.Environment.IsDevelopment());
+builder.Services.AddForgeAuth(builder.Configuration, builder.Environment.IsDevelopment());
 builder.Services.AddForgeAuthorization();
 builder.Services.AddForgeRateLimiting(builder.Configuration);
 builder.Services.AddForgeBilling(builder.Configuration);

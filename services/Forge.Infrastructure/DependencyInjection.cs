@@ -227,8 +227,11 @@ public static class DependencyInjection
     /// signed by a throwaway key nobody else can verify (CLAUDE.md Section
     /// 1.1 guardrail 6: a documented local-only override that fails the
     /// production config check, not a silent fallback).
+    ///
+    /// <paramref name="configuration"/> also selects the <see cref="IEmailSender"/>
+    /// registered here — see that interface's own doc comment.
     /// </summary>
-    public static IServiceCollection AddForgeAuth(this IServiceCollection services, bool isDevelopment)
+    public static IServiceCollection AddForgeAuth(this IServiceCollection services, IConfiguration configuration, bool isDevelopment)
     {
         services
             .AddIdentity<ForgeIdentityUser, IdentityRole<Guid>>(options =>
@@ -374,7 +377,18 @@ public static class DependencyInjection
                 options.UseAspNetCore();
             });
 
-        services.AddScoped<IEmailSender, LoggingEmailSender>();
+        var smtpHost = configuration["Smtp:Host"];
+        if (!string.IsNullOrEmpty(smtpHost))
+        {
+            var smtpPort = int.Parse(configuration["Smtp:Port"] ?? "1025");
+            var fromAddress = configuration["Smtp:FromAddress"] ?? "noreply@forge.dev";
+            services.AddSingleton(new SmtpOptions(smtpHost, smtpPort, fromAddress));
+            services.AddScoped<IEmailSender, SmtpEmailSender>();
+        }
+        else
+        {
+            services.AddScoped<IEmailSender, LoggingEmailSender>();
+        }
 
         return services;
     }

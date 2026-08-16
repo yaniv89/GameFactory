@@ -1,0 +1,54 @@
+.fg-login {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-abyss);
+}
+
+.fg-login__card {
+  width: 100%;
+  max-width: 360px;
+  padding: var(--space-6);
+  background: var(--surface-chrome);
+  border: 1px solid var(--line-default);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.fg-login__title {
+  font-size: var(--text-lg);
+  line-height: var(--lh-lg);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.fg-login__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.fg-login__error {
+  color: var(--accent-destroy);
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+  margin: 0;
+}
+
+.fg-login__toggle {
+  background: none;
+  border: none;
+  color: var(--accent-select);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  padding: 0;
+  align-self: start;
+}
+
+.fg-login__toggle:focus-visible {
+  outline: 2px solid var(--accent-select);
+  outline-offset: 2px;
+}

@@ -4,8 +4,6 @@ using OpenIddict.Abstractions;
 
 namespace Forge.Api.Features.Auth;
 
-public sealed record LogoutRequest(string? RefreshToken);
-
 /// <summary>
 /// docs/SPEC.md Section 23.3 step 4: revokes the refresh token
 /// server-side and clears the cookie — never a client-side-only token
@@ -15,6 +13,12 @@ public sealed record LogoutRequest(string? RefreshToken);
 /// OpenIddict config) is what makes revocation here actually mean
 /// something: the token string the client holds is a server-side lookup
 /// key, not a self-contained JWT nothing can invalidate early.
+///
+/// No request body: the refresh token lives in the httpOnly
+/// <see cref="RefreshTokenCookie"/>, set by the same OpenIddict event
+/// handlers (<c>DependencyInjection.AddForgeAuth</c>) that put it there in
+/// the first place — client JS never holds the value to send it, by
+/// design.
 /// </summary>
 public static class LogoutEndpoint
 {
@@ -27,21 +31,24 @@ public static class LogoutEndpoint
     }
 
     private static async Task<IResult> Handle(
-        LogoutRequest req,
+        HttpContext httpContext,
         SignInManager<ForgeIdentityUser> signInManager,
         IOpenIddictTokenManager tokenManager,
+        IHostEnvironment environment,
         CancellationToken ct)
     {
         await signInManager.SignOutAsync();
 
-        if (!string.IsNullOrEmpty(req.RefreshToken))
+        if (httpContext.Request.Cookies.TryGetValue(RefreshTokenCookie.Name, out var refreshToken) && !string.IsNullOrEmpty(refreshToken))
         {
-            var token = await tokenManager.FindByReferenceIdAsync(req.RefreshToken, ct);
+            var token = await tokenManager.FindByReferenceIdAsync(refreshToken, ct);
             if (token is not null)
             {
                 await tokenManager.TryRevokeAsync(token, ct);
             }
         }
+
+        httpContext.Response.Cookies.Delete(RefreshTokenCookie.Name, RefreshTokenCookie.BuildOptions(environment.IsDevelopment()));
 
         return TypedResults.NoContent();
     }

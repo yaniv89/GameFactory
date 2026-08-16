@@ -22,7 +22,7 @@ forge/
 
 ## Status
 
-Milestones M0–M7 (see `CLAUDE.md` Section 8) are implemented, tested, and merged — engine, sandbox, Module API, editor shell, backend/persistence, registry/publish/Art Packs, and collaboration/marketplace. The editor SPA is now wired end to end to `Forge.Api` (real sign-up/sign-in, project list/create, server-persisted saves, live presence) — see "Running the full stack locally" below to try it. Two stated, deliberate gaps remain, tracked rather than silently assumed done: the refresh token is still returned in the `/connect/token` JSON body instead of an `httpOnly` cookie (CLAUDE.md Section 4.7's target design), and the player app does not yet react to `scene:changed` by swapping tile/entity content on a runtime scene transition.
+Milestones M0–M7 (see `CLAUDE.md` Section 8) are implemented, tested, and merged — engine, sandbox, Module API, editor shell, backend/persistence, registry/publish/Art Packs, and collaboration/marketplace. The editor SPA is now wired end to end to `Forge.Api` (real sign-up/sign-in, project list/create, server-persisted saves, live presence) — see "Running the full stack locally" below to try it. The refresh token lives in an `httpOnly` cookie, not the `/connect/token` JSON body (CLAUDE.md Section 4.7's target design). One stated, deliberate gap remains, tracked rather than silently assumed done: the player app does not yet react to `scene:changed` by swapping tile/entity content on a runtime scene transition.
 
 ## Prerequisites
 

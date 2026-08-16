@@ -11,18 +11,21 @@ import { generateCodeChallenge, generateCodeVerifier, generateState } from "./pk
  * cross-origin CORS setup would break that cookie regardless of
  * `credentials: "include"`.
  *
- * Token storage: access token AND refresh token are both held in a
- * module-level variable only — never `localStorage`, never
- * `sessionStorage` (CLAUDE.md Section 12 item 2: "the answer is a
- * refresh cookie and a broadcast channel"). The httpOnly-cookie half of
- * that isn't built yet (`/connect/token` still returns the refresh token
- * in its JSON body, matching the currently-tested contract in
- * services/Forge.Tests/Features/Auth/AuthFlowTests.cs — see the ADR/PR
- * discussion for why this is a stated, deliberate interim gap, not an
- * oversight) — so a page reload always requires signing in again. That's
- * the accepted, conservative side of the tradeoff: nothing survives a
- * reload, rather than something surviving it in a JS-reachable place.
- * The `BroadcastChannel` half IS built: a token refreshed or cleared in
+ * Token storage: the access token lives in a module-level variable only —
+ * never `localStorage`, never `sessionStorage` (CLAUDE.md Section 12 item
+ * 2: "the answer is a refresh cookie and a broadcast channel"). The
+ * refresh token never reaches this file at all: `/connect/token` sets it
+ * as an httpOnly, `SameSite=Strict` cookie scoped to `/connect`
+ * (Forge.Infrastructure/DependencyInjection.cs's `ProcessSignInContext`
+ * handler + RefreshTokenCookie.cs) instead of returning it in the JSON
+ * body, so no JS on this origin — first-party or an XSS payload in a
+ * third-party module's sandbox escape — can ever read it. The browser
+ * attaches the cookie automatically on every same-origin fetch to
+ * `/connect/*` (fetch's default `credentials: "same-origin"` already
+ * covers this; no explicit `credentials` option needed here), which is
+ * also what makes a page reload able to silently refresh instead of
+ * forcing a full sign-in again, via `refreshAccessToken()`. The
+ * `BroadcastChannel` half is built too: a token refreshed or cleared in
  * one tab is reflected in every other open tab immediately.
  */
 
@@ -43,12 +46,10 @@ interface PendingPkce {
 
 interface TokenResponse {
   readonly access_token: string;
-  readonly refresh_token?: string;
   readonly expires_in: number;
 }
 
 let currentSession: Session | undefined;
-let currentRefreshToken: string | undefined;
 
 const channel = "BroadcastChannel" in window ? new BroadcastChannel("forge-auth") : undefined;
 type BroadcastMessage = { readonly type: "session"; readonly session: Session | undefined };
@@ -60,9 +61,8 @@ channel?.addEventListener("message", (event: MessageEvent<BroadcastMessage>) => 
   for (const listener of listeners) listener(currentSession);
 });
 
-function setSession(session: Session | undefined, refreshToken: string | undefined): void {
+function setSession(session: Session | undefined): void {
   currentSession = session;
-  currentRefreshToken = refreshToken;
   channel?.postMessage({ type: "session", session } satisfies BroadcastMessage);
   for (const listener of listeners) listener(session);
 }
@@ -88,7 +88,7 @@ async function parseErrorDetail(response: Response): Promise<string> {
 
 function applyTokenResponse(payload: TokenResponse): Session {
   const session: Session = { accessToken: payload.access_token, expiresAt: Date.now() + payload.expires_in * 1000 };
-  setSession(session, payload.refresh_token ?? currentRefreshToken);
+  setSession(session);
   return session;
 }
 
@@ -197,36 +197,35 @@ export async function completeLoginFromCallback(callbackUrl: URL): Promise<Sessi
   return applyTokenResponse((await response.json()) as TokenResponse);
 }
 
-/** Exchanges the held refresh token for a fresh access token. Throws (and clears the session) if the refresh token is no longer valid. */
+/**
+ * Exchanges the refresh token for a fresh access token. The refresh token
+ * itself is never passed here — it's the httpOnly `forge_rt` cookie,
+ * attached by the browser automatically since this is a same-origin
+ * request. Throws (and clears the session) if there is no valid cookie,
+ * which is also the normal "not signed in" case (e.g. first load in a
+ * browser with no session), not just an error case.
+ */
 export async function refreshAccessToken(): Promise<Session> {
-  if (!currentRefreshToken) throw new Error("No refresh token available — sign in again.");
-
   const response = await fetch("/connect/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "refresh_token",
-      refresh_token: currentRefreshToken,
       client_id: CLIENT_ID,
     }),
   });
   if (!response.ok) {
-    setSession(undefined, undefined);
+    setSession(undefined);
     throw new Error(await parseErrorDetail(response));
   }
 
   return applyTokenResponse((await response.json()) as TokenResponse);
 }
 
-/** Revokes the refresh token server-side (LogoutEndpoint.cs) and clears the session in every tab. */
+/** Revokes the refresh token server-side (LogoutEndpoint.cs, reading the httpOnly cookie) and clears the session in every tab. */
 export async function logout(): Promise<void> {
-  const refreshToken = currentRefreshToken;
-  setSession(undefined, undefined);
-  await fetch("/connect/logout", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refreshToken }),
-  }).catch(() => {
+  setSession(undefined);
+  await fetch("/connect/logout", { method: "POST" }).catch(() => {
     // Best-effort revocation — the local session is already cleared
     // above regardless of whether this network call succeeds, so a
     // logged-out browser never re-sends the old token either way.

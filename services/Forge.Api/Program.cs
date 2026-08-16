@@ -24,6 +24,7 @@ using Forge.Api.Features.Registry;
 using Forge.Api.RateLimiting;
 using Forge.Api.Security;
 using Forge.Infrastructure;
+using Forge.Infrastructure.Identity;
 using Forge.Infrastructure.Persistence;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
@@ -77,6 +78,13 @@ if (app.Environment.IsDevelopment())
 app.UseForwardedHeaders(new ForwardedHeadersOptions { ForwardedHeaders = ForwardedHeaders.XForwardedFor });
 
 app.UseForgeSecurityHeaders();
+
+// Rewrites /connect/token's response to move the refresh token into an
+// httpOnly cookie (RefreshTokenCookieMiddleware's own doc comment has the
+// "why not an OpenIddict event handler"). Ahead of auth: it only inspects
+// the token endpoint's own response body, nothing that needs a resolved
+// user.
+app.UseMiddleware<RefreshTokenCookieMiddleware>();
 
 app.UseAuthentication();
 app.UseAuthorization();

@@ -355,3 +355,117 @@ jobs:
       - run: dotnet build Forge.sln --no-restore --configuration Release
       - name: Load test — concurrent editors, zero lost writes (docs/SPEC.md Section 18.4)
         run: dotnet test Forge.sln --no-build --configuration Release --filter "Category=Load"
+
+  # ── Gate: full-stack E2E — real Postgres/Redis/Azurite + Forge.Api + the
+  # editor, driven through a real browser ──────────────────────────────
+  # This is the automated form of an actual manual run that found two real
+  # bugs neither the rest of this file nor test-browser/ could ever have
+  # caught: AuthCallback.tsx double-exchanging its one-time OAuth code
+  # under React 18 StrictMode, and vite.config.ts's dev proxy missing
+  # changeOrigin (broke every collab connection, silently, since nothing
+  # else here exercises /hubs/collab/negotiate). test-browser/'s own
+  # fixtures.ts deliberately bypasses auth and runs with no backend at
+  # all — real by design, for a different reason (canvas/rendering, not
+  # auth/API wiring). test-fullstack/signupToSave.spec.ts is that same
+  # manual signup-through-save run, scripted, so the next bug like these
+  # two is caught here instead of by a human.
+  #
+  # Postgres/Redis/Azurite as GitHub Actions `services:` (this repo's own
+  # authoring sandbox reached the same endpoint by a different road — no
+  # Docker Hub access there, so apt/npm installs stood in for these same
+  # three pieces of infra; GitHub-hosted runners have full Docker access,
+  # so the images docker-compose.yml already names are the natural choice
+  # here, not a divergent setup).
+  full-stack-e2e:
+    name: Full stack E2E — signup, save, presence (real Postgres/Redis/Azurite + Forge.Api)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: forge_dev
+          POSTGRES_USER: forge_dev
+          POSTGRES_PASSWORD: forge_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U forge_dev -d forge_dev"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      azurite:
+        image: mcr.microsoft.com/azure-storage/azurite
+        ports:
+          - 10000:10000
+          - 10001:10001
+          - 10002:10002
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: "8.0.x"
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Same reasoning as editor-browser-tests above: the editor's dev
+      # server resolves its workspace dependencies against their compiled
+      # dist/ output.
+      - run: pnpm --filter "forge-editor^..." run build
+      - run: dotnet restore Forge.sln
+      - run: dotnet build services/Forge.Api/Forge.Api.csproj --no-restore --configuration Release
+
+      - name: Start Forge.Api (Development — schema bootstrap + OpenIddict dev cert/seeding, see Program.cs)
+        env:
+          ASPNETCORE_ENVIRONMENT: Development
+        run: |
+          dotnet run --project services/Forge.Api --no-build --configuration Release --urls http://localhost:5080 > forge-api.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:5080/health > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Forge.Api did not become healthy in time"
+          cat forge-api.log
+          exit 1
+
+      - name: Start editor dev server
+        working-directory: packages/editor
+        run: |
+          pnpm exec vite --port 5190 --strictPort > editor.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:5190/ > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Editor dev server did not become healthy in time"
+          cat editor.log
+          exit 1
+
+      - run: pnpm --filter forge-editor exec playwright install --with-deps chromium
+      - run: pnpm --filter forge-editor run test:fullstack
+
+      - name: Upload server logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: full-stack-e2e-logs
+          path: |
+            forge-api.log
+            packages/editor/editor.log
+          if-no-files-found: ignore
+          retention-days: 5

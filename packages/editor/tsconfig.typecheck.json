@@ -5,5 +5,5 @@
     "rootDir": ".",
     "jsx": "react-jsx"
   },
-  "include": ["src", "test", "test-browser", "*.ts", "*.tsx"]
+  "include": ["src", "test", "test-browser", "test-fullstack", "*.ts", "*.tsx"]
 }

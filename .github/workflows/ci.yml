@@ -409,6 +409,20 @@ jobs:
           - 10000:10000
           - 10001:10001
           - 10002:10002
+      # Forge.Api runs in Development below (schema bootstrap + OpenIddict
+      # seeding, see that step's own comment) — appsettings.Development.json
+      # unconditionally points Forge.Infrastructure.Email.SmtpEmailSender
+      # at localhost:1025 whenever that environment name is set, same as
+      # local dev (docker-compose.yml). Without this service, real
+      # signup's synchronous verification-email send throws (connection
+      # refused), which was silently taking the whole signup request down
+      # with it — this container is what makes CI mirror local dev
+      # exactly rather than needing an ad hoc "don't send mail" override.
+      mailpit:
+        image: axllent/mailpit
+        ports:
+          - 1025:1025
+          - 8025:8025
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4

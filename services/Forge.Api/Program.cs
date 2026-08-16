@@ -43,19 +43,27 @@ builder.Services.AddForgePlayServices(builder.Configuration);
 
 var app = builder.Build();
 
-// Development-only schema bootstrap. There are no EF Core migrations in
-// this repo yet (a real, tracked gap — Testcontainers-backed tests get
-// away with the same EnsureCreated call, ForgeWebApplicationFactory.cs,
-// which is exactly why nobody noticed migrations were never authored).
-// EnsureCreated is intentionally NOT wired for non-Development
-// environments: it can't evolve an existing schema the way
-// Database.Migrate() can, so using it in a real deployment would silently
-// paper over the missing migrations instead of forcing them to exist
-// before this ever runs against a database that isn't disposable.
+// Development-only convenience auto-migrate. Real migrations now exist
+// (services/Forge.Infrastructure/Persistence/Migrations/) — this replaced
+// an earlier EnsureCreatedAsync() bootstrap, which EF Core forbids mixing
+// with migrations at all (they track schema state incompatibly) and which
+// couldn't evolve an existing database the way Migrate() can.
+//
+// Deliberately NOT wired for non-Development environments, and not
+// because migrations don't exist anymore: auto-migrating on every app
+// boot is a real footgun the moment there's more than one instance
+// (CLAUDE.md Section 1.5 guardrail 20's "design for N replicas" applies
+// here too) — two replicas booting into the same rollout could both start
+// migrating concurrently, or a newly-migrated replica could serve traffic
+// against a schema older replicas still running the previous version
+// aren't expecting. A real deployment runs `dotnet ef database update`
+// (or the equivalent `bundle`/CI step) once, explicitly, before the new
+// version's instances start — not implicitly, racily, inside each one's
+// own startup.
 if (app.Environment.IsDevelopment())
 {
     using var scope = app.Services.CreateScope();
-    await scope.ServiceProvider.GetRequiredService<ForgeDbContext>().Database.EnsureCreatedAsync();
+    await scope.ServiceProvider.GetRequiredService<ForgeDbContext>().Database.MigrateAsync();
 }
 
 // IP-keyed rate limits (RateLimitKeyStrategy.IpAddress) are meaningless

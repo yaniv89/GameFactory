@@ -27,6 +27,21 @@
   </ItemGroup>
 
   <!--
+    The `dotnet ef` CLI tools require their Design package on the startup
+    project specifically (Forge.Api here) — Forge.Infrastructure's own
+    reference to it has PrivateAssets="all", which is exactly why it
+    doesn't flow transitively to whichever project is used to run the
+    tools. Design-time only (PrivateAssets="all" again): never a runtime
+    dependency of the shipped app.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.29">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!--
     Lets Forge.Tests construct a CurrentUser with known values directly
     (its setters are internal on purpose — only CurrentUserMiddleware
     should write them at runtime; this is a compile-time-only visibility

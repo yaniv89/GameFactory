@@ -2,11 +2,47 @@ import { useState, type FC } from "react";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "@forge/ds/dist/global.css";
+import type { ProjectSummary } from "./api/projectsApi";
 import { App } from "./App";
 import { AuthCallback } from "./auth/AuthCallback";
 import { AuthGate } from "./auth/AuthGate";
+import { ProjectsListViewContainer } from "./project/ProjectsListViewContainer";
+import { useProjectSyncStore } from "./project/projectSyncStore";
 
 const AUTH_CALLBACK_PATH = "/auth/callback";
+
+/**
+ * Signed-in but no project chosen yet -> the project list; a project
+ * chosen -> the editor shell. Local state (not a route) for the same
+ * reason `Root` itself isn't a router: no router package is in CLAUDE.md's
+ * pinned frontend stack (Section 2.2), and this is the only other
+ * "screen" the editor has.
+ */
+const AuthedShell: FC = () => {
+  const [openProject, setOpenProject] = useState<ProjectSummary | undefined>(undefined);
+  const { openProject: loadProjectDocument, closeProject } = useProjectSyncStore();
+
+  if (!openProject) {
+    return (
+      <ProjectsListViewContainer
+        onOpenProject={(project) => {
+          setOpenProject(project);
+          void loadProjectDocument(project.id, project.title);
+        }}
+      />
+    );
+  }
+
+  return (
+    <App
+      projectTitle={openProject.title}
+      onCloseProject={() => {
+        closeProject();
+        setOpenProject(undefined);
+      }}
+    />
+  );
+};
 
 /**
  * Decides between the OAuth callback exchange and the normal
@@ -33,7 +69,7 @@ const Root: FC = () => {
 
   return (
     <AuthGate>
-      <App />
+      <AuthedShell />
     </AuthGate>
   );
 };

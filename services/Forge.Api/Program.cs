@@ -24,7 +24,9 @@ using Forge.Api.Features.Registry;
 using Forge.Api.RateLimiting;
 using Forge.Api.Security;
 using Forge.Infrastructure;
+using Forge.Infrastructure.Persistence;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -40,6 +42,21 @@ builder.Services.AddForgeRealtime(builder.Configuration);
 builder.Services.AddForgePlayServices(builder.Configuration);
 
 var app = builder.Build();
+
+// Development-only schema bootstrap. There are no EF Core migrations in
+// this repo yet (a real, tracked gap — Testcontainers-backed tests get
+// away with the same EnsureCreated call, ForgeWebApplicationFactory.cs,
+// which is exactly why nobody noticed migrations were never authored).
+// EnsureCreated is intentionally NOT wired for non-Development
+// environments: it can't evolve an existing schema the way
+// Database.Migrate() can, so using it in a real deployment would silently
+// paper over the missing migrations instead of forcing them to exist
+// before this ever runs against a database that isn't disposable.
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    await scope.ServiceProvider.GetRequiredService<ForgeDbContext>().Database.EnsureCreatedAsync();
+}
 
 // IP-keyed rate limits (RateLimitKeyStrategy.IpAddress) are meaningless
 // without this: every request would otherwise appear to originate from

@@ -66,11 +66,22 @@ export default defineConfig({
     // never carry back to the server. Proxying, not relaxing SameSite,
     // is the fix: the browser never sees a cross-origin request in the
     // first place, so Strict cookies work exactly as intended.
+    // changeOrigin on every entry, not just the ones that "needed" it
+    // empirically: without it, the proxy forwards the browser's original
+    // Host header (localhost:5190) to Forge.Api verbatim instead of
+    // rewriting it to match API_DEV_ORIGIN. OpenIddictValidation's
+    // UseLocalServer() mode (no explicit SetIssuer configured) derives its
+    // "expected issuer" per request from that Host header, so a request
+    // whose Host disagrees with the issuer already stamped into the token
+    // fails with OpenIddict error ID2088 ("issuer ... is not valid") even
+    // though the token itself is perfectly valid — reproduced live via
+    // /hubs/collab/negotiate (401 through this proxy, 200 hitting
+    // Forge.Api directly on API_DEV_ORIGIN with the identical token).
     proxy: {
-      "/api": API_DEV_ORIGIN,
-      "/connect": API_DEV_ORIGIN,
-      "/health": API_DEV_ORIGIN,
-      "/hubs": { target: API_DEV_ORIGIN, ws: true },
+      "/api": { target: API_DEV_ORIGIN, changeOrigin: true },
+      "/connect": { target: API_DEV_ORIGIN, changeOrigin: true },
+      "/health": { target: API_DEV_ORIGIN, changeOrigin: true },
+      "/hubs": { target: API_DEV_ORIGIN, changeOrigin: true, ws: true },
     },
   },
   build: {

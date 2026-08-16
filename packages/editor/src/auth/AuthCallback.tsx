@@ -1,4 +1,4 @@
-import { useEffect, useState, type FC } from "react";
+import { useEffect, useRef, useState, type FC } from "react";
 import { completeLoginFromCallback } from "./authClient";
 
 type CallbackStatus = "exchanging" | "error";
@@ -31,22 +31,28 @@ export interface AuthCallbackProps {
 export const AuthCallback: FC<AuthCallbackProps> = ({ onDone }) => {
   const [status, setStatus] = useState<CallbackStatus>("exchanging");
   const [error, setError] = useState<string>();
+  const startedRef = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
+    // A ref, not a `cancelled`-closure flag: React 18 StrictMode
+    // deliberately mounts this effect, cleans it up, and mounts it again
+    // in development to surface exactly the bug a `cancelled` flag caused
+    // here — found by an actual manual run, not by inspection. A
+    // `cancelled` flag set by the first mount's synchronous cleanup
+    // suppressed that first (successful) exchange's own result, while the
+    // second mount's fresh call then failed for real: the code and the
+    // one-time-use PKCE session entry were already consumed by the first
+    // call. `startedRef` survives the simulated remount (same component
+    // instance, same ref), so exactly one real exchange runs, and its own
+    // result — not a second, doomed-to-fail one — is what the UI reacts to.
+    if (startedRef.current) return;
+    startedRef.current = true;
     completeLoginFromCallback(new URL(window.location.href))
-      .then(() => {
-        if (cancelled) return;
-        onDone();
-      })
+      .then(() => onDone())
       .catch((err: unknown) => {
-        if (cancelled) return;
         setStatus("error");
         setError(err instanceof Error ? err.message : String(err));
       });
-    return () => {
-      cancelled = true;
-    };
     // Deliberately empty deps: this exchange must run exactly once, on
     // mount, regardless of onDone's identity across renders.
   }, []);

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 const PERSIST_KEY = "forge:editor:project-document";
 const PERSIST_VERSION = 2;

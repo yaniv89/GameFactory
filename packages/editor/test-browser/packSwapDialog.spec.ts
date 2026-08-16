@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 /**
  * docs/SPEC.md Section 11.5's hero interaction, proven end to end in a

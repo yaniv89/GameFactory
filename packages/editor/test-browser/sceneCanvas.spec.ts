@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 /**
  * The one claim in SceneCanvas.tsx that jsdom cannot check (verified: the

@@ -25,9 +25,10 @@
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.29" />
     <!-- M7 Phase 1: drives a real HubConnection against CollabHub over WebApplicationFactory's TestServer (LongPolling transport — TestServer's handler-based pipeline doesn't support a real WebSocket upgrade). -->
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.29" />
-    <PackageReference Include="Testcontainers.PostgreSql" Version="4.13.0" />
-    <PackageReference Include="Testcontainers.Redis" Version="4.13.0" />
-    <PackageReference Include="Testcontainers.Azurite" Version="4.13.0" />
+    <!-- 4.14.0, not 4.13.0: pulls in SSH.NET >= 2026.0.0 transitively, fixing CVE-2026-48798 (GHSA-q939-rpr3-3284, path traversal in ScpClient.Download — SSH.NET is Testcontainers' own dependency for the Docker-over-SSH connection mode, unrelated to what these tests actually use it for). No SSH.NET 2025.1.0 patch exists; 2026.0.0 is the fix. -->
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.14.0" />
+    <PackageReference Include="Testcontainers.Redis" Version="4.14.0" />
+    <PackageReference Include="Testcontainers.Azurite" Version="4.14.0" />
     <PackageReference Include="coverlet.collector" Version="6.0.4">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

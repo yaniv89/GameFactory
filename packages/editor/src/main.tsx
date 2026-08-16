@@ -11,6 +11,23 @@ import { useProjectSyncStore } from "./project/projectSyncStore";
 
 const AUTH_CALLBACK_PATH = "/auth/callback";
 
+declare global {
+  interface Window {
+    /**
+     * Dev-only escape hatch for `test-browser/*.spec.ts` — those specs
+     * (SceneCanvas, pack-swap, preview bridge, the M4 walkable-demo exit
+     * criterion) exercise canvas/rendering behavior that predates the
+     * auth/project wiring and run with no `Forge.Api` backend at all
+     * (`playwright.config.ts`'s `webServer` is just `vite`), so there is
+     * nothing for them to sign in against. Guarded by `import.meta.env.DEV`
+     * below — Vite dead-code-eliminates the whole branch in a production
+     * build, the same "test-only hook, never shipped" pattern
+     * `SceneCanvas.tsx`'s own `__forgeSceneCanvasDebug` already uses.
+     */
+    __FORGE_E2E_SKIP_AUTH__?: boolean;
+  }
+}
+
 /**
  * Signed-in but no project chosen yet -> the project list; a project
  * chosen -> the editor shell. Local state (not a route) for the same
@@ -65,6 +82,10 @@ const Root: FC = () => {
         }}
       />
     );
+  }
+
+  if (import.meta.env.DEV && window.__FORGE_E2E_SKIP_AUTH__) {
+    return <App />;
   }
 
   return (

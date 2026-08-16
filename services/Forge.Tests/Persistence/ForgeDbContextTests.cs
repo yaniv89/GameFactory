@@ -14,18 +14,11 @@ namespace Forge.Tests.Persistence;
 /// database rejects (unique indexes, filtered indexes, cascade deletes,
 /// citext case-insensitivity).
 ///
-/// ⚠ Not run in this sandbox: no .NET SDK is installed here to execute
-/// `dotnet test` (see appsettings.json's comment and CLAUDE.md Section 2.1
-/// — Docker itself is present, but the SDK is the actual blocker).
-/// Verified when CI runs on a GitHub-hosted runner.
-///
-/// ⚠ Schema is created via EnsureCreatedAsync (straight from the current
-/// model), not a real EF Core migration — generating an actual
-/// Migrations/*.cs + ModelSnapshot pair requires `dotnet ef migrations
-/// add`, which needs the SDK this sandbox doesn't have. That's a real,
-/// stated gap: this proves the *model* is correct, not that a migration
-/// exists yet. Tracked as the remaining action item before this ships to
-/// any real environment.
+/// Schema is created by applying the real, checked-in EF Core migrations
+/// (`Database.MigrateAsync`, `services/Forge.Infrastructure/Persistence/Migrations/`),
+/// not `EnsureCreated` — this now proves both the model *and* the
+/// migrations that build it are correct against a real database, not
+/// just the model in isolation.
 ///
 /// One container is shared across all tests in this class (started once,
 /// schema created once) rather than per-test, since spinning up Postgres
@@ -50,7 +43,7 @@ public sealed class ForgeDbContextTests : IAsyncLifetime
             .Options;
 
         await using var db = new ForgeDbContext(_options);
-        await db.Database.EnsureCreatedAsync();
+        await db.Database.MigrateAsync();
     }
 
     public async Task DisposeAsync() => await _container.DisposeAsync();

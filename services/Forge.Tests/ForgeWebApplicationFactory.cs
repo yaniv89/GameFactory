@@ -36,8 +36,8 @@ namespace Forge.Tests;
 /// 2. Points <c>ConnectionStrings:Forge</c> at a real, ephemeral
 ///    Postgres 16 container (same Testcontainers approach as
 ///    ForgeDbContextTests.cs) instead of appsettings.json's local-dev
-///    placeholder, which points nowhere in CI, and creates the schema
-///    via EnsureCreated before any test runs.
+///    placeholder, which points nowhere in CI, and creates the schema by
+///    applying the real EF Core migrations before any test runs.
 ///
 ///    This is done by replacing the <c>DbContextOptions&lt;ForgeDbContext&gt;</c>
 ///    service registration directly in <see cref="ConfigureWebHost"/>,
@@ -55,14 +55,21 @@ namespace Forge.Tests;
 ///    <see cref="IServiceCollection"/> registration directly sidesteps that
 ///    ordering entirely.
 ///
-///    Schema creation (<c>EnsureCreated</c>) has to happen inside that same
-///    <c>ConfigureTestServices</c> delegate too, not after <c>base.CreateHost</c>
-///    returns as an earlier version of this class did: <c>Program.cs</c>
-///    calls <c>OpenIddictSeeding.SeedAsync</c> — which queries real tables
-///    — during host startup itself (before <c>app.Run()</c>, deep inside
-///    <c>base.CreateHost</c>'s call into <c>Program.Main</c>), so creating
-///    the schema afterward is too late; a real CI run confirmed this with
-///    <c>relation "OpenIddictApplications" does not exist</c>.
+///    Schema creation now runs the real, checked-in EF Core migrations
+///    (<c>Database.Migrate()</c>, <c>services/Forge.Infrastructure/Persistence/Migrations/</c>)
+///    rather than <c>EnsureCreated()</c> — the two are mutually exclusive
+///    (EF tracks schema state incompatibly between them), so this is the
+///    one place in the whole test suite that actually applies and
+///    verifies the migrations are correct, the same real Postgres every
+///    other test in this project already uses. This has to happen inside
+///    that same <c>ConfigureTestServices</c> delegate too, not after
+///    <c>base.CreateHost</c> returns as an earlier version of this class
+///    did: <c>Program.cs</c> calls <c>OpenIddictSeeding.SeedAsync</c> —
+///    which queries real tables — during host startup itself (before
+///    <c>app.Run()</c>, deep inside <c>base.CreateHost</c>'s call into
+///    <c>Program.Main</c>), so creating the schema afterward is too late;
+///    a real CI run confirmed this with <c>relation "OpenIddictApplications"
+///    does not exist</c>.
 ///
 /// 3. Same story for <c>ConnectionStrings:Redis</c> (M5 Phase 4):
 ///    <c>AddForgeRateLimiting</c> reads it eagerly the same way
@@ -178,7 +185,7 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
                 .UseNpgsql(connectionString)
                 .UseSnakeCaseNamingConvention()
                 .Options);
-            db.Database.EnsureCreated();
+            db.Database.Migrate();
 
             var redisConnectionString = _redis.GetConnectionString();
             // One real, lazily-created connection to the test container,

@@ -8,7 +8,7 @@ import { SceneCanvas } from "./canvas/SceneCanvas";
 import { useAuthStore } from "./auth/authStore";
 import { PresenceIndicator } from "./collab/PresenceIndicator";
 import { useProjectSyncStore, type SyncStatus } from "./project/projectSyncStore";
-import { InspectorPanelContainer, ModulesPanelContainer, ScenesPanelContainer } from "./shell/DockviewPanels";
+import { HistoryPanelContainer, InspectorPanelContainer, ModulesPanelContainer, ScenesPanelContainer } from "./shell/DockviewPanels";
 import { PreviewPanel } from "./shell/PreviewPanel";
 import { UndoRedoControls } from "./shell/UndoRedoControls";
 import "./App.css";
@@ -17,6 +17,7 @@ const COMPONENTS: Record<string, FC<IDockviewPanelProps>> = {
   scenes: ScenesPanelContainer,
   modules: ModulesPanelContainer,
   inspector: InspectorPanelContainer,
+  history: HistoryPanelContainer,
   canvas: SceneCanvas,
   preview: PreviewPanel,
 };
@@ -37,11 +38,17 @@ function onReady(event: DockviewReadyEvent): void {
     title: "Canvas",
     position: { direction: "right", referencePanel: scenes.id },
   });
-  api.addPanel({
+  const inspector = api.addPanel({
     id: "inspector",
     component: "inspector",
     title: "Inspector",
     position: { direction: "right", referencePanel: canvas.id },
+  });
+  api.addPanel({
+    id: "history",
+    component: "history",
+    title: "History",
+    position: { direction: "below", referencePanel: inspector.id },
   });
   api.addPanel({
     id: "preview",

@@ -60,6 +60,28 @@ export interface CommitRevisionResult {
   readonly createdAt: string;
 }
 
+/** Mirrors `RevisionSummaryResponse` — one row of the history list, newest first. */
+export interface RevisionSummary {
+  readonly id: number;
+  readonly parentId: number | undefined;
+  readonly authorId: string | undefined;
+  readonly label: string | undefined;
+  readonly sizeBytes: number;
+  readonly isCheckpoint: boolean;
+  readonly createdAt: string;
+}
+
+/** Mirrors `RevisionHistoryResponse`. `nextCursor` is `undefined` once there's no older page left. */
+export interface RevisionHistoryPage {
+  readonly revisions: readonly RevisionSummary[];
+  readonly nextCursor: number | undefined;
+}
+
+export interface RestoreRevisionInput {
+  readonly expectedHeadRevision: number | undefined;
+  readonly label: string | undefined;
+}
+
 /** `GET /api/v1/me` — profile, workspaces, and each workspace's plan, resolved from the token subject (MeEndpoint.cs). */
 export function getMe(): Promise<MeResponse> {
   return httpJson<MeResponse>("/api/v1/me");
@@ -99,4 +121,26 @@ export async function getProjectDocument(projectId: string): Promise<ProjectDocu
  */
 export function commitRevision(projectId: string, input: CommitRevisionInput): Promise<CommitRevisionResult> {
   return httpJson<CommitRevisionResult>(`/api/v1/projects/${projectId}/revisions`, { method: "POST", body: input });
+}
+
+/**
+ * `GET /api/v1/projects/{projectId}/revisions` — cursor-paginated, newest
+ * first (ListRevisionsEndpoint.cs). `cursor` is the last-seen revision id
+ * from a previous page's `nextCursor`; omit it for the first page.
+ */
+export function listRevisions(projectId: string, cursor?: number): Promise<RevisionHistoryPage> {
+  const query = cursor !== undefined ? `?cursor=${cursor}` : "";
+  return httpJson<RevisionHistoryPage>(`/api/v1/projects/${projectId}/revisions${query}`);
+}
+
+/**
+ * `POST /api/v1/projects/{projectId}/revisions/{revisionId}/restore` —
+ * forward-only like the rest of the log: this commits the old revision's
+ * document as a brand new head rather than rewinding history
+ * (RestoreRevisionEndpoint.cs), so nothing already committed is ever lost.
+ * Same optimistic-concurrency conflict shape as `commitRevision` — a stale
+ * `expectedHeadRevision` throws an `ApiError` with `status === 409`.
+ */
+export function restoreRevision(projectId: string, revisionId: number, input: RestoreRevisionInput): Promise<CommitRevisionResult> {
+  return httpJson<CommitRevisionResult>(`/api/v1/projects/${projectId}/revisions/${revisionId}/restore`, { method: "POST", body: input });
 }

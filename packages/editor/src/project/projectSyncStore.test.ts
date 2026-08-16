@@ -7,6 +7,7 @@ import { useProjectSyncStore } from "./projectSyncStore";
 vi.mock("../api/projectsApi", () => ({
   getProjectDocument: vi.fn(),
   commitRevision: vi.fn(),
+  restoreRevision: vi.fn(),
 }));
 
 const DOCUMENT = { scenes: [{ id: "s1", name: "village", entities: [], tiles: [] }], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {} };
@@ -15,6 +16,7 @@ describe("useProjectSyncStore", () => {
   beforeEach(() => {
     vi.mocked(projectsApi.getProjectDocument).mockReset();
     vi.mocked(projectsApi.commitRevision).mockReset();
+    vi.mocked(projectsApi.restoreRevision).mockReset();
     useProjectSyncStore.setState({
       projectId: undefined,
       projectTitle: undefined,
@@ -100,6 +102,45 @@ describe("useProjectSyncStore", () => {
     await useProjectSyncStore.getState().saveProject();
 
     expect(useProjectSyncStore.getState().status).toBe("offline");
+  });
+
+  it("restoreRevision commits the old revision as a new head, then reloads the canvas from it", async () => {
+    vi.mocked(projectsApi.getProjectDocument)
+      .mockResolvedValueOnce(undefined) // openProject: brand-new project
+      .mockResolvedValueOnce({ revisionId: 9, parentId: 8, label: "Restored from revision 3", document: DOCUMENT, createdAt: "2026-08-16T00:00:00Z" });
+    vi.mocked(projectsApi.restoreRevision).mockResolvedValueOnce({ revisionId: 9, docHash: "def", createdAt: "2026-08-16T00:00:00Z" });
+    await useProjectSyncStore.getState().openProject("p1", "Starter RPG");
+
+    await useProjectSyncStore.getState().restoreRevision(3);
+
+    expect(projectsApi.restoreRevision).toHaveBeenCalledWith("p1", 3, expect.objectContaining({ expectedHeadRevision: undefined }));
+    expect(useProjectSyncStore.getState().status).toBe("saved");
+    expect(useProjectSyncStore.getState().headRevision).toBe(9);
+    expect(useProjectStore.getState().document.scenes[0]?.id).toBe("s1");
+  });
+
+  it("restoreRevision surfaces a 409 as a conflict without clobbering the local document", async () => {
+    vi.mocked(projectsApi.getProjectDocument).mockResolvedValueOnce(undefined);
+    vi.mocked(projectsApi.restoreRevision).mockRejectedValueOnce(new ApiError("Revision conflict", 409, { actualHeadRevision: 5 }));
+    await useProjectSyncStore.getState().openProject("p1", "Starter RPG");
+    const documentBefore = useProjectStore.getState().document;
+
+    await useProjectSyncStore.getState().restoreRevision(3);
+
+    expect(useProjectSyncStore.getState().status).toBe("conflict");
+    expect(useProjectSyncStore.getState().conflictActualRevision).toBe(5);
+    expect(useProjectStore.getState().document).toBe(documentBefore);
+  });
+
+  it("restoreRevision lands on offline without a network call when the browser is offline", async () => {
+    vi.mocked(projectsApi.getProjectDocument).mockResolvedValueOnce(undefined);
+    await useProjectSyncStore.getState().openProject("p1", "Starter RPG");
+    Object.defineProperty(window.navigator, "onLine", { value: false, writable: true, configurable: true });
+
+    await useProjectSyncStore.getState().restoreRevision(3);
+
+    expect(useProjectSyncStore.getState().status).toBe("offline");
+    expect(projectsApi.restoreRevision).not.toHaveBeenCalled();
   });
 
   it("closeProject clears the held project id and revision", async () => {

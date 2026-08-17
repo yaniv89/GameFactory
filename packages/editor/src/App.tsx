@@ -8,7 +8,9 @@ import { PackSwapDialogContainer } from "./canvas/PackSwapDialogContainer";
 import { SceneCanvas } from "./canvas/SceneCanvas";
 import { useAuthStore } from "./auth/authStore";
 import { PresenceIndicator } from "./collab/PresenceIndicator";
+import { MarketplaceDialogContainer } from "./marketplace/MarketplaceDialogContainer";
 import { buildProjectDocumentExportFile, downloadProjectDocumentExportFile } from "./project/exportProjectDocument";
+import { useMarketplaceStore } from "./project/marketplaceStore";
 import { useProjectSyncStore, type SyncStatus } from "./project/projectSyncStore";
 import { useProjectStore } from "./store/projectStore";
 import { HistoryPanelContainer, InspectorPanelContainer, ModulesPanelContainer, ScenesPanelContainer } from "./shell/DockviewPanels";
@@ -78,6 +80,7 @@ export function App({ projectTitle = "Untitled Project", onCloseProject }: AppPr
   const [assetsOpen, setAssetsOpen] = useState(false);
   const { projectId, status: syncStatus, error: syncError, conflictActualRevision, saveProject, openProject } = useProjectSyncStore();
   const accessToken = useAuthStore((s) => s.session?.accessToken);
+  const openMarketplace = useMarketplaceStore((state) => state.open);
 
   const statusLabel = SAVE_STATUS_LABEL[syncStatus];
 
@@ -111,6 +114,9 @@ export function App({ projectTitle = "Untitled Project", onCloseProject }: AppPr
         <Button variant="secondary" onClick={() => setAssetsOpen(true)}>
           Assets
         </Button>
+        <Button variant="secondary" onClick={openMarketplace}>
+          Marketplace
+        </Button>
         {projectId && (
           <Button
             variant="secondary"
@@ -128,6 +134,7 @@ export function App({ projectTitle = "Untitled Project", onCloseProject }: AppPr
       </div>
       <PackSwapDialogContainer open={packSwapOpen} onClose={() => setPackSwapOpen(false)} />
       <AssetsLibraryDialogContainer open={assetsOpen} onClose={() => setAssetsOpen(false)} />
+      <MarketplaceDialogContainer />
       <Dialog open={syncStatus === "conflict"} title="This project changed on the server" onClose={() => {}}>
         <p>
           {syncError ?? "Someone else (or another tab) saved a newer revision"}

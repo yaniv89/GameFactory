@@ -86,13 +86,20 @@ public static class PackageDetailAndVersionsEndpoint
 
     private static async Task<IResult> GetPackageAsync(string name, ForgeDbContext db, CancellationToken ct)
     {
+        // No navigation property from Package to its own Listing (they're
+        // linked only by the shared PackageId primary key, per Listing's
+        // own doc comment) — a correlated subquery against db.Listings is
+        // the real join, and it's an indexed primary-key lookup, not a
+        // scan.
         var package = await db.Packages
             .Where(p => p.Name == name)
             .Select(p => new PackageDetailResponse(
                 p.Id, p.Name, p.Kind, p.AuthorUserId, p.DisplayName, p.Summary,
                 p.ReadmeMarkdown, p.HomepageUrl, p.LicenseSpdx, p.IsDeprecated, p.CreatedAt,
                 p.Reviews.Count == 0 ? null : p.Reviews.Average(r => (double?)r.Rating),
-                p.Reviews.Count))
+                p.Reviews.Count,
+                db.Listings.Where(l => l.PackageId == p.Id).Select(l => l.PricingModel).Single(),
+                db.Listings.Where(l => l.PackageId == p.Id).Select(l => l.PriceCents).Single()))
             .SingleOrDefaultAsync(ct);
 
         return package is null ? TypedResults.NotFound() : TypedResults.Ok(package);

@@ -9,6 +9,7 @@ import { HistoryPanel } from "../panels/HistoryPanel";
 import { InspectorPanel } from "../panels/InspectorPanel";
 import { ModulesPanel } from "../panels/ModulesPanel";
 import { ScenesPanel } from "../panels/ScenesPanel";
+import { useMarketplaceStore } from "../project/marketplaceStore";
 import { useProjectSyncStore } from "../project/projectSyncStore";
 import { useRevisionHistoryStore } from "../project/revisionHistoryStore";
 import { useProjectStore } from "../store/projectStore";
@@ -36,17 +37,26 @@ export function ScenesPanelContainer() {
 }
 
 /**
- * The module catalog (`moduleManifests.ts`) is always all three
- * first-party modules — there's no registry to add or remove entries from
- * yet (M6/M7) — but which ones are installed, and their config, is now
- * real project-document state (Phase 5). Install/uninstall/configure are
- * all undoable through the same command log as scenes.
+ * The module catalog a project can install *into itself* (`ModulesPanel`'s
+ * own list) is still always exactly the three first-party modules —
+ * installing a marketplace package into a project's own document is a
+ * separate, real gap (it needs a guest-bundle resolution step this slice
+ * doesn't build, the same one `forge export`'s own `readModuleGuestBundle`
+ * already does for first-party modules) — but which of the three are
+ * installed, and their config, is real project-document state (Phase 5).
+ * Install/uninstall/configure are all undoable through the same command
+ * log as scenes.
+ *
+ * "Browse the marketplace" (G2) now opens a real dialog — browsing,
+ * reading reviews, and buying a package all work; it's specifically
+ * "install a bought package into this project" that isn't wired yet.
  */
 export function ModulesPanelContainer() {
   const installedModules = useProjectStore((state) => state.document.installedModules);
   const installModule = useProjectStore((state) => state.installModule);
   const uninstallModule = useProjectStore((state) => state.uninstallModule);
   const selectModule = useProjectStore((state) => state.selectModule);
+  const openMarketplace = useMarketplaceStore((state) => state.open);
 
   const modules = FIRST_PARTY_MODULE_MANIFESTS.map((manifest) => ({
     name: manifest.name,
@@ -66,10 +76,7 @@ export function ModulesPanelContainer() {
       }}
       onUninstall={uninstallModule}
       onConfigure={selectModule}
-      onBrowseMarketplace={() => {
-        // The marketplace (M6/M7) doesn't exist yet — logged rather than silently doing nothing.
-        console.info("[forge:editor] marketplace browsing lands in M6/M7");
-      }}
+      onBrowseMarketplace={openMarketplace}
     />
   );
 }

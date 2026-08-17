@@ -68,6 +68,14 @@ public sealed class RegistryEndpointsTests : IClassFixture<ForgeWebApplicationFa
         db.Packages.Add(package);
         await db.SaveChangesAsync();
 
+        // Every package gets a Listing the moment it's created (Listing's
+        // own doc comment) — PublishVersionEndpoint always adds one
+        // alongside the Package it creates. This hand-seeded fixture has
+        // to uphold that same invariant, or GetPackageAsync's real
+        // PricingModel/PriceCents join (G2) finds nothing to join against.
+        db.Listings.Add(new Listing { PackageId = package.Id, PricingModel = ListingPricingModel.Free, PriceCents = 0 });
+        await db.SaveChangesAsync();
+
         return (package.Id, author.Id);
     }
 
@@ -144,6 +152,40 @@ public sealed class RegistryEndpointsTests : IClassFixture<ForgeWebApplicationFa
         var body = await response.Content.ReadFromJsonAsync<PackageDetailResponse>();
 
         Assert.Equal("@forge/dialogue-detail", body!.Name);
+    }
+
+    [Fact]
+    public async Task Get_Package_Reports_The_Free_Listing_Every_New_Package_Starts_With()
+    {
+        await SeedPackageAsync("@acme/pricing-free-default");
+
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync("/api/v1/packages/@acme/pricing-free-default");
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<PackageDetailResponse>();
+
+        Assert.Equal(ListingPricingModel.Free, body!.PricingModel);
+        Assert.Equal(0, body.PriceCents);
+    }
+
+    [Fact]
+    public async Task Get_Package_Reports_A_Real_Paid_Price_After_SetListing()
+    {
+        var (packageId, _) = await SeedPackageAsync("@acme/pricing-paid");
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ForgeDbContext>();
+            await db.Listings.Where(l => l.PackageId == packageId)
+                .ExecuteUpdateAsync(s => s.SetProperty(l => l.PricingModel, ListingPricingModel.OneTime).SetProperty(l => l.PriceCents, 1299));
+        }
+
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync("/api/v1/packages/@acme/pricing-paid");
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<PackageDetailResponse>();
+
+        Assert.Equal(ListingPricingModel.OneTime, body!.PricingModel);
+        Assert.Equal(1299, body.PriceCents);
     }
 
     [Fact]

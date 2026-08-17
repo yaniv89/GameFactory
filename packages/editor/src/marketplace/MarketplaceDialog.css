@@ -1,0 +1,210 @@
+.fg-marketplace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 32rem;
+  max-width: 36rem;
+  max-height: 32rem;
+  overflow-y: auto;
+}
+
+.fg-marketplace__browse {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.fg-marketplace__filters {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-end;
+}
+
+.fg-marketplace__filters > :first-child {
+  flex: 1;
+}
+
+.fg-marketplace__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.fg-marketplace__row-button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-paper);
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.fg-marketplace__row-button:hover {
+  border-color: var(--line-strong);
+}
+
+.fg-marketplace__row-button:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.fg-marketplace__summary {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.fg-marketplace__detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.fg-marketplace__detail-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.fg-marketplace__detail-header h3 {
+  margin: 0;
+  font-size: var(--text-xl);
+}
+
+.fg-marketplace__detail-name {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.fg-marketplace__detail-meta {
+  display: flex;
+  gap: var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.fg-marketplace__price {
+  font-weight: var(--weight-bold);
+  font-size: var(--text-lg);
+}
+
+.fg-marketplace__price--free,
+.fg-marketplace__price--owned {
+  color: var(--accent-create);
+}
+
+.fg-marketplace__buy {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.fg-marketplace__readme {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line-default);
+  color: var(--text-primary);
+}
+
+.fg-marketplace__reviews {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fg-marketplace__review-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line-subtle);
+}
+
+.fg-marketplace__review-mine {
+  color: var(--accent-select);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+
+.fg-marketplace__stars,
+.fg-marketplace__rating-input [role="radiogroup"] {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+.fg-marketplace__star {
+  color: var(--text-tertiary);
+}
+
+.fg-marketplace__star--filled {
+  color: var(--accent-create);
+}
+
+.fg-marketplace__star-button {
+  min-width: var(--hit-target-min);
+  min-height: var(--hit-target-min);
+  border: none;
+  background: none;
+  color: var(--text-tertiary);
+  font-size: var(--text-lg);
+  cursor: pointer;
+}
+
+.fg-marketplace__star-button--filled {
+  color: var(--accent-create);
+}
+
+.fg-marketplace__star-button:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.fg-marketplace__composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-bottom: var(--space-4);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--line-default);
+}
+
+.fg-marketplace__rating-input {
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.fg-marketplace__rating-input legend {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  padding: 0;
+}
+
+.fg-marketplace__composer-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.fg-marketplace__error {
+  color: var(--accent-destroy);
+  font-size: var(--text-sm);
+  margin: 0;
+}

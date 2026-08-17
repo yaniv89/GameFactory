@@ -84,4 +84,15 @@ public static class RateLimitPolicies
     /// than a handful of scores a minute.
     /// </summary>
     public static readonly RateLimitPolicy LeaderboardSubmit = new(Limit: 10, Window: TimeSpan.FromMinutes(1));
+
+    /// <summary>
+    /// Build creation specifically (docs/adr/0010), user-keyed and much
+    /// tighter than <see cref="CommitRevision"/>: unlike a metadata
+    /// write, each one queues a real `vite build` subprocess for
+    /// <c>Forge.Functions.Build</c> to run — cheap for this endpoint
+    /// itself (it only inserts a row), but the point of the limit is
+    /// bounding how much worker/Blob Storage cost one account can queue
+    /// per minute, not this request's own handling cost.
+    /// </summary>
+    public static readonly RateLimitPolicy CreateBuild = new(Limit: 5, Window: TimeSpan.FromMinutes(1));
 }

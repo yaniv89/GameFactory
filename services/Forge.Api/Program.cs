@@ -12,10 +12,18 @@
 // exist yet: every publish gets the same review path until M7 Phase 3
 // adds Unverified/Verified/Partner — a stated gap, not a silently
 // skipped one.
+//
+// docs/adr/0010's build-creation/status/list endpoints (MapBuildEndpoints)
+// queue and report on server-side builds of a project's committed
+// revisions — this process only ever writes a Queued Build row and reads
+// its status back; the actual bundling happens off-process in
+// Forge.Functions.Build (C3), and serving the result happens on a
+// physically separate host, Forge.Play (C4), neither of which exists yet.
 using Forge.Api;
 using Forge.Api.Authorization;
 using Forge.Api.Features.Auth;
 using Forge.Api.Features.Billing;
+using Forge.Api.Features.Builds;
 using Forge.Api.Features.Collab;
 using Forge.Api.Features.Marketplace;
 using Forge.Api.Features.Play;
@@ -108,6 +116,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
 
 app.MapAuthEndpoints();
 app.MapProjectEndpoints();
+app.MapBuildEndpoints();
 app.MapBillingEndpoints();
 app.MapRegistryEndpoints();
 app.MapCollabHub();

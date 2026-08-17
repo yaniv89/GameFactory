@@ -129,6 +129,19 @@ public sealed class CrossTenantAuthorizationTests : IClassFixture<ForgeWebApplic
         yield return new object[] { "DeleteProject (project:write)", (Func<SharedState, HttpRequestMessage>)(s =>
             new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/projects/{s.ProjectId}")) };
 
+        // docs/adr/0010: the first endpoint combining two named policies
+        // (project:write AND project:pro) on one route. The point of this
+        // case isn't just "outsiders get 404 here too" — it specifically
+        // proves WorkspaceAuthorizationMiddlewareResultHandler's
+        // FailedRequirements fix: the owner's shared-state workspace was
+        // never upgraded to Pro, so both requirements fail here, and the
+        // old policy.Requirements-based check would have matched
+        // PlanGateRequirement being merely *present* in the combined
+        // policy and returned 402 instead of masking it behind the
+        // correct 404 for a non-member.
+        yield return new object[] { "CreateBuild (project:write + project:pro)", (Func<SharedState, HttpRequestMessage>)(s =>
+            new HttpRequestMessage(HttpMethod.Post, $"/api/v1/projects/{s.ProjectId}/builds")) };
+
         yield return new object[] { "GetBillingStatus (workspace:billing)", (Func<SharedState, HttpRequestMessage>)(s =>
             new HttpRequestMessage(HttpMethod.Get, $"/api/v1/workspaces/{s.Owner.WorkspaceId}/billing")) };
 

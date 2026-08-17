@@ -25,11 +25,12 @@ namespace Forge.Infrastructure.Persistence;
 /// Models the M5 subset (identity, workspaces, subscriptions,
 /// projects/revisions), M6 Phase 1's registry tables (packages,
 /// package_versions, package_dependencies), M7 Phase 4's commerce
-/// tables (listings, licenses, purchases), and M7 Phase 7's <see cref="Domain.Entities.Player"/>
+/// tables (listings, licenses, purchases), M7 Phase 7's <see cref="Domain.Entities.Player"/>
 /// identity table — the only piece of Play Services (docs/SPEC.md
 /// Section 17) that lives in PostgreSQL; saves/leaderboards/achievements/
 /// analytics are Azure Table Storage (<c>Forge.Infrastructure.Play</c>),
-/// never modeled here. Asset tables (assets, published_builds) are still
+/// never modeled here — and docs/adr/0010's <see cref="Domain.Entities.Build"/>
+/// table. The <c>assets</c> table (docs/SPEC.md Section 14) is still
 /// later scope.
 /// </summary>
 public sealed class ForgeDbContext(DbContextOptions<ForgeDbContext> options)
@@ -54,6 +55,9 @@ public sealed class ForgeDbContext(DbContextOptions<ForgeDbContext> options)
     public DbSet<Project> Projects => Set<Project>();
 
     public DbSet<ProjectRevision> ProjectRevisions => Set<ProjectRevision>();
+
+    /// <summary>docs/adr/0010 — server-side builds of a committed revision, published on the play origin. Deliberately trimmed from Section 6.2's <c>published_builds</c>; see <see cref="Domain.Entities.Build"/>'s own doc comment for what's out of scope and why.</summary>
+    public DbSet<Build> Builds => Set<Build>();
 
     public DbSet<Package> Packages => Set<Package>();
 

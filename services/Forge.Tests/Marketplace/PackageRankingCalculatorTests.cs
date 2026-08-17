@@ -174,6 +174,76 @@ public sealed class PackageRankingCalculatorTests
     }
 
     [Fact]
+    public void A_Faster_Responding_Package_Always_Outranks_An_Otherwise_Identical_Slower_One()
+    {
+        var fast = AllNull(readmeLength: 500) with { SupportResponsivenessHours = 2.0 };
+        var slow = AllNull(readmeLength: 500) with { SupportResponsivenessHours = 100.0 };
+
+        Assert.True(
+            PackageRankingCalculator.CalculateScore(fast, Now) > PackageRankingCalculator.CalculateScore(slow, Now));
+    }
+
+    [Fact]
+    public void Support_Responsiveness_Scores_Full_Marks_Within_A_Day_And_Zero_At_A_Week_Or_Slower()
+    {
+        // Documentation (readmeLength: 0 throughout) always contributes
+        // the same fixed amount regardless of SupportResponsivenessHours,
+        // so equal CalculateScore results across the "within a day" cases
+        // — and separately across the "a week or slower" cases — isolate
+        // what support responsiveness alone is doing, the same technique
+        // Maintenance_Recency_Decays_Linearly... already established for
+        // its own two-window signal.
+        var immediate = AllNull(readmeLength: 0) with { SupportResponsivenessHours = 0.0 };
+        var withinADay = AllNull(readmeLength: 0) with { SupportResponsivenessHours = 24.0 };
+        var aWeek = AllNull(readmeLength: 0) with { SupportResponsivenessHours = 24.0 * 7 };
+        var evenSlower = AllNull(readmeLength: 0) with { SupportResponsivenessHours = 24.0 * 30 };
+
+        var immediateScore = PackageRankingCalculator.CalculateScore(immediate, Now);
+        var withinADayScore = PackageRankingCalculator.CalculateScore(withinADay, Now);
+        var aWeekScore = PackageRankingCalculator.CalculateScore(aWeek, Now);
+        var evenSlowerScore = PackageRankingCalculator.CalculateScore(evenSlower, Now);
+
+        Assert.Equal(immediateScore, withinADayScore, precision: 6);
+        Assert.Equal(aWeekScore, evenSlowerScore, precision: 6);
+        Assert.True(withinADayScore > aWeekScore);
+    }
+
+    [Fact]
+    public void CalculateMedianResponseHours_Returns_Null_For_No_Replied_Issues()
+    {
+        Assert.Null(PackageRankingCalculator.CalculateMedianResponseHours([]));
+    }
+
+    [Fact]
+    public void CalculateMedianResponseHours_Averages_The_Two_Middle_Values_For_An_Even_Count()
+    {
+        var result = PackageRankingCalculator.CalculateMedianResponseHours([2.0, 4.0, 6.0, 8.0]);
+        Assert.Equal(5.0, result);
+    }
+
+    [Fact]
+    public void CalculateMedianResponseHours_Takes_The_Middle_Value_For_An_Odd_Count_Regardless_Of_Input_Order()
+    {
+        var result = PackageRankingCalculator.CalculateMedianResponseHours([100.0, 1.0, 3.0]);
+        Assert.Equal(3.0, result);
+    }
+
+    [Fact]
+    public void CalculateMedianResponseHours_Is_Not_Skewed_By_One_Slow_Outlier()
+    {
+        // One issue that took three weeks to answer shouldn't blow out
+        // the signal for an otherwise fast-responding author — this
+        // calculator's own doc comment names this as the reason median,
+        // not mean, was chosen.
+        var mostlyFast = new List<double> { 2.0, 3.0, 4.0, 5.0, 24.0 * 21 };
+        var median = PackageRankingCalculator.CalculateMedianResponseHours(mostlyFast)!.Value;
+        var mean = mostlyFast.Average();
+
+        Assert.True(median < mean);
+        Assert.Equal(4.0, median);
+    }
+
+    [Fact]
     public void EffectiveWeights_Reports_Zero_For_Every_Signal_With_No_Data_Source_And_Renormalizes_The_Rest()
     {
         var signals = AllNull(readmeLength: 500) with

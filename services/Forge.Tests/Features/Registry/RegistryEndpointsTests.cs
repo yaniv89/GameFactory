@@ -341,4 +341,47 @@ public sealed class RegistryEndpointsTests : IClassFixture<ForgeWebApplicationFa
         Assert.True(installedIndex >= 0 && bareIndex >= 0, "Both seeded packages should appear in the ranked list.");
         Assert.True(installedIndex < bareIndex, "Real installs and a real 5-star rating should outrank an otherwise-identical package with neither.");
     }
+
+    /// <summary>Support responsiveness: proves a package whose author replies quickly to a real issue outranks an otherwise-identical package with an unanswered issue — the ranking signal <see cref="Marketplace.ListingQualitySignals.SupportResponsivenessHours"/>'s own doc comment named as having no data source before this closed it.</summary>
+    [Fact]
+    public async Task Ranked_Sort_Rewards_Fast_Real_Support_Responses_Over_An_Unanswered_Issue()
+    {
+        var (respondedId, _) = await SeedPackageAsync(
+            "@acme/ranked-responded", displayName: "Responded", readmeMarkdown: new string('a', 1500));
+        await SeedVersionAsync(respondedId, "1.0.0", sizeBytes: 1024, measuredAverageTickMs: 0.1, publishedAt: DateTimeOffset.UtcNow);
+
+        var (unansweredId, _) = await SeedPackageAsync(
+            "@acme/ranked-unanswered", displayName: "Unanswered", readmeMarkdown: new string('a', 1500));
+        await SeedVersionAsync(unansweredId, "1.0.0", sizeBytes: 1024, measuredAverageTickMs: 0.1, publishedAt: DateTimeOffset.UtcNow);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ForgeDbContext>();
+            var openedAt = DateTimeOffset.UtcNow.AddDays(-1);
+
+            var respondedIssue = new PackageIssue { Id = Guid.NewGuid(), PackageId = respondedId, Title = "Quick question", CreatedAt = openedAt };
+            db.PackageIssues.Add(respondedIssue);
+            db.PackageIssueReplies.Add(new PackageIssueReply
+            {
+                Id = Guid.NewGuid(),
+                IssueId = respondedIssue.Id,
+                Body = "Answered within the hour.",
+                CreatedAt = openedAt.AddHours(1),
+            });
+
+            db.PackageIssues.Add(new PackageIssue { Id = Guid.NewGuid(), PackageId = unansweredId, Title = "Still open", CreatedAt = openedAt });
+
+            await db.SaveChangesAsync();
+        }
+
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync("/api/v1/packages?sort=ranked");
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<PackageListResponse>();
+
+        var respondedIndex = body!.Packages.ToList().FindIndex(p => p.Name == "@acme/ranked-responded");
+        var unansweredIndex = body.Packages.ToList().FindIndex(p => p.Name == "@acme/ranked-unanswered");
+        Assert.True(respondedIndex >= 0 && unansweredIndex >= 0, "Both seeded packages should appear in the ranked list.");
+        Assert.True(respondedIndex < unansweredIndex, "A package with a real, fast issue response should outrank an otherwise-identical package with an unanswered issue.");
+    }
 }

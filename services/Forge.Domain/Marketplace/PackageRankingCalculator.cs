@@ -5,36 +5,36 @@ namespace Forge.Domain.Marketplace;
 /// is not by download count alone, which rewards incumbency and
 /// encourages gaming."
 ///
-/// Of the seven signals the SPEC weights, F1 gave two
-/// (<see cref="ListingQualitySignals.ActiveInstalls30d"/>,
-/// <see cref="ListingQualitySignals.BayesianRating"/>) a real data source
-/// for the first time — <see cref="Entities.License"/> and
-/// <see cref="Entities.Review"/> respectively. One
-/// (<see cref="ListingQualitySignals.SupportResponsivenessHours"/>) still
-/// has none — no issue tracker exists in this platform, and building one
-/// was never F1's scope. Rather than fabricate a number for that signal
-/// (which would either unfairly floor every package's score by its own
-/// share of total weight, achieving nothing but noise, or fake a neutral
-/// default that pretends the feature exists), this calculator excludes
-/// an absent signal from the weighted average entirely and renormalizes
-/// the remaining weights to sum to 1 — the same "don't guess and present
-/// it as fact" posture CLAUDE.md Section 0 states directly, applied to a
-/// ranking formula instead of a Stripe API surface. The moment a real
-/// value exists for support responsiveness too, passing it through
-/// <see cref="ListingQualitySignals"/> makes it participate automatically
-/// — no change needed here.
+/// All seven signals the SPEC weights now have a real data source. F1
+/// gave two (<see cref="ListingQualitySignals.ActiveInstalls30d"/>,
+/// <see cref="ListingQualitySignals.BayesianRating"/>) one for the first
+/// time — <see cref="Entities.License"/> and <see cref="Entities.Review"/>
+/// respectively. The last (<see cref="ListingQualitySignals.SupportResponsivenessHours"/>)
+/// closes with the minimal issue tracker <see cref="Entities.PackageIssue"/>
+/// backs — median hours from an issue's own <c>CreatedAt</c> to its
+/// earliest reply, over issues opened in the last
+/// <see cref="ResponsivenessWindow"/>. A package with no replied issues
+/// in that window still reports null, not zero — an absent signal is
+/// excluded from the weighted average entirely and the remaining weights
+/// renormalize to sum to 1, rather than fabricating a number (which
+/// would either unfairly floor every package's score by its own share of
+/// total weight, achieving nothing but noise, or fake a neutral default
+/// that pretends a measurement exists when it doesn't) — the same "don't
+/// guess and present it as fact" posture CLAUDE.md Section 0 states
+/// directly, applied to a ranking formula instead of a Stripe API
+/// surface.
 ///
-/// Six real signals now drive the score: active installs (installs are
+/// Every signal drives the score now: active installs (installs are
 /// deliberately log-compressed, see <see cref="ActiveInstallsScore"/>,
 /// for the same "don't reward sheer incumbency" reason raw download
 /// counts are rejected above), a Bayesian-shrunk rating (see
 /// <see cref="BayesianRatingScore"/> for why a naive average would let
 /// one 5-star review outrank a package with two hundred averaging 4.8),
 /// documentation completeness, bundle size cost, maintenance recency,
-/// and the measured performance budget — SPEC's own text calls the last
-/// of these "novel and valuable... ship it from day one" (Section 16.2),
-/// and it's genuinely new: no comparable marketplace publishes a
-/// module's measured frame cost.
+/// support responsiveness, and the measured performance budget — SPEC's
+/// own text calls the last of these "novel and valuable... ship it from
+/// day one" (Section 16.2), and it's genuinely new: no comparable
+/// marketplace publishes a module's measured frame cost.
 /// </summary>
 public static class PackageRankingCalculator
 {
@@ -86,6 +86,15 @@ public static class PackageRankingCalculator
     /// <summary>An automated heuristic threshold for "full credit" documentation length — docs/SPEC.md specifies only that this signal is "an automated heuristic on the readme," not an exact number; ~300 words is a defensible, arbitrary floor for "this readme actually explains something."</summary>
     private const int FullCreditReadmeLength = 1500;
 
+    /// <summary>An issue answered within this window scores full marks for support responsiveness — a stated, defensible bar for "responded within a business day," the same arbitrary-but-argued category as <see cref="FullCreditInstalls30d"/>.</summary>
+    private static readonly TimeSpan ResponsivenessFullScoreWindow = TimeSpan.FromHours(24);
+
+    /// <summary>A response this slow or slower scores zero — a full week with no reply — decays linearly between the two windows, the same shape <see cref="MaintenanceRecencyScore"/> already uses for its own two windows.</summary>
+    private static readonly TimeSpan ResponsivenessZeroScoreWindow = TimeSpan.FromHours(24 * 7);
+
+    /// <summary>How far back an issue's own <c>CreatedAt</c> can be and still count toward the responsiveness signal — "recent" behavior, not a package's entire history, the same "last 30/90 days" posture <see cref="FullCreditInstalls30d"/>'s own window and <see cref="RecencyFullScoreWindow"/> already take.</summary>
+    public static readonly TimeSpan ResponsivenessWindow = TimeSpan.FromDays(90);
+
     /// <summary>
     /// A 0..1 composite score, higher is better. Returns 0.0 only if
     /// every signal were null, which shouldn't happen in practice since
@@ -129,8 +138,11 @@ public static class PackageRankingCalculator
             weightTotal += BundleSizeCostWeight;
         }
 
-        // SupportResponsivenessHours: no data source yet — see this
-        // class's own doc comment. Deliberately never contributes.
+        if (signals.SupportResponsivenessHours is { } supportHours)
+        {
+            weightedSum += SupportResponsivenessWeight * SupportResponsivenessScore(supportHours);
+            weightTotal += SupportResponsivenessWeight;
+        }
 
         weightedSum += DocumentationCompletenessWeight * DocumentationScore(signals.ReadmeLength);
         weightTotal += DocumentationCompletenessWeight;
@@ -162,6 +174,42 @@ public static class PackageRankingCalculator
         double v = reviewCount;
         var shrunk = (v / (v + BayesianShrinkageReviews) * averageRating) + (BayesianShrinkageReviews / (v + BayesianShrinkageReviews) * globalAverageRating);
         return Math.Clamp(shrunk, 1.0, 5.0);
+    }
+
+    /// <summary>
+    /// Median hours-to-first-reply across <paramref name="responseHours"/>
+    /// (each entry already <c>(firstReplyAt - issue.CreatedAt).TotalHours</c>
+    /// for one issue opened within <see cref="ResponsivenessWindow"/> that
+    /// has at least one reply — <c>ListPackagesEndpoint</c>'s own query
+    /// builds exactly that list). Median, not mean, for the same reason
+    /// <see cref="CalculateBayesianRating"/> shrinks rather than averages
+    /// raw: one abandoned issue that never got a reply is already excluded
+    /// by the caller's own filter, but one that took three weeks to answer
+    /// among otherwise-fast responses would still blow out a mean the way
+    /// it can't blow out a median. Returns null for an empty list — "no
+    /// replied issues in the window" is an absent signal
+    /// (<see cref="ListingQualitySignals.SupportResponsivenessHours"/>'s
+    /// own null convention), not a real zero-hours measurement. Lives
+    /// here, in Domain, for the same EF-independent-unit-testability
+    /// reason <see cref="CalculateBayesianRating"/> does.
+    /// </summary>
+    public static double? CalculateMedianResponseHours(IReadOnlyList<double> responseHours)
+    {
+        if (responseHours.Count == 0) return null;
+        var sorted = responseHours.OrderBy(h => h).ToArray();
+        var mid = sorted.Length / 2;
+        return sorted.Length % 2 == 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2.0;
+    }
+
+    /// <summary>Lower is better — maps hours-to-first-reply onto this calculator's 0..1 scale via the same two-window linear decay <see cref="MaintenanceRecencyScore"/> already uses, just inverted (fast is full credit here, not old).</summary>
+    private static double SupportResponsivenessScore(double hours)
+    {
+        if (hours <= ResponsivenessFullScoreWindow.TotalHours) return 1.0;
+        if (hours >= ResponsivenessZeroScoreWindow.TotalHours) return 0.0;
+
+        var decayRange = ResponsivenessZeroScoreWindow.TotalHours - ResponsivenessFullScoreWindow.TotalHours;
+        var intoDecay = hours - ResponsivenessFullScoreWindow.TotalHours;
+        return 1.0 - intoDecay / decayRange;
     }
 
     private static double ActiveInstallsScore(int installs) =>

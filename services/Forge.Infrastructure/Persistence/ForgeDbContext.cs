@@ -75,6 +75,11 @@ public sealed class ForgeDbContext(DbContextOptions<ForgeDbContext> options)
     /// <summary>F1 — docs/SPEC.md Section 16.2's previously-absent ratings/reviews subsystem. See <see cref="Domain.Entities.Review"/>'s own doc comment.</summary>
     public DbSet<Review> Reviews => Set<Review>();
 
+    /// <summary>The minimal issue tracker backing SupportResponsivenessHours. See <see cref="Domain.Entities.PackageIssue"/>'s own doc comment.</summary>
+    public DbSet<PackageIssue> PackageIssues => Set<PackageIssue>();
+
+    public DbSet<PackageIssueReply> PackageIssueReplies => Set<PackageIssueReply>();
+
     public DbSet<Player> Players => Set<Player>();
 
     /// <summary>docs/adr/0012 — untrusted, workspace-scoped image uploads. See <see cref="Domain.Entities.Asset"/>'s own doc comment for what's trimmed from Section 6.2's version and why.</summary>

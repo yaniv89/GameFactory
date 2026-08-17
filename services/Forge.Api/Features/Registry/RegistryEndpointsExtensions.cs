@@ -1,5 +1,3 @@
-using Forge.Api.Features.Registry.Publishing;
-
 namespace Forge.Api.Features.Registry;
 
 public static class RegistryEndpointsExtensions
@@ -17,8 +15,12 @@ public static class RegistryEndpointsExtensions
         app.MapListPackages();
         app.MapPackageDetailAndVersions();
         app.MapResolveDependencies();
-        app.MapPublishVersion();
+        // PublishVersionEndpoint no longer registers its own route — see
+        // its own doc comment. IssuesEndpoint's MapIssues owns the one
+        // POST /api/v1/packages/{*path} route and dispatches into
+        // PublishVersionEndpoint.Handle.
         app.MapReviews();
+        app.MapIssues();
         return app;
     }
 }

@@ -179,12 +179,37 @@ public static class ListPackagesEndpoint
             ? await db.Reviews.AverageAsync(r => (double)r.Rating, ct)
             : 3.0;
 
+        // Support responsiveness: one query for every candidate's own
+        // replied issues opened within the window, then a per-package
+        // median computed in memory (median has no direct SQL
+        // translation, the same "composite score isn't SQL-translatable"
+        // reason this whole method already scores in memory) — still one
+        // round trip, not one per candidate.
+        var responsivenessWindowStart = now - PackageRankingCalculator.ResponsivenessWindow;
+        var issueResponseRows = await db.PackageIssues
+            .Where(i => candidateIds.Contains(i.PackageId) && i.CreatedAt >= responsivenessWindowStart)
+            .Select(i => new
+            {
+                i.PackageId,
+                i.CreatedAt,
+                FirstReplyAt = i.Replies.OrderBy(r => r.CreatedAt).Select(r => (DateTimeOffset?)r.CreatedAt).FirstOrDefault(),
+            })
+            .Where(x => x.FirstReplyAt != null)
+            .ToListAsync(ct);
+
+        var responseHoursByPackage = issueResponseRows
+            .GroupBy(x => x.PackageId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<double>)g.Select(x => (x.FirstReplyAt!.Value - x.CreatedAt).TotalHours).ToList());
+
         var ranked = candidates
             .Select(c =>
             {
                 var installs = installCounts.GetValueOrDefault(c.Id, 0);
                 var (reviewCount, averageRating) = reviewStats.GetValueOrDefault(c.Id, (0, 0.0));
                 var bayesianRating = PackageRankingCalculator.CalculateBayesianRating(reviewCount, averageRating, globalAverageRating);
+                var responseHours = responseHoursByPackage.TryGetValue(c.Id, out var hours)
+                    ? PackageRankingCalculator.CalculateMedianResponseHours(hours)
+                    : null;
                 return new
                 {
                     c,
@@ -196,7 +221,7 @@ public static class ListPackagesEndpoint
                             MeasuredAverageTickMs: c.Latest?.MeasuredAverageTickMs,
                             LatestVersionSizeBytes: c.Latest?.SizeBytes,
                             ReadmeLength: c.ReadmeLength,
-                            SupportResponsivenessHours: null),
+                            SupportResponsivenessHours: responseHours),
                         now),
                 };
             })

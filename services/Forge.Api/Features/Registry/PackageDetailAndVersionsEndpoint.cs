@@ -49,13 +49,15 @@ public static class PackageDetailAndVersionsEndpoint
         var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
 
         // A scoped name is exactly ["@scope", "name-part"]; an unscoped
-        // one is exactly ["name-part"]. "versions"/"reviews" (F1), if
-        // present, is the segment immediately after the name ends — a
-        // real name never contains both, so whichever index is >= 0 (at
-        // most one is) is the real split point.
+        // one is exactly ["name-part"]. "versions"/"reviews" (F1)/"issues"
+        // (support-responsiveness), if present, is the segment immediately
+        // after the name ends — a real name never contains any of the
+        // three, so whichever index is >= 0 (at most one is) is the real
+        // split point.
         var versionsIndex = Array.IndexOf(segments, "versions");
         var reviewsIndex = Array.IndexOf(segments, "reviews");
-        var specialIndex = versionsIndex >= 0 ? versionsIndex : reviewsIndex;
+        var issuesIndex = Array.IndexOf(segments, "issues");
+        var specialIndex = versionsIndex >= 0 ? versionsIndex : reviewsIndex >= 0 ? reviewsIndex : issuesIndex;
         var nameSegmentCount = specialIndex < 0 ? segments.Length : specialIndex;
         if (nameSegmentCount is not (1 or 2))
         {
@@ -68,6 +70,15 @@ public static class PackageDetailAndVersionsEndpoint
             var reviewsTrailing = segments[(reviewsIndex + 1)..];
             // No per-review-id lookup in v1 — only the list.
             return reviewsTrailing.Length == 0 ? await ListReviewsAsync(name, cursor, limit, db, ct) : TypedResults.NotFound();
+        }
+
+        if (issuesIndex >= 0)
+        {
+            var issuesTrailing = segments[(issuesIndex + 1)..];
+            // No per-issue-id lookup (with its own reply thread) in v1 —
+            // only the list, same v1 scope boundary ListReviewsAsync's own
+            // comment states for reviews.
+            return issuesTrailing.Length == 0 ? await ListIssuesAsync(name, cursor, limit, db, ct) : TypedResults.NotFound();
         }
 
         if (versionsIndex < 0)
@@ -135,6 +146,36 @@ public static class PackageDetailAndVersionsEndpoint
         double? averageRating = reviewCount == 0 ? null : await allForPackage.AverageAsync(r => (double)r.Rating, ct);
 
         return TypedResults.Ok(new ReviewListResponse(reviews, nextCursor, averageRating, reviewCount));
+    }
+
+    /// <summary>The minimal issue tracker's own read (support-responsiveness signal): <c>GET /api/v1/packages/{name}/issues</c>, newest first — anonymous, the same public-storefront posture as every other read in this class. <see cref="IssueResponse.FirstReplyAt"/> is computed per issue the same way <c>ListPackagesEndpoint</c>'s own responsiveness-signal query computes it, so a person browsing issues sees which ones are already answered without a separate reply-thread endpoint existing yet.</summary>
+    private static async Task<IResult> ListIssuesAsync(string name, string? cursor, int? limit, ForgeDbContext db, CancellationToken ct)
+    {
+        var packageId = await db.Packages.Where(p => p.Name == name).Select(p => (Guid?)p.Id).SingleOrDefaultAsync(ct);
+        if (packageId is null) return TypedResults.NotFound();
+
+        var pageSize = Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit);
+
+        var query = db.PackageIssues.Where(i => i.PackageId == packageId);
+        if (cursor is not null && Guid.TryParse(cursor, out var afterId))
+        {
+            var afterCreatedAt = await db.PackageIssues.Where(i => i.Id == afterId).Select(i => (DateTimeOffset?)i.CreatedAt).SingleOrDefaultAsync(ct);
+            if (afterCreatedAt is { } after) query = query.Where(i => i.CreatedAt < after);
+        }
+
+        var page = await query
+            .OrderByDescending(i => i.CreatedAt)
+            .Take(pageSize + 1)
+            .Select(i => new IssueResponse(
+                i.Id, i.ReporterUserId, i.Title, i.Body, i.CreatedAt,
+                i.Replies.OrderBy(r => r.CreatedAt).Select(r => (DateTimeOffset?)r.CreatedAt).FirstOrDefault()))
+            .ToListAsync(ct);
+
+        var hasMore = page.Count > pageSize;
+        var issues = hasMore ? page[..pageSize] : page;
+        var nextCursor = hasMore ? issues[^1].Id.ToString() : null;
+
+        return TypedResults.Ok(new IssueListResponse(issues, nextCursor));
     }
 
     private static async Task<IResult> ListVersionsAsync(string name, string? cursor, int? limit, ForgeDbContext db, CancellationToken ct)

@@ -436,8 +436,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Same reasoning as editor-browser-tests above: the editor's dev
       # server resolves its workspace dependencies against their compiled
-      # dist/ output.
-      - run: pnpm --filter "forge-editor^..." run build
+      # dist/ output. The second filter is a separate concern: docs/adr/0009's
+      # exportProjectDocument.spec.ts spawns the real `forge` CLI
+      # (packages/cli) as a subprocess of its compiled dist/index.js — that's
+      # not an import edge, so it's invisible to "forge-editor^..." and needs
+      # its own closure built explicitly, or the spec fails in CI with
+      # "Cannot find module" despite passing locally (where a full `pnpm -r
+      # run build` had already been run by hand).
+      - run: pnpm --filter "forge-editor^..." --filter "forge..." run build
       - run: dotnet restore Forge.sln
       - run: dotnet build services/Forge.Api/Forge.Api.csproj --no-restore --configuration Release
 

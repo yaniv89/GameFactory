@@ -7,7 +7,9 @@ import { PackSwapDialogContainer } from "./canvas/PackSwapDialogContainer";
 import { SceneCanvas } from "./canvas/SceneCanvas";
 import { useAuthStore } from "./auth/authStore";
 import { PresenceIndicator } from "./collab/PresenceIndicator";
+import { buildProjectDocumentExportFile, downloadProjectDocumentExportFile } from "./project/exportProjectDocument";
 import { useProjectSyncStore, type SyncStatus } from "./project/projectSyncStore";
+import { useProjectStore } from "./store/projectStore";
 import { HistoryPanelContainer, InspectorPanelContainer, ModulesPanelContainer, ScenesPanelContainer } from "./shell/DockviewPanels";
 import { PreviewPanel } from "./shell/PreviewPanel";
 import { UndoRedoControls } from "./shell/UndoRedoControls";
@@ -104,6 +106,17 @@ export function App({ projectTitle = "Untitled Project", onCloseProject }: AppPr
         <Button variant="secondary" onClick={() => setPackSwapOpen(true)}>
           Swap Art Pack
         </Button>
+        {projectId && (
+          <Button
+            variant="secondary"
+            onClick={() => {
+              const file = buildProjectDocumentExportFile(projectId, useProjectStore.getState().document);
+              downloadProjectDocumentExportFile(file, "project.json");
+            }}
+          >
+            Export Project
+          </Button>
+        )}
       </header>
       <div className="fg-app__dock">
         <DockviewReact components={COMPONENTS} onReady={onReady} className="fg-dockview" />

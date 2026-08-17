@@ -30,6 +30,9 @@ importers:
       '@forge/player':
         specifier: workspace:*
         version: link:../player
+      '@forge/project-export':
+        specifier: workspace:*
+        version: link:../project-export
     devDependencies:
       '@forge/dialogue':
         specifier: workspace:*

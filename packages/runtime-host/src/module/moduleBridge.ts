@@ -80,9 +80,10 @@ function logModuleMessage(moduleName: string, level: "debug" | "info" | "warn" |
  * - `before`/`after` system-ordering constraints are scoped to this
  *   module's own systems (ids are namespaced `moduleName::id` internally);
  *   cross-module ordering isn't part of the v1 surface.
- * - `TickContext.input`/`.scene` throw `not implemented` — no Input or
- *   Scene system exists in `@forge/core` yet (M4 concern; tracked:
- *   github.com/yaniv89/GameFactory/issues/3).
+ * - `TickContext.input`/`.scene` are real: `@forge/core`'s `InputState`/
+ *   `SceneManager` (github.com/yaniv89/GameFactory/issues/3) back them,
+ *   and `runGuestSystem` below serializes both into every guest tick via
+ *   `serializeInputSnapshot`/`serializeSceneSnapshot` (./snapshot.ts).
  */
 export class ModuleBridge {
   private readonly ownedHandles = new Set<QuickJSHandle>();

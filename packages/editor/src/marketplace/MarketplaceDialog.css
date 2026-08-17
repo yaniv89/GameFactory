@@ -109,7 +109,19 @@
 .fg-marketplace__buy {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-3);
+}
+
+.fg-marketplace__installed {
+  color: var(--accent-create);
+  font-weight: var(--weight-bold);
+}
+
+.fg-marketplace__preview-note {
+  flex-basis: 100%;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
 }
 
 .fg-marketplace__readme {

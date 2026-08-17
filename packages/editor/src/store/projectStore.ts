@@ -51,8 +51,15 @@ type ProjectCommand =
   | { readonly type: "scene/rename"; readonly sceneId: string; readonly name: string }
   // Also doubles as "set this installed module's config": applying it
   // upserts unconditionally, so installing and reconfiguring are the same
-  // primitive operation.
-  | { readonly type: "module/install"; readonly moduleName: string; readonly config: FormValues }
+  // primitive operation. `marketplace` is only ever set at install time
+  // (a reconfigure carries forward whatever was already there, never sets
+  // it fresh) — see installModule/configureModule below.
+  | {
+      readonly type: "module/install";
+      readonly moduleName: string;
+      readonly config: FormValues;
+      readonly marketplace?: { readonly version: string; readonly bundleUrl: string; readonly bundleSha256Hex: string };
+    }
   | { readonly type: "module/uninstall"; readonly moduleName: string }
   | { readonly type: "entity/add"; readonly sceneId: string; readonly entity: EntityPlacement }
   | { readonly type: "entity/delete"; readonly sceneId: string; readonly entityId: string }
@@ -110,7 +117,10 @@ function applyCommand(document: ProjectDocument, command: ProjectCommand): void 
       return;
     }
     case "module/install":
-      document.installedModules[command.moduleName] = command.config;
+      document.installedModules[command.moduleName] = {
+        config: command.config,
+        ...(command.marketplace ? { marketplace: command.marketplace } : {}),
+      };
       return;
     case "module/uninstall":
       delete document.installedModules[command.moduleName];
@@ -202,7 +212,11 @@ interface ProjectStoreState {
   createScene: () => void;
   renameScene: (sceneId: string, name: string) => void;
   selectScene: (sceneId: string | undefined) => void;
-  installModule: (moduleName: string, initialConfig: FormValues) => void;
+  installModule: (
+    moduleName: string,
+    initialConfig: FormValues,
+    marketplace?: { readonly version: string; readonly bundleUrl: string; readonly bundleSha256Hex: string },
+  ) => void;
   uninstallModule: (moduleName: string) => void;
   configureModule: (moduleName: string, config: FormValues) => void;
   selectModule: (moduleName: string | undefined) => void;
@@ -316,10 +330,15 @@ export const useProjectStore = create<ProjectStoreState>()(
           state.selection = sceneId === undefined ? undefined : { kind: "scene", sceneId };
         }),
 
-      installModule: (moduleName, initialConfig) =>
+      installModule: (moduleName, initialConfig, marketplace) =>
         set((state) => {
           if (moduleName in state.document.installedModules) return; // already installed, no-op
-          const forward: ProjectCommand = { type: "module/install", moduleName, config: initialConfig };
+          const forward: ProjectCommand = {
+            type: "module/install",
+            moduleName,
+            config: initialConfig,
+            ...(marketplace ? { marketplace } : {}),
+          };
           const inverse: ProjectCommand = { type: "module/uninstall", moduleName };
           applyCommand(state.document, forward);
           state.past.push({ forward, inverse });
@@ -328,10 +347,15 @@ export const useProjectStore = create<ProjectStoreState>()(
 
       uninstallModule: (moduleName) =>
         set((state) => {
-          const config = state.document.installedModules[moduleName];
-          if (config === undefined) return; // not installed, no-op
+          const entry = state.document.installedModules[moduleName];
+          if (entry === undefined) return; // not installed, no-op
           const forward: ProjectCommand = { type: "module/uninstall", moduleName };
-          const inverse: ProjectCommand = { type: "module/install", moduleName, config };
+          const inverse: ProjectCommand = {
+            type: "module/install",
+            moduleName,
+            config: entry.config,
+            ...(entry.marketplace ? { marketplace: entry.marketplace } : {}),
+          };
           applyCommand(state.document, forward);
           state.past.push({ forward, inverse });
           state.future = [];
@@ -343,9 +367,21 @@ export const useProjectStore = create<ProjectStoreState>()(
       configureModule: (moduleName, config) =>
         set((state) => {
           const previous = state.document.installedModules[moduleName];
-          if (previous === undefined || JSON.stringify(previous) === JSON.stringify(config)) return;
-          const forward: ProjectCommand = { type: "module/install", moduleName, config };
-          const inverse: ProjectCommand = { type: "module/install", moduleName, config: previous };
+          if (previous === undefined || JSON.stringify(previous.config) === JSON.stringify(config)) return;
+          // Carries `previous.marketplace` forward unchanged on both sides —
+          // reconfiguring never re-pins or drops which version is installed.
+          const forward: ProjectCommand = {
+            type: "module/install",
+            moduleName,
+            config,
+            ...(previous.marketplace ? { marketplace: previous.marketplace } : {}),
+          };
+          const inverse: ProjectCommand = {
+            type: "module/install",
+            moduleName,
+            config: previous.config,
+            ...(previous.marketplace ? { marketplace: previous.marketplace } : {}),
+          };
           applyCommand(state.document, forward);
           state.past.push({ forward, inverse });
           state.future = [];

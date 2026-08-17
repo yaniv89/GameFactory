@@ -6,7 +6,7 @@ using System.Text.RegularExpressions;
 
 namespace Forge.Functions.Build;
 
-/// <summary>What a claimed <see cref="Domain.Entities.Build"/> needs to actually build — the project's identity plus its committed revision's document, straight from <c>project_revisions.doc</c> (docs/adr/0010 Decision 4). No module-version/engine-version resolution happens here: the real <c>forge export --document</c> CLI already does that itself (ADR 0009's <c>resolvePackageVersion</c>), reading from the same <c>packages/player</c> <c>node_modules</c> this worker's own subprocess runs against.</summary>
+/// <summary>What a claimed <see cref="Domain.Entities.Build"/> needs to actually build — the project's identity plus its committed revision's document, straight from <c>project_revisions.doc</c> (docs/adr/0010 Decision 4). No module-version/engine-version/guest-bundle resolution happens here: the real <c>forge export --document</c> CLI already does all of that itself (ADR 0009's <c>resolvePackageVersion</c> for a first-party module, reading from the same <c>packages/player</c> <c>node_modules</c> this worker's own subprocess runs against; a real HTTP fetch against the package registry's own CDN, hash-verified, for a marketplace-installed one) — this worker never needs its own copy of that logic, it just spawns the CLI and reads its exit code/output.</summary>
 public sealed record BuildRunRequest(Guid ProjectId, JsonElement Document);
 
 /// <summary>The real, playable output of a successful build — <c>index.html</c>'s raw bytes plus the two CSP hash sources the play-origin (Forge.Play, C4) needs to serve it under a real Content-Security-Policy with neither <c>script-src</c> nor <c>style-src</c> ever carrying `unsafe-inline` (docs/adr/0010 Decision 6).</summary>

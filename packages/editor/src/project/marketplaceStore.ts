@@ -4,6 +4,7 @@ import { ApiError, NetworkError } from "../api/httpClient";
 import {
   createCheckoutSession,
   deleteReview,
+  getInstallEligibility,
   getPackage,
   listLicenses,
   listPackages,
@@ -15,8 +16,12 @@ import {
   type PackageSummary,
   type Review,
 } from "../api/marketplaceApi";
+import { defaultsFromSchema, type ObjectSchema } from "../inspector/jsonSchema";
 import { getMe } from "../api/projectsApi";
+import type { ModuleManifest } from "../modules/moduleManifests";
+import { useProjectStore } from "../store/projectStore";
 import { useProjectsStore } from "./projectsStore";
+import { useProjectSyncStore } from "./projectSyncStore";
 
 function isOffline(): boolean {
   return typeof navigator !== "undefined" && navigator.onLine === false;
@@ -62,6 +67,22 @@ interface MarketplaceState {
   readonly ownsLicense: boolean;
   readonly buying: boolean;
   readonly buyError: string | undefined;
+  readonly installing: boolean;
+  readonly installError: string | undefined;
+  /**
+   * Display/config info for every marketplace module installed this
+   * session, keyed by name — the Modules panel and Inspector's only
+   * source for a marketplace module's `summary`/`configSchema`, since
+   * neither lives in `ProjectDocument` itself (presentation-only data a
+   * module's install/export doesn't need, per the same "don't carry more
+   * than the runtime requires" reasoning `documentTypes.ts` already
+   * follows for everything else in `installedModules`). Populated at
+   * install time from the package detail already loaded to install it;
+   * not persisted, so a module installed in an earlier session shows with
+   * a plain-name fallback until its package page is opened again in this
+   * one (DockviewPanels.tsx's own fallback for that case).
+   */
+  readonly installedManifests: Record<string, ModuleManifest>;
 
   open: () => void;
   close: () => void;
@@ -76,6 +97,7 @@ interface MarketplaceState {
   submitReview: (rating: number, body: string | undefined) => Promise<void>;
   removeMyReview: () => Promise<void>;
   buy: () => Promise<void>;
+  install: () => Promise<void>;
 }
 
 /**
@@ -122,6 +144,9 @@ export const useMarketplaceStore = create<MarketplaceState>()((set, get) => ({
   ownsLicense: false,
   buying: false,
   buyError: undefined,
+  installing: false,
+  installError: undefined,
+  installedManifests: {},
 
   open: () => {
     set({ dialogOpen: true, selectedName: undefined });
@@ -191,6 +216,7 @@ export const useMarketplaceStore = create<MarketplaceState>()((set, get) => ({
       reviewError: undefined,
       ownsLicense: false,
       buyError: undefined,
+      installError: undefined,
     });
     if (isOffline()) {
       set({ detailStatus: "offline", reviewsStatus: "offline" });
@@ -296,6 +322,39 @@ export const useMarketplaceStore = create<MarketplaceState>()((set, get) => ({
       window.location.href = url;
     } catch (error) {
       set({ buying: false, buyError: error instanceof Error ? error.message : "Could not start checkout." });
+    }
+  },
+
+  install: async () => {
+    const { selectedName, detail } = get();
+    const projectId = useProjectSyncStore.getState().projectId;
+    if (!selectedName || !projectId) return;
+    if (selectedName in useProjectStore.getState().document.installedModules) return; // already installed, no-op
+    set({ installing: true, installError: undefined });
+    try {
+      const eligible = await getInstallEligibility(projectId, selectedName);
+      // Same shape ModuleManifest.configSchema already has for first-party
+      // modules (docs/SPEC.md Section 9.2) — a real manifest may simply
+      // have none, exactly like @forge/dialogue's own tree-shaped config.
+      const configSchema = (eligible.manifest as { configSchema?: ObjectSchema } | null)?.configSchema;
+      const initialConfig = configSchema ? defaultsFromSchema(configSchema) : {};
+      useProjectStore.getState().installModule(selectedName, initialConfig, {
+        version: eligible.version,
+        bundleUrl: eligible.bundleUrl,
+        bundleSha256Hex: eligible.bundleSha256Hex,
+      });
+      set((state) => ({
+        installing: false,
+        installedManifests: {
+          ...state.installedManifests,
+          // detail.summary, not a fabricated placeholder — the same
+          // real package summary the browse list and this dialog's own
+          // header already showed before Install was ever clicked.
+          [selectedName]: { name: selectedName, summary: detail?.summary ?? selectedName, ...(configSchema ? { configSchema } : {}) },
+        },
+      }));
+    } catch (error) {
+      set({ installing: false, installError: error instanceof Error ? error.message : "Could not install this package." });
     }
   },
 }));

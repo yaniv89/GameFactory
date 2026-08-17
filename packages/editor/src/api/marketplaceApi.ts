@@ -116,3 +116,24 @@ export function listLicenses(workspaceId: string): Promise<readonly License[]> {
 export function createCheckoutSession(workspaceId: string, packageName: string): Promise<{ url: string }> {
   return httpJson<{ url: string }>("/api/v1/checkout/sessions", { method: "POST", body: { workspaceId, packageName } });
 }
+
+/** Mirrors `Forge.Api.Features.Marketplace.MarketplaceDtos.cs`'s `MarketplaceInstallableResponse`. `manifest` is the package's raw module manifest JSON (docs/SPEC.md Section 9.2) — the caller pulls `configSchema` out of it, the same shape `ModuleManifest.configSchema` already has for first-party modules. */
+export interface MarketplaceInstallable {
+  readonly packageName: string;
+  readonly version: string;
+  readonly manifest: unknown;
+  readonly bundleUrl: string;
+  readonly bundleSha256Hex: string;
+}
+
+/**
+ * `GET /api/v1/projects/{projectId}/marketplace-installable/{name}`
+ * (`InstallEligibilityEndpoint.cs`) — resolves the real version + bundle
+ * URL an Install action should pin, after checking the project's
+ * workspace is free-or-licensed for this package server-side. Never
+ * mutates the project itself; the caller still goes through
+ * `projectStore`'s own `installModule` command to actually add it.
+ */
+export function getInstallEligibility(projectId: string, packageName: string): Promise<MarketplaceInstallable> {
+  return httpJson<MarketplaceInstallable>(`/api/v1/projects/${projectId}/marketplace-installable/${packageName}`);
+}

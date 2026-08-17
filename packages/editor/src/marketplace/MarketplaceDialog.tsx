@@ -65,6 +65,11 @@ export interface MarketplaceDialogProps {
   buying: boolean;
   buyError: string | undefined;
   onBuy: () => void;
+
+  isInstalled: boolean;
+  installing: boolean;
+  installError: string | undefined;
+  onInstall: () => void;
 }
 
 /**
@@ -211,22 +216,59 @@ function PackageDetailView(props: MarketplaceDialogProps) {
   );
 }
 
-function BuySection({ detail, ownsLicense, buying, buyError, onBuy }: MarketplaceDialogProps & { detail: PackageDetail }) {
-  if (detail.pricingModel === "free") {
-    return <span className="fg-marketplace__price fg-marketplace__price--free">Free</span>;
-  }
-  if (ownsLicense) {
-    return <span className="fg-marketplace__price fg-marketplace__price--owned">Owned</span>;
-  }
+function BuySection({
+  detail,
+  ownsLicense,
+  buying,
+  buyError,
+  onBuy,
+  isInstalled,
+  installing,
+  installError,
+  onInstall,
+}: MarketplaceDialogProps & { detail: PackageDetail }) {
+  // Free or already-purchased is the only state an Install action is ever
+  // meaningful from — a package still behind a paywall has nothing this
+  // project's workspace is licensed to install yet.
+  const canInstall = detail.pricingModel === "free" || ownsLicense;
+
   return (
     <div className="fg-marketplace__buy">
-      <span className="fg-marketplace__price">{formatPriceCents(detail.priceCents)}</span>
-      <Button variant="primary" loading={buying} onClick={onBuy}>
-        Buy
-      </Button>
+      {detail.pricingModel === "free" ? (
+        <span className="fg-marketplace__price fg-marketplace__price--free">Free</span>
+      ) : ownsLicense ? (
+        <span className="fg-marketplace__price fg-marketplace__price--owned">Owned</span>
+      ) : (
+        <>
+          <span className="fg-marketplace__price">{formatPriceCents(detail.priceCents)}</span>
+          <Button variant="primary" loading={buying} onClick={onBuy}>
+            Buy
+          </Button>
+        </>
+      )}
+
+      {canInstall &&
+        (isInstalled ? (
+          <span className="fg-marketplace__installed">Installed</span>
+        ) : (
+          <Button variant="secondary" loading={installing} onClick={onInstall}>
+            Install
+          </Button>
+        ))}
+
       {buyError && (
         <p className="fg-marketplace__error" role="alert">
           {buyError}
+        </p>
+      )}
+      {installError && (
+        <p className="fg-marketplace__error" role="alert">
+          {installError}
+        </p>
+      )}
+      {canInstall && !isInstalled && (
+        <p className="fg-marketplace__preview-note">
+          Live in-editor preview isn&rsquo;t available for marketplace modules yet — it&rsquo;ll run correctly once you export or publish this project.
         </p>
       )}
     </div>

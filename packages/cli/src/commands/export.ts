@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import type { PlayerProjectData } from "@forge/player";
-import { toExportProjectInput, type ExportProjectInput, type ProjectDocument } from "@forge/project-export";
+import { toExportProjectInput, type ExportInstalledModuleInput, type ExportProjectInput, type ProjectDocument } from "@forge/project-export";
 import { findRepoRoot } from "../repoRoot.js";
 
 const REPO_ROOT = findRepoRoot();
@@ -79,6 +80,21 @@ function validateExportProjectInput(value: unknown, sourcePath: string): asserts
     if (typeof installedModule.config !== "object" || installedModule.config === null) {
       fail(`installed module "${String(installedModule.name)}" is missing a "config" object`);
     }
+    // guestBundleUrl/guestBundleSha256Hex are optional — absent for a
+    // first-party module (resolved from local node_modules instead) —
+    // but always paired when present, since fetchGuestBundle below can
+    // never verify a URL's bytes without the hash to check them against.
+    const hasBundleUrl = installedModule.guestBundleUrl !== undefined;
+    const hasBundleHash = installedModule.guestBundleSha256Hex !== undefined;
+    if (hasBundleUrl !== hasBundleHash) {
+      fail(`installed module "${String(installedModule.name)}" has "guestBundleUrl" without "guestBundleSha256Hex" (or vice versa) — both or neither.`);
+    }
+    if (hasBundleUrl && (typeof installedModule.guestBundleUrl !== "string" || installedModule.guestBundleUrl === "")) {
+      fail(`installed module "${String(installedModule.name)}"'s "guestBundleUrl" must be a non-empty string`);
+    }
+    if (hasBundleHash && (typeof installedModule.guestBundleSha256Hex !== "string" || installedModule.guestBundleSha256Hex === "")) {
+      fail(`installed module "${String(installedModule.name)}"'s "guestBundleSha256Hex" must be a non-empty string`);
+    }
   }
 }
 
@@ -114,13 +130,57 @@ function resolvePackageVersion(packageName: string): string {
   return version;
 }
 
-function hydrateProjectData(input: ExportProjectInput): PlayerProjectData {
+/**
+ * Fetches a marketplace-installed module's real, published guest bundle
+ * over HTTP and verifies the bytes against the hash published alongside
+ * it — the CLI/build-time equivalent of the Subresource Integrity check
+ * the runtime already gets for browser-side dependency loading
+ * (`DependencyResolver.cs`), since there's no browser SRI mechanism to
+ * lean on here. A hash mismatch is treated as fatal, not a warning: this
+ * bundle is about to be embedded into a build and run inside the sandbox,
+ * so serving stale/tampered bytes from a compromised or misconfigured CDN
+ * must never silently succeed.
+ */
+async function fetchGuestBundle(url: string, expectedSha256Hex: string): Promise<string> {
+  let response: Response;
+  try {
+    response = await fetch(url);
+  } catch (err) {
+    throw new Error(`forge export: could not reach the guest bundle URL "${url}" (${err instanceof Error ? err.message : String(err)}).`);
+  }
+  if (!response.ok) {
+    throw new Error(`forge export: fetching the guest bundle from "${url}" failed with HTTP ${response.status} ${response.statusText}.`);
+  }
+  const bytes = Buffer.from(await response.arrayBuffer());
+  const actualHex = createHash("sha256").update(bytes).digest("hex").toUpperCase();
+  if (actualHex !== expectedSha256Hex.toUpperCase()) {
+    throw new Error(
+      `forge export: the guest bundle fetched from "${url}" does not match its published hash (expected ${expectedSha256Hex}, got ${actualHex}) — refusing to trust it.`,
+    );
+  }
+  return bytes.toString("utf8");
+}
+
+async function resolveGuestBundleSource(installedModule: ExportInstalledModuleInput): Promise<string> {
+  if (installedModule.guestBundleUrl === undefined) return readModuleGuestBundle(installedModule.name);
+  if (!installedModule.guestBundleSha256Hex) {
+    // validateExportProjectInput/toExportProjectInput both guarantee this
+    // pairing — reaching here means a caller of hydrateProjectData bypassed
+    // both, which is a real bug in this module, not a user input problem.
+    throw new Error(`forge export: installed module "${installedModule.name}" has a guestBundleUrl but no guestBundleSha256Hex to verify it against.`);
+  }
+  return fetchGuestBundle(installedModule.guestBundleUrl, installedModule.guestBundleSha256Hex);
+}
+
+async function hydrateProjectData(input: ExportProjectInput): Promise<PlayerProjectData> {
   return {
     ...input,
-    installedModules: input.installedModules.map((installedModule) => ({
-      ...installedModule,
-      guestBundleSource: readModuleGuestBundle(installedModule.name),
-    })),
+    installedModules: await Promise.all(
+      input.installedModules.map(async (installedModule) => ({
+        ...installedModule,
+        guestBundleSource: await resolveGuestBundleSource(installedModule),
+      })),
+    ),
   };
 }
 
@@ -227,9 +287,9 @@ function resolveExportProjectInput(options: ExportOptions): ExportProjectInput {
   throw new Error("forge export: pass one of --project or --document.");
 }
 
-export function runExport(options: ExportOptions): void {
+export async function runExport(options: ExportOptions): Promise<void> {
   const exportProjectInput = resolveExportProjectInput(options);
-  const projectData = hydrateProjectData(exportProjectInput);
+  const projectData = await hydrateProjectData(exportProjectInput);
 
   writeGeneratedFiles(projectData);
 

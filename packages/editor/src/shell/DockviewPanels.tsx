@@ -4,7 +4,7 @@ import { EntityInspector } from "../inspector/EntityInspector";
 import { defaultsFromSchema } from "../inspector/jsonSchema";
 import { ModuleInspector } from "../inspector/ModuleInspector";
 import { SceneInspector } from "../inspector/SceneInspector";
-import { FIRST_PARTY_MODULE_MANIFESTS } from "../modules/moduleManifests";
+import { FIRST_PARTY_MODULE_MANIFESTS, type ModuleManifest } from "../modules/moduleManifests";
 import { HistoryPanel } from "../panels/HistoryPanel";
 import { InspectorPanel } from "../panels/InspectorPanel";
 import { ModulesPanel } from "../panels/ModulesPanel";
@@ -37,33 +37,58 @@ export function ScenesPanelContainer() {
 }
 
 /**
- * The module catalog a project can install *into itself* (`ModulesPanel`'s
- * own list) is still always exactly the three first-party modules —
- * installing a marketplace package into a project's own document is a
- * separate, real gap (it needs a guest-bundle resolution step this slice
- * doesn't build, the same one `forge export`'s own `readModuleGuestBundle`
- * already does for first-party modules) — but which of the three are
- * installed, and their config, is real project-document state (Phase 5).
- * Install/uninstall/configure are all undoable through the same command
- * log as scenes.
+ * The module catalog a project can install *into itself* from this panel
+ * (`ModulesPanel`'s own "Install" action) is still always exactly the
+ * three first-party modules — a marketplace package installs through the
+ * Marketplace dialog's own "Install" action instead (its manifest/version/
+ * bundle URL come from a real backend eligibility check, not this panel's
+ * static list). But which modules are installed, first-party or
+ * marketplace, and their config, is all real project-document state, and
+ * this panel is the one place both kinds show up together — resolved via
+ * `resolveInstalledModuleManifest` below. Install/uninstall/configure are
+ * all undoable through the same command log as scenes.
  *
- * "Browse the marketplace" (G2) now opens a real dialog — browsing,
- * reading reviews, and buying a package all work; it's specifically
- * "install a bought package into this project" that isn't wired yet.
+ * "Browse the marketplace" (G2) opens the real dialog where a marketplace
+ * install actually happens; this panel only reflects the result.
  */
+
+/**
+ * A `ModuleManifest` for any installed module, first-party or marketplace
+ * — checks the static first-party list first, then `marketplaceStore`'s
+ * install-time cache, falling back to a plain-name/no-schema manifest for
+ * a marketplace module installed in an earlier session whose package page
+ * hasn't been reopened yet in this one (an honest degraded state: its name
+ * and Uninstall action still work, it just shows no summary and isn't
+ * configurable until its manifest is seen again).
+ */
+function resolveInstalledModuleManifest(name: string, marketplaceManifests: Readonly<Record<string, ModuleManifest>>): ModuleManifest {
+  return (
+    FIRST_PARTY_MODULE_MANIFESTS.find((candidate) => candidate.name === name) ??
+    marketplaceManifests[name] ?? { name, summary: name }
+  );
+}
+
 export function ModulesPanelContainer() {
   const installedModules = useProjectStore((state) => state.document.installedModules);
   const installModule = useProjectStore((state) => state.installModule);
   const uninstallModule = useProjectStore((state) => state.uninstallModule);
   const selectModule = useProjectStore((state) => state.selectModule);
   const openMarketplace = useMarketplaceStore((state) => state.open);
+  const marketplaceManifests = useMarketplaceStore((state) => state.installedManifests);
 
-  const modules = FIRST_PARTY_MODULE_MANIFESTS.map((manifest) => ({
-    name: manifest.name,
-    summary: manifest.summary,
-    installed: manifest.name in installedModules,
-    configurable: manifest.configSchema !== undefined,
-  }));
+  const installedNames = Object.keys(installedModules);
+  const marketplaceOnlyNames = installedNames.filter(
+    (name) => !FIRST_PARTY_MODULE_MANIFESTS.some((candidate) => candidate.name === name),
+  );
+
+  const modules = [...FIRST_PARTY_MODULE_MANIFESTS, ...marketplaceOnlyNames.map((name) => resolveInstalledModuleManifest(name, marketplaceManifests))].map(
+    (manifest) => ({
+      name: manifest.name,
+      summary: manifest.summary,
+      installed: manifest.name in installedModules,
+      configurable: manifest.configSchema !== undefined,
+    }),
+  );
 
   return (
     <ModulesPanel
@@ -98,6 +123,7 @@ export function InspectorPanelContainer() {
   const configureModule = useProjectStore((state) => state.configureModule);
   const configureEntityDialogue = useProjectStore((state) => state.configureEntityDialogue);
   const removeEntity = useProjectStore((state) => state.removeEntity);
+  const marketplaceManifests = useMarketplaceStore((state) => state.installedManifests);
 
   if (selection?.kind === "scene") {
     const scene = scenes.find((candidate) => candidate.id === selection.sceneId);
@@ -111,12 +137,12 @@ export function InspectorPanelContainer() {
   }
 
   if (selection?.kind === "module") {
-    const manifest = FIRST_PARTY_MODULE_MANIFESTS.find((candidate) => candidate.name === selection.moduleName);
-    const config = installedModules[selection.moduleName];
-    if (manifest && config) {
+    const entry = installedModules[selection.moduleName];
+    if (entry) {
+      const manifest = resolveInstalledModuleManifest(selection.moduleName, marketplaceManifests);
       return (
         <InspectorPanel state="populated" selectionLabel={`Module: ${manifest.name}`}>
-          <ModuleInspector manifest={manifest} config={config} onConfigure={configureModule} />
+          <ModuleInspector manifest={manifest} config={entry.config} onConfigure={configureModule} />
         </InspectorPanel>
       );
     }

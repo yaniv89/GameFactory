@@ -14,7 +14,7 @@ function printUsage(): void {
   );
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
 
   if (command === "export") {
@@ -31,7 +31,7 @@ function main(): void {
       process.exitCode = 1;
       return;
     }
-    runExport({
+    await runExport({
       ...(values.project ? { projectPath: values.project } : {}),
       ...(values.document ? { documentPath: values.document } : {}),
       outDir: values.out,
@@ -44,4 +44,7 @@ function main(): void {
   process.exitCode = 1;
 }
 
-main();
+main().catch((err: unknown) => {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exitCode = 1;
+});

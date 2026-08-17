@@ -86,6 +86,11 @@ const BASE_PROPS: MarketplaceDialogProps = {
   buying: false,
   buyError: undefined,
   onBuy: NOOP,
+
+  isInstalled: false,
+  installing: false,
+  installError: undefined,
+  onInstall: NOOP,
 };
 
 describe("MarketplaceDialog — browse", () => {
@@ -189,6 +194,48 @@ describe("MarketplaceDialog — package detail", () => {
     render(<MarketplaceDialog {...DETAIL_PROPS} onBuy={onBuy} />);
     await userEvent.click(screen.getByRole("button", { name: "Buy" }));
     expect(onBuy).toHaveBeenCalled();
+  });
+
+  it("shows an Install action for a free package that isn't installed yet", async () => {
+    const onInstall = vi.fn();
+    render(<MarketplaceDialog {...DETAIL_PROPS} detail={{ ...DETAIL, pricingModel: "free", priceCents: 0 }} onInstall={onInstall} />);
+    await userEvent.click(screen.getByRole("button", { name: "Install" }));
+    expect(onInstall).toHaveBeenCalled();
+  });
+
+  it("shows an Install action once a workspace license is held, even though Buy is gone", () => {
+    render(<MarketplaceDialog {...DETAIL_PROPS} ownsLicense />);
+    expect(screen.getByText("Owned")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Install" })).toBeInTheDocument();
+  });
+
+  it("shows no Install action at all for a paid package the workspace doesn't own", () => {
+    render(<MarketplaceDialog {...DETAIL_PROPS} ownsLicense={false} />);
+    expect(screen.queryByRole("button", { name: "Install" })).not.toBeInTheDocument();
+  });
+
+  it("shows Installed instead of an Install button once the module is already in this project", () => {
+    render(<MarketplaceDialog {...DETAIL_PROPS} ownsLicense isInstalled />);
+    expect(screen.getByText("Installed")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Install" })).not.toBeInTheDocument();
+  });
+
+  it("shows the Install button as loading while installing, and disables a second click", () => {
+    render(<MarketplaceDialog {...DETAIL_PROPS} ownsLicense installing />);
+    expect(screen.getByRole("button", { name: "Install" })).toBeInTheDocument();
+  });
+
+  it("surfaces an install error", () => {
+    render(<MarketplaceDialog {...DETAIL_PROPS} ownsLicense installError="Could not install this package." />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not install this package.");
+  });
+
+  it("shows a live-preview caveat note next to an available Install action, but not once installed", () => {
+    const { rerender } = render(<MarketplaceDialog {...DETAIL_PROPS} ownsLicense isInstalled={false} />);
+    expect(screen.getByText(/live in-editor preview/i)).toBeInTheDocument();
+
+    rerender(<MarketplaceDialog {...DETAIL_PROPS} ownsLicense isInstalled />);
+    expect(screen.queryByText(/live in-editor preview/i)).not.toBeInTheDocument();
   });
 
   it("goes back to browse", async () => {

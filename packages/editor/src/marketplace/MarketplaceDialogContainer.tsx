@@ -1,4 +1,5 @@
 import { useMarketplaceStore } from "../project/marketplaceStore";
+import { useProjectStore } from "../store/projectStore";
 import { MarketplaceDialog } from "./MarketplaceDialog";
 
 /**
@@ -12,6 +13,7 @@ import { MarketplaceDialog } from "./MarketplaceDialog";
  */
 export function MarketplaceDialogContainer() {
   const state = useMarketplaceStore();
+  const isInstalled = useProjectStore((s) => (state.selectedName ? state.selectedName in s.document.installedModules : false));
 
   return (
     <MarketplaceDialog
@@ -50,6 +52,10 @@ export function MarketplaceDialogContainer() {
       buying={state.buying}
       buyError={state.buyError}
       onBuy={() => void state.buy()}
+      isInstalled={isInstalled}
+      installing={state.installing}
+      installError={state.installError}
+      onInstall={() => void state.install()}
     />
   );
 }

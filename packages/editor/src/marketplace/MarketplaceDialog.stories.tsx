@@ -94,6 +94,10 @@ const BROWSE_BASE = {
   buying: false,
   buyError: undefined,
   onBuy: NOOP,
+  isInstalled: false,
+  installing: false,
+  installError: undefined,
+  onInstall: NOOP,
 };
 
 export const BrowseLoading: Story = { args: { ...BROWSE_BASE, listState: "loading", packages: [] } };
@@ -117,3 +121,23 @@ export const DetailWithMyOwnReview: Story = {
 };
 export const DetailBuying: Story = { args: { ...DETAIL_BASE, buying: true } };
 export const DetailBuyError: Story = { args: { ...DETAIL_BASE, buyError: "Could not start checkout." } };
+
+// The Install action's own real state space: idle (not yet installed),
+// installing, installed, and error — free-or-owned is the precondition
+// that makes it show at all (BuySection's own `canInstall`), the same way
+// a paid, not-yet-bought package shows no Install action here at all.
+export const DetailFreeNotInstalled: Story = {
+  args: { ...DETAIL_BASE, detail: { ...DETAIL, pricingModel: "free", priceCents: 0 }, isInstalled: false },
+};
+export const DetailFreeInstalled: Story = {
+  args: { ...DETAIL_BASE, detail: { ...DETAIL, pricingModel: "free", priceCents: 0 }, isInstalled: true },
+};
+export const DetailOwnedNotInstalled: Story = { args: { ...DETAIL_BASE, ownsLicense: true, isInstalled: false } };
+export const DetailOwnedInstalled: Story = { args: { ...DETAIL_BASE, ownsLicense: true, isInstalled: true } };
+export const DetailInstalling: Story = { args: { ...DETAIL_BASE, ownsLicense: true, installing: true } };
+export const DetailInstallError: Story = {
+  args: { ...DETAIL_BASE, ownsLicense: true, installError: "Could not install this package." },
+};
+// A paid package the workspace doesn't own yet: no Install action at all,
+// only Buy — the precondition BuySection's canInstall documents.
+export const DetailNotOwnedNoInstallAction: Story = { args: { ...DETAIL_BASE, ownsLicense: false, isInstalled: false } };

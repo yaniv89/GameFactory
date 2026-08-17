@@ -106,12 +106,48 @@ describe("toExportProjectInput", () => {
     const document = baseDocument({
       scenes: [{ id: "village", name: "Village", entities: [], tiles: emptyTiles() }],
       installedModules: {
-        "@forge/inventory": { defaultMaxSlots: 24 },
+        "@forge/inventory": { config: { defaultMaxSlots: 24 } },
       },
     });
     const result = toExportProjectInput(document, { projectId: "p1", resolveModuleVersion, resolveEngineVersion });
     expect(result.installedModules).toEqual([
       { name: "@forge/inventory", version: "1.0.0-inventory", config: { defaultMaxSlots: 24 } },
+    ]);
+  });
+
+  it("uses a marketplace-installed module's own pinned version instead of resolveModuleVersion", () => {
+    const document = baseDocument({
+      scenes: [{ id: "village", name: "Village", entities: [], tiles: emptyTiles() }],
+      installedModules: {
+        "@acme/loot-tables": {
+          config: { dropRate: 0.2 },
+          marketplace: {
+            version: "2.4.1",
+            bundleUrl: "https://cdn.forge.dev/packages/@acme/loot-tables/2.4.1/bundle.js",
+            bundleSha256Hex: "deadbeef",
+          },
+        },
+      },
+    });
+    // resolveModuleVersion would throw for a package that was never a local
+    // node_modules dependency of packages/player — proving it's never even
+    // called for a marketplace-pinned module, not just that its return
+    // value gets overridden.
+    const result = toExportProjectInput(document, {
+      projectId: "p1",
+      resolveModuleVersion: () => {
+        throw new Error("resolveModuleVersion should not be called for a marketplace-pinned module");
+      },
+      resolveEngineVersion,
+    });
+    expect(result.installedModules).toEqual([
+      {
+        name: "@acme/loot-tables",
+        version: "2.4.1",
+        config: { dropRate: 0.2 },
+        guestBundleUrl: "https://cdn.forge.dev/packages/@acme/loot-tables/2.4.1/bundle.js",
+        guestBundleSha256Hex: "deadbeef",
+      },
     ]);
   });
 
@@ -136,8 +172,8 @@ describe("toExportProjectInput", () => {
           ],
         },
       ],
-      // Dialogue has no flat configSchema — installing it stores {} (no form fields), same as the editor's ModulesPanel does today.
-      installedModules: { "@forge/dialogue": {} },
+      // Dialogue has no flat configSchema — installing it stores an empty config (no form fields), same as the editor's ModulesPanel does today.
+      installedModules: { "@forge/dialogue": { config: {} } },
     });
     const result = toExportProjectInput(document, { projectId: "p1", resolveModuleVersion, resolveEngineVersion });
     expect(result.installedModules).toHaveLength(1);

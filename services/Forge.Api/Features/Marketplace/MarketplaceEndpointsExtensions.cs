@@ -13,6 +13,7 @@ public static class MarketplaceEndpointsExtensions
         app.MapLicenses();
         app.MapEarnings();
         app.MapPayouts();
+        app.MapInstallEligibility();
         return app;
     }
 }

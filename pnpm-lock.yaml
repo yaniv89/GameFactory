@@ -319,7 +319,11 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@26.1.2)(jsdom@30.0.1)(lightningcss@1.33.0)
 
-  packages/richtext: {}
+  packages/richtext:
+    devDependencies:
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@26.1.2)(jsdom@30.0.1)(lightningcss@1.33.0)
 
   packages/runtime-host:
     dependencies:

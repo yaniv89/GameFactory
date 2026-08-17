@@ -1,6 +1,8 @@
 import { Camera, RenderHost, TilemapLayer } from "@forge/render-2d";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { Sprite, type Texture } from "pixi.js";
+import { fetchAssetContentUrl, listAssets } from "../api/assetsApi";
+import { useProjectsStore } from "../project/projectsStore";
 import { useCanvasPreviewStore } from "./canvasPreviewStore";
 import { buildEntityTextures } from "./entityMarkers";
 import { GRID_HEIGHT, GRID_WIDTH, TILE_SIZE } from "./gridConstants";
@@ -27,6 +29,32 @@ interface RenderRig {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * SPEC 11.4 tier 2 (docs/adr/0012 E4): this workspace's own `Ready`,
+ * project-uploaded asset paths, plus the authenticated fetch a
+ * `resolveAsset` "project-asset" hit needs
+ * (`buildPackAwarePaletteTextures`'s own doc comment on why a plain URL
+ * doesn't work here). A failure to load the list isn't fatal — tier 2
+ * just loses every lookup this render, falling through to whatever tier
+ * 3/4/5 already resolves, the same "never block the canvas from booting"
+ * posture `loadActivePackContext` already takes for a broken pack.
+ */
+async function loadProjectAssetContext(): Promise<{
+  paths: ReadonlySet<string>;
+  resolveUrl: ((path: string) => Promise<string>) | undefined;
+}> {
+  const workspaceId = useProjectsStore.getState().workspace?.workspaceId;
+  if (!workspaceId) return { paths: new Set(), resolveUrl: undefined };
+  try {
+    const { assets } = await listAssets(workspaceId);
+    const paths = new Set(assets.filter((asset) => asset.status === "ready").map((asset) => asset.originalName));
+    return { paths, resolveUrl: (path: string) => fetchAssetContentUrl(workspaceId, path) };
+  } catch (err) {
+    console.warn("[forge:art-pack] failed to load this workspace's project assets — falling back to pack-only resolution.", err);
+    return { paths: new Set(), resolveUrl: undefined };
+  }
 }
 
 function snapshotTiles(layer: TilemapLayer<Sprite>): number[] {
@@ -168,11 +196,18 @@ export function SceneCanvas() {
           host.destroy();
           return;
         }
+        const projectAssetContext = await loadProjectAssetContext();
+        if (cancelled) {
+          host.destroy();
+          return;
+        }
         const paletteTextures = await buildPackAwarePaletteTextures(
           host.app.renderer,
           TILE_SIZE,
           activePackContext,
           useProjectStore.getState().document.packTerrainRemap,
+          projectAssetContext.paths,
+          projectAssetContext.resolveUrl,
         );
         if (cancelled) {
           host.destroy();
@@ -270,7 +305,16 @@ export function SceneCanvas() {
     void (async () => {
       const activePackContext = await loadActivePackContext(activePack);
       if (cancelled) return;
-      const paletteTextures = await buildPackAwarePaletteTextures(rig.host.app.renderer, TILE_SIZE, activePackContext, packTerrainRemap);
+      const projectAssetContext = await loadProjectAssetContext();
+      if (cancelled) return;
+      const paletteTextures = await buildPackAwarePaletteTextures(
+        rig.host.app.renderer,
+        TILE_SIZE,
+        activePackContext,
+        packTerrainRemap,
+        projectAssetContext.paths,
+        projectAssetContext.resolveUrl,
+      );
       if (cancelled) return;
       rig.layer.refreshTextures((tileId) => paletteTextures.get(tileId));
     })();

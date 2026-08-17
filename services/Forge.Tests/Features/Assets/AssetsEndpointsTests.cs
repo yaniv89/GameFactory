@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
+using Azure.Storage.Blobs;
 using Forge.Api.Features.Assets;
 using Forge.Domain.Entities;
 using Forge.Infrastructure.Persistence;
+using Forge.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -164,6 +166,71 @@ public sealed class AssetsEndpointsTests : IClassFixture<ForgeWebApplicationFact
         var user = await AuthTestHelper.SignupAndAuthenticateAsync(_factory);
 
         var response = await user.Client.DeleteAsync($"/api/v1/assets/{Guid.NewGuid()}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    private IAssetStorage CreateStorage()
+    {
+        var quarantine = new BlobContainerClient(_factory.AzuriteConnectionString, "assets-quarantine");
+        quarantine.CreateIfNotExists();
+        var pub = new BlobContainerClient(_factory.AzuriteConnectionString, "assets");
+        pub.CreateIfNotExists();
+        return new AzureBlobAssetStorage(quarantine, pub);
+    }
+
+    [Fact]
+    public async Task Content_Of_A_Ready_Asset_Streams_The_Real_Reencoded_Bytes_Keyed_By_Path()
+    {
+        var user = await AuthTestHelper.SignupAndAuthenticateAsync(_factory);
+        var uploadResponse = await UploadAsync(user, "tilesets/outdoor-base.png", "image/png", TinyPngBytes);
+        var uploaded = (await uploadResponse.Content.ReadFromJsonAsync<UploadAssetResponse>())!;
+
+        // Simulates what Forge.Functions.Assets (E3) does — this test's
+        // job is GetAssetContentEndpoint's own path-keyed lookup and
+        // streaming, not the worker, which is proven separately by
+        // AssetOrchestratorTests.
+        var reencodedBytes = "not really a png, just distinct bytes to prove round-trip"u8.ToArray();
+        var storage = CreateStorage();
+        await storage.UploadProcessedAsync(user.WorkspaceId, uploaded.Id, reencodedBytes, CancellationToken.None);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ForgeDbContext>();
+            await db.Assets.Where(a => a.Id == uploaded.Id).ExecuteUpdateAsync(s => s
+                .SetProperty(a => a.Status, AssetStatus.Ready)
+                .SetProperty(a => a.ProcessedBlobPath, $"{user.WorkspaceId}/{uploaded.Id}/opt.png")
+                .SetProperty(a => a.Width, 1)
+                .SetProperty(a => a.Height, 1));
+        }
+
+        // The path-keyed URL @forge/art-pack's resolveAsset would join
+        // its own baseUrl with — OriginalName ("tilesets/outdoor-base.png")
+        // doubling as the resolution path (GetAssetContentEndpoint's own
+        // doc comment).
+        var response = await user.Client.GetAsync($"/api/v1/workspaces/{user.WorkspaceId}/assets/content/tilesets/outdoor-base.png");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("image/png", response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(reencodedBytes, await response.Content.ReadAsByteArrayAsync());
+    }
+
+    [Fact]
+    public async Task Content_Of_A_Pending_Asset_Is_404_Not_Partial_Content()
+    {
+        var user = await AuthTestHelper.SignupAndAuthenticateAsync(_factory);
+        await UploadAsync(user, "tilesets/still-processing.png", "image/png", TinyPngBytes);
+
+        var response = await user.Client.GetAsync($"/api/v1/workspaces/{user.WorkspaceId}/assets/content/tilesets/still-processing.png");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Content_Of_An_Unknown_Path_Is_404()
+    {
+        var user = await AuthTestHelper.SignupAndAuthenticateAsync(_factory);
+
+        var response = await user.Client.GetAsync($"/api/v1/workspaces/{user.WorkspaceId}/assets/content/nothing/uploaded/here.png");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }

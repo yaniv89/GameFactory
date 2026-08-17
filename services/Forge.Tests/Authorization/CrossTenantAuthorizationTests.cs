@@ -182,6 +182,9 @@ public sealed class CrossTenantAuthorizationTests : IClassFixture<ForgeWebApplic
 
         yield return new object[] { "DeleteAsset (asset:write)", (Func<SharedState, HttpRequestMessage>)(s =>
             new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/assets/{s.AssetId}")) };
+
+        yield return new object[] { "GetAssetContent (workspace:read)", (Func<SharedState, HttpRequestMessage>)(s =>
+            new HttpRequestMessage(HttpMethod.Get, $"/api/v1/workspaces/{s.Owner.WorkspaceId}/assets/content/fixture.png")) };
     }
 
     [Theory]

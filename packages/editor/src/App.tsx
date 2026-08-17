@@ -3,6 +3,7 @@ import { DockviewReact, type DockviewReadyEvent, type IDockviewPanelProps } from
 import "dockview/dist/styles/dockview.css";
 import "./styles/dockview-theme.css";
 import { useState, type FC } from "react";
+import { AssetsLibraryDialogContainer } from "./canvas/AssetsLibraryDialogContainer";
 import { PackSwapDialogContainer } from "./canvas/PackSwapDialogContainer";
 import { SceneCanvas } from "./canvas/SceneCanvas";
 import { useAuthStore } from "./auth/authStore";
@@ -74,6 +75,7 @@ export interface AppProps {
 
 export function App({ projectTitle = "Untitled Project", onCloseProject }: AppProps) {
   const [packSwapOpen, setPackSwapOpen] = useState(false);
+  const [assetsOpen, setAssetsOpen] = useState(false);
   const { projectId, status: syncStatus, error: syncError, conflictActualRevision, saveProject, openProject } = useProjectSyncStore();
   const accessToken = useAuthStore((s) => s.session?.accessToken);
 
@@ -106,6 +108,9 @@ export function App({ projectTitle = "Untitled Project", onCloseProject }: AppPr
         <Button variant="secondary" onClick={() => setPackSwapOpen(true)}>
           Swap Art Pack
         </Button>
+        <Button variant="secondary" onClick={() => setAssetsOpen(true)}>
+          Assets
+        </Button>
         {projectId && (
           <Button
             variant="secondary"
@@ -122,6 +127,7 @@ export function App({ projectTitle = "Untitled Project", onCloseProject }: AppPr
         <DockviewReact components={COMPONENTS} onReady={onReady} className="fg-dockview" />
       </div>
       <PackSwapDialogContainer open={packSwapOpen} onClose={() => setPackSwapOpen(false)} />
+      <AssetsLibraryDialogContainer open={assetsOpen} onClose={() => setAssetsOpen(false)} />
       <Dialog open={syncStatus === "conflict"} title="This project changed on the server" onClose={() => {}}>
         <p>
           {syncError ?? "Someone else (or another tab) saved a newer revision"}

@@ -160,6 +160,28 @@ export async function buildPackAwarePaletteTextures(
    * over from a different pack.
    */
   terrainRemap: Readonly<Record<string, string>>,
+  /**
+   * SPEC 11.4 tier 2 — paths with a real, `Ready` project-uploaded asset
+   * (docs/adr/0012 E4), keyed the same way `AssetSummary.originalName`
+   * is. Only the *keys* matter here: `resolveAsset` needs to know which
+   * paths tier 2 covers, but the actual fetchable URL for one has to come
+   * from `resolveProjectAssetUrl` below, not from a `baseUrl` this
+   * function would join a path onto (there is no single shared,
+   * unauthenticated base URL a project asset's real content lives under
+   * the way a pack's or module's does).
+   */
+  projectAssetPaths: ReadonlySet<string> = new Set(),
+  /**
+   * Fetches an authenticated, already-loadable URL (a blob: URL —
+   * `fetchAssetContentUrl`'s own doc comment explains why: PixiJS's
+   * `Assets.load` can't attach the `Authorization` header
+   * `GetAssetContentEndpoint` requires) for a path this function has
+   * already confirmed tier 2 wins for. Omitted by callers with no
+   * project-asset UI wired up (`PackSwapPreview`'s own call site is still
+   * pack-vs-pack only) — tier 2 then simply never wins, the same as
+   * before this parameter existed.
+   */
+  resolveProjectAssetUrl?: (path: string) => Promise<string>,
 ): Promise<Map<number, Texture>> {
   const textures = buildPaletteTextures(renderer, tileSize);
   if (!activePack) return textures;
@@ -191,11 +213,14 @@ export async function buildPackAwarePaletteTextures(
   const declaredPaths = new Set(tilesetEntries.map(([, entry]) => entry.src));
   const resolution = resolveAsset(tileset.src, {
     activePackName: activePack.packName,
-    // Project overrides/uploads aren't wired yet — no upload UI exists
-    // to populate either tier (docs/SPEC.md Section 11.4 tiers 1-2). A
-    // stated gap: once that UI exists, these two maps are what it feeds.
+    // Project overrides (tier 1) aren't wired yet — no UI exists to
+    // populate a per-pack override. Project-uploaded assets (tier 2,
+    // docs/adr/0012 E4) now are: projectAssetPaths' keys are all that
+    // matters here (the placeholder baseUrl is never used —
+    // resolveProjectAssetUrl below is the real fetch path, see this
+    // function's own doc comment on why).
     projectOverrides: new Map(),
-    projectAssets: new Map(),
+    projectAssets: new Map([...projectAssetPaths].map((path) => [path, { baseUrl: "" }])),
     activePack: { baseUrl: activePack.baseUrl, declaredPaths },
     moduleBundledAssets: new Map(),
   });
@@ -207,7 +232,8 @@ export async function buildPackAwarePaletteTextures(
 
   let sheetTexture: Texture;
   try {
-    sheetTexture = await Assets.load<Texture>(resolution.url);
+    const loadUrl = resolution.source === "project-asset" && resolveProjectAssetUrl ? await resolveProjectAssetUrl(resolution.assetId) : resolution.url;
+    sheetTexture = await Assets.load<Texture>(loadUrl);
   } catch (err) {
     console.warn(`[forge:art-pack] failed to load tileset image '${resolution.assetId}' (${resolution.url}) — falling back to placeholder colors.`, err);
     return textures;

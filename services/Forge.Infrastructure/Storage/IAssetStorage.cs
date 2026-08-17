@@ -25,6 +25,9 @@ public interface IAssetStorage
     /// <summary>Uploads the re-encoded PNG <c>Forge.Functions.Assets</c> produced from decoded pixel data to the public <c>assets</c> container at <c>{workspaceId}/{assetId}/opt.png</c> — never the uploaded bytes, never a copy of them (docs/adr/0012 Decision 4).</summary>
     Task UploadProcessedAsync(Guid workspaceId, Guid assetId, byte[] processedPngBytes, CancellationToken ct);
 
+    /// <summary>Reads back the re-encoded PNG — <c>GetAssetContentEndpoint</c>'s own input (E4) for serving a <see cref="Domain.Entities.AssetStatus.Ready"/> asset's real content to an authenticated workspace member.</summary>
+    Task<byte[]> DownloadProcessedAsync(Guid workspaceId, Guid assetId, CancellationToken ct);
+
     /// <summary>Deletes both the quarantine and (if present) public blobs for an asset — <c>DELETE /api/v1/assets/{id}</c>'s own storage-layer half. Deleting a blob that doesn't exist (a <see cref="Domain.Entities.AssetStatus.Pending"/> or <see cref="Domain.Entities.AssetStatus.Failed"/> row never got a processed blob) is a no-op, not an error.</summary>
     Task DeleteAsync(Guid workspaceId, Guid assetId, CancellationToken ct);
 }
@@ -32,3 +35,7 @@ public interface IAssetStorage
 /// <summary>Thrown by <see cref="IAssetStorage.DownloadOriginalAsync"/> when the target asset has no quarantined content — an asset id that was never uploaded, or whose quarantine blob was already deleted.</summary>
 public sealed class AssetOriginalNotFoundException(Guid assetId)
     : Exception($"No quarantined original found for asset '{assetId}'.");
+
+/// <summary>Thrown by <see cref="IAssetStorage.DownloadProcessedAsync"/> when the target asset has no processed content — genuinely inconsistent state for a row <c>GetAssetContentEndpoint</c> already confirmed is <see cref="Domain.Entities.AssetStatus.Ready"/>, surfaced as a 404 rather than a 500 all the same (CLAUDE.md Section 1.1 guardrail 11 — logged, not swallowed, by the caller).</summary>
+public sealed class AssetProcessedNotFoundException(Guid assetId)
+    : Exception($"No processed content found for asset '{assetId}'.");

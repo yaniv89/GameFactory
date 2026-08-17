@@ -7,6 +7,7 @@ public static class AssetEndpointsExtensions
         app.MapUploadAsset();
         app.MapListAssets();
         app.MapDeleteAsset();
+        app.MapGetAssetContent();
         return app;
     }
 }

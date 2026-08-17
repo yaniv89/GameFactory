@@ -42,6 +42,20 @@ public sealed class AzureBlobAssetStorage(BlobContainerClient quarantineContaine
             ct);
     }
 
+    public async Task<byte[]> DownloadProcessedAsync(Guid workspaceId, Guid assetId, CancellationToken ct)
+    {
+        var blob = publicContainer.GetBlobClient(ProcessedPath(workspaceId, assetId));
+        try
+        {
+            var result = await blob.DownloadContentAsync(ct);
+            return result.Value.Content.ToArray();
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            throw new AssetProcessedNotFoundException(assetId);
+        }
+    }
+
     public async Task DeleteAsync(Guid workspaceId, Guid assetId, CancellationToken ct)
     {
         await quarantineContainer.GetBlobClient(OriginalPath(workspaceId, assetId)).DeleteIfExistsAsync(cancellationToken: ct);

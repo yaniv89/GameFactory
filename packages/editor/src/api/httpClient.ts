@@ -71,3 +71,28 @@ export async function httpJson<T>(path: string, options: HttpOptions = {}): Prom
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
+
+/**
+ * Authenticated binary fetch — same auth/refresh/error handling as
+ * `httpJson`, but for endpoints that return real bytes (an asset's
+ * decoded image content, `GetAssetContentEndpoint.cs`) rather than JSON.
+ * A plain `<img src>`/PixiJS `Assets.load(url)` can't attach an
+ * `Authorization` header, so a caller needing to actually render one of
+ * these fetches the bytes through here first and hands the browser an
+ * object URL instead (`URL.createObjectURL` on the returned `Blob`) —
+ * `packTiles.ts`'s own project-asset wiring is the first real caller.
+ */
+export async function httpBlob(path: string): Promise<Blob> {
+  let response: Response;
+  try {
+    response = await fetch(path, { headers: { Authorization: `Bearer ${await ensureFreshAccessToken()}` } });
+  } catch (cause) {
+    throw new NetworkError(cause);
+  }
+
+  if (!response.ok) {
+    const { message, extensions } = await extractErrorDetail(response);
+    throw new ApiError(message, response.status, extensions);
+  }
+  return response.blob();
+}

@@ -215,6 +215,40 @@ public static class DependencyInjection
     }
 
     /// <summary>
+    /// docs/adr/0012 Decision 6: the two-container Blob layout backing
+    /// <see cref="IAssetStorage"/>. Deliberately does not register either
+    /// <see cref="BlobContainerClient"/> as its own DI singleton the way
+    /// <see cref="AddForgeBundleStorage"/>/<see cref="AddForgeBuildBundleStorage"/>
+    /// do — both containers are private implementation detail of one
+    /// <see cref="AzureBlobAssetStorage"/> instance, constructed directly
+    /// inside this factory delegate, which sidesteps those two methods'
+    /// own documented landmine (an unkeyed <see cref="BlobContainerClient"/>
+    /// registration silently resolving whichever container registered
+    /// last if a process ever called more than one of these methods) by
+    /// construction rather than by convention.
+    /// </summary>
+    public static IServiceCollection AddForgeAssetStorage(this IServiceCollection services, IConfiguration configuration)
+    {
+        var connectionString = configuration.GetConnectionString("Blob")
+            ?? throw new InvalidOperationException("Missing ConnectionStrings:Blob configuration.");
+        var quarantineContainerName = configuration["Blob:AssetsQuarantineContainer"]
+            ?? throw new InvalidOperationException("Missing Blob:AssetsQuarantineContainer configuration.");
+        var publicContainerName = configuration["Blob:AssetsContainer"]
+            ?? throw new InvalidOperationException("Missing Blob:AssetsContainer configuration.");
+
+        services.AddSingleton<IAssetStorage>(_ =>
+        {
+            var quarantine = new BlobContainerClient(connectionString, quarantineContainerName);
+            quarantine.CreateIfNotExists();
+            var pub = new BlobContainerClient(connectionString, publicContainerName);
+            pub.CreateIfNotExists();
+            return new AzureBlobAssetStorage(quarantine, pub);
+        });
+
+        return services;
+    }
+
+    /// <summary>
     /// SignalR itself (M7 Phase 1, docs/SPEC.md Section 13.2's
     /// <c>WS /hubs/collab</c>) plus the Redis backplane, non-negotiable
     /// the moment a second API instance exists (CLAUDE.md Section 1.5

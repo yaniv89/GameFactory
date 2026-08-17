@@ -90,6 +90,17 @@ public static class ForgeAuthorizationExtensions
                 .AddAuthenticationSchemes(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)
                 .RequireAuthenticatedUser()
                 .Requirements.Add(new PlanGateRequirement(WorkspaceResourceKind.Project, "projectId")))
+            // docs/adr/0012: DeleteAssetEndpoint's route carries an
+            // assetId, not a workspaceId — the same "keyed on this
+            // resource's own route value, resolved to its workspace"
+            // pattern as project:write, WorkspaceResourceKind.Asset instead
+            // of .Project. Upload/list stay on the existing workspace:write/
+            // workspace:read policies above (their routes already carry a
+            // workspaceId directly).
+            .AddPolicy("asset:write", policy => policy
+                .AddAuthenticationSchemes(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)
+                .RequireAuthenticatedUser()
+                .Requirements.Add(new WorkspaceRoleRequirement(WorkspaceRole.Editor, WorkspaceResourceKind.Asset, "assetId")))
             .AddPolicy(PlayTokenPolicy, policy => policy
                 .AddAuthenticationSchemes(PlayTokenAuthenticationHandler.SchemeName)
                 .RequireAuthenticatedUser());

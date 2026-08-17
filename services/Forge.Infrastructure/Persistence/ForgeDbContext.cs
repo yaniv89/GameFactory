@@ -29,9 +29,10 @@ namespace Forge.Infrastructure.Persistence;
 /// identity table — the only piece of Play Services (docs/SPEC.md
 /// Section 17) that lives in PostgreSQL; saves/leaderboards/achievements/
 /// analytics are Azure Table Storage (<c>Forge.Infrastructure.Play</c>),
-/// never modeled here — and docs/adr/0010's <see cref="Domain.Entities.Build"/>
-/// table. The <c>assets</c> table (docs/SPEC.md Section 14) is still
-/// later scope.
+/// never modeled here — docs/adr/0010's <see cref="Domain.Entities.Build"/>
+/// table, and docs/adr/0012's <see cref="Domain.Entities.Asset"/> table
+/// (deliberately trimmed from Section 6.2's own <c>assets</c> — see that
+/// entity's own doc comment for what's out of scope and why).
 /// </summary>
 public sealed class ForgeDbContext(DbContextOptions<ForgeDbContext> options)
     : IdentityDbContext<ForgeIdentityUser, IdentityRole<Guid>, Guid>(options)
@@ -72,6 +73,9 @@ public sealed class ForgeDbContext(DbContextOptions<ForgeDbContext> options)
     public DbSet<Purchase> Purchases => Set<Purchase>();
 
     public DbSet<Player> Players => Set<Player>();
+
+    /// <summary>docs/adr/0012 — untrusted, workspace-scoped image uploads. See <see cref="Domain.Entities.Asset"/>'s own doc comment for what's trimmed from Section 6.2's version and why.</summary>
+    public DbSet<Asset> Assets => Set<Asset>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

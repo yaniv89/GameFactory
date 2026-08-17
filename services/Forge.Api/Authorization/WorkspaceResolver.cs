@@ -29,6 +29,17 @@ internal static class WorkspaceResolver
                 .Where(p => p.Id == resourceId && p.DeletedAt == null)
                 .Select(p => (Guid?)p.WorkspaceId)
                 .SingleOrDefaultAsync(ct),
+            // docs/adr/0012: DeleteAssetEndpoint's route carries an
+            // assetId, not a workspaceId — resolved the same lookup shape
+            // as Project above. Deliberately excludes an already-deleted
+            // asset (DeletedAt != null) so a second DELETE on the same id
+            // 404s instead of re-succeeding, the same "no re-triggering a
+            // one-shot terminal state" reasoning WorkspaceRoleHandler's
+            // callers already rely on elsewhere.
+            WorkspaceResourceKind.Asset => await db.Assets
+                .Where(a => a.Id == resourceId && a.DeletedAt == null)
+                .Select(a => (Guid?)a.WorkspaceId)
+                .SingleOrDefaultAsync(ct),
             _ => null,
         };
     }

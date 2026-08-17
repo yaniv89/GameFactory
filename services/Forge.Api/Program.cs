@@ -21,6 +21,7 @@
 // physically separate host, Forge.Play (C4), neither of which exists yet.
 using Forge.Api;
 using Forge.Api.Authorization;
+using Forge.Api.Features.Assets;
 using Forge.Api.Features.Auth;
 using Forge.Api.Features.Billing;
 using Forge.Api.Features.Builds;
@@ -47,6 +48,7 @@ builder.Services.AddForgeBilling(builder.Configuration);
 builder.Services.AddForgeMarketplaceBilling(builder.Configuration);
 builder.Services.AddForgeRegistry();
 builder.Services.AddForgeBundleStorage(builder.Configuration);
+builder.Services.AddForgeAssetStorage(builder.Configuration);
 builder.Services.AddForgeRealtime(builder.Configuration);
 builder.Services.AddForgePlayServices(builder.Configuration);
 
@@ -117,6 +119,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
 app.MapAuthEndpoints();
 app.MapProjectEndpoints();
 app.MapBuildEndpoints();
+app.MapAssetEndpoints();
 app.MapBillingEndpoints();
 app.MapRegistryEndpoints();
 app.MapCollabHub();

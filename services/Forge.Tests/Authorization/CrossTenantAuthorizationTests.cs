@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Forge.Api.Features.Assets;
 using Forge.Api.Features.Projects;
 using Xunit;
 
@@ -46,7 +47,12 @@ public sealed class CrossTenantAuthorizationTests : IClassFixture<ForgeWebApplic
     // method taking Func<SharedState, HttpRequestMessage> as a parameter
     // — a public member's signature can't reference a less-accessible
     // type (CS0051), so this has to be at least as visible as that method.
-    public sealed record SharedState(AuthenticatedTestUser Owner, AuthenticatedTestUser Outsider, Guid ProjectId, long RevisionId);
+    public sealed record SharedState(AuthenticatedTestUser Owner, AuthenticatedTestUser Outsider, Guid ProjectId, long RevisionId, Guid AssetId);
+
+    // A minimal, genuinely valid 1x1 PNG — same fixture Assets.AssetsEndpointsTests
+    // uses; the point here is authorization, not asset content.
+    private static readonly byte[] TinyPngBytes = Convert.FromBase64String(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
 
     private async Task<SharedState> GetSharedStateAsync()
     {
@@ -82,7 +88,13 @@ public sealed class CrossTenantAuthorizationTests : IClassFixture<ForgeWebApplic
         commitResponse.EnsureSuccessStatusCode();
         var commit = (await commitResponse.Content.ReadFromJsonAsync<CommitRevisionResponse>())!;
 
-        return new SharedState(owner, outsider, project.Id, commit.RevisionId);
+        var uploadResponse = await owner.Client.PostAsJsonAsync(
+            $"/api/v1/workspaces/{owner.WorkspaceId}/assets",
+            new UploadAssetRequest("fixture.png", "image/png", Convert.ToBase64String(TinyPngBytes), (Guid?)null));
+        uploadResponse.EnsureSuccessStatusCode();
+        var asset = (await uploadResponse.Content.ReadFromJsonAsync<UploadAssetResponse>())!;
+
+        return new SharedState(owner, outsider, project.Id, commit.RevisionId, asset.Id);
     }
 
     public static IEnumerable<object[]> ProtectedRequests()
@@ -153,6 +165,23 @@ public sealed class CrossTenantAuthorizationTests : IClassFixture<ForgeWebApplic
 
         yield return new object[] { "PortalSession (workspace:billing)", (Func<SharedState, HttpRequestMessage>)(s =>
             new HttpRequestMessage(HttpMethod.Post, $"/api/v1/workspaces/{s.Owner.WorkspaceId}/billing/portal-session")) };
+
+        // docs/adr/0012: the same route-value distinction CreateBuild's
+        // own case above documents — UploadAsset/ListAssets carry a
+        // workspaceId directly (workspace:write/workspace:read), while
+        // DeleteAsset carries an assetId that has to be resolved to its
+        // owning workspace (asset:write, WorkspaceResourceKind.Asset).
+        yield return new object[] { "UploadAsset (workspace:write)", (Func<SharedState, HttpRequestMessage>)(s =>
+            new HttpRequestMessage(HttpMethod.Post, $"/api/v1/workspaces/{s.Owner.WorkspaceId}/assets")
+            {
+                Content = JsonContent.Create(new UploadAssetRequest("intrusion.png", "image/png", Convert.ToBase64String(TinyPngBytes), (Guid?)null)),
+            }) };
+
+        yield return new object[] { "ListAssets (workspace:read)", (Func<SharedState, HttpRequestMessage>)(s =>
+            new HttpRequestMessage(HttpMethod.Get, $"/api/v1/workspaces/{s.Owner.WorkspaceId}/assets")) };
+
+        yield return new object[] { "DeleteAsset (asset:write)", (Func<SharedState, HttpRequestMessage>)(s =>
+            new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/assets/{s.AssetId}")) };
     }
 
     [Theory]

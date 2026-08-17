@@ -95,4 +95,17 @@ public static class RateLimitPolicies
     /// per minute, not this request's own handling cost.
     /// </summary>
     public static readonly RateLimitPolicy CreateBuild = new(Limit: 5, Window: TimeSpan.FromMinutes(1));
+
+    /// <summary>
+    /// Asset upload specifically (docs/adr/0012), user-keyed and tighter
+    /// than <see cref="Api"/> for the same reason as <see cref="CreateBuild"/>:
+    /// cheap for this endpoint itself (a Blob write plus one row insert),
+    /// but the point is bounding how much quarantine-storage and eventual
+    /// <c>Forge.Functions.Assets</c> processing cost one account can queue
+    /// per minute — a runaway or malicious client uploading a rapid stream
+    /// of 10 MiB files is the actual thing this budgets against, not
+    /// ordinary asset-browsing traffic (that stays on <see cref="Api"/>
+    /// via the list/get endpoints).
+    /// </summary>
+    public static readonly RateLimitPolicy AssetUpload = new(Limit: 20, Window: TimeSpan.FromMinutes(1));
 }

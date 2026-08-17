@@ -3,6 +3,7 @@ using Azure.Storage.Blobs;
 using Forge.Infrastructure.Billing;
 using Forge.Infrastructure.Email;
 using Forge.Infrastructure.Persistence;
+using Forge.Infrastructure.Storage;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR.StackExchangeRedis;
@@ -245,6 +246,26 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
                 var container = new BlobContainerClient(blobConnectionString, "packages");
                 container.CreateIfNotExists();
                 return container;
+            });
+
+            // docs/adr/0012: AddForgeAssetStorage doesn't register a bare
+            // BlobContainerClient at all (its own doc comment explains
+            // why — sidestepping the exact landmine the override just
+            // above exists to work around), so there's nothing for
+            // RemoveAll<BlobContainerClient> to catch here. Replace the
+            // IAssetStorage registration directly instead, against the
+            // same real Azurite container as every other Blob-backed
+            // override in this method — asset upload/delete tests
+            // exercise the real quarantine/public two-container split,
+            // not a stand-in.
+            services.RemoveAll<IAssetStorage>();
+            services.AddSingleton<IAssetStorage>(_ =>
+            {
+                var quarantine = new BlobContainerClient(blobConnectionString, "assets-quarantine");
+                quarantine.CreateIfNotExists();
+                var pub = new BlobContainerClient(blobConnectionString, "assets");
+                pub.CreateIfNotExists();
+                return new AzureBlobAssetStorage(quarantine, pub);
             });
 
             // M7 Phase 7: same Azurite container as point 5 above backs

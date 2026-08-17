@@ -182,6 +182,39 @@ public static class DependencyInjection
     }
 
     /// <summary>
+    /// docs/adr/0010 Decision 4: where <c>Forge.Functions.Build</c>
+    /// uploads a build's <c>index.html</c> + <c>meta.json</c>. Deliberately
+    /// its own <see cref="BlobContainerClient"/> singleton, not a second
+    /// caller of <see cref="AddForgeBundleStorage"/> pointed at a
+    /// different container name: that method's own singleton
+    /// registration isn't keyed, so a process calling both this and
+    /// <see cref="AddForgeBundleStorage"/> would silently leave
+    /// <see cref="IPackageBundleStorage"/> and <see cref="IBuildBundleStorage"/>
+    /// resolving whichever <see cref="BlobContainerClient"/> registered
+    /// last. Not a real risk today — only <c>Forge.Functions.Build</c>
+    /// calls this method, and it never calls <see cref="AddForgeBundleStorage"/>
+    /// — but worth stating plainly rather than leaving a landmine an
+    /// unrelated future change could quietly step on.
+    /// </summary>
+    public static IServiceCollection AddForgeBuildBundleStorage(this IServiceCollection services, IConfiguration configuration)
+    {
+        var connectionString = configuration.GetConnectionString("Blob")
+            ?? throw new InvalidOperationException("Missing ConnectionStrings:Blob configuration.");
+        var containerName = configuration["Blob:BuildsContainer"]
+            ?? throw new InvalidOperationException("Missing Blob:BuildsContainer configuration.");
+
+        services.AddSingleton(_ =>
+        {
+            var container = new BlobContainerClient(connectionString, containerName);
+            container.CreateIfNotExists();
+            return container;
+        });
+        services.AddSingleton<IBuildBundleStorage, AzureBlobBuildBundleStorage>();
+
+        return services;
+    }
+
+    /// <summary>
     /// SignalR itself (M7 Phase 1, docs/SPEC.md Section 13.2's
     /// <c>WS /hubs/collab</c>) plus the Redis backplane, non-negotiable
     /// the moment a second API instance exists (CLAUDE.md Section 1.5

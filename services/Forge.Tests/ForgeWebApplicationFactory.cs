@@ -144,6 +144,21 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
     private readonly AzuriteContainer _azurite = new AzuriteBuilder().WithCommand("--skipApiVersionCheck").Build();
 
     /// <summary>
+    /// The real Azurite container's own connection string, exposed for
+    /// tests that need to construct their own <see cref="BlobContainerClient"/>
+    /// against a container this factory doesn't register in DI itself —
+    /// docs/adr/0010's <c>builds</c> container (<see cref="Forge.Infrastructure.Storage.IBuildBundleStorage"/>)
+    /// is Forge.Functions.Build's own concern, never Forge.Api's, so
+    /// unlike <c>ConnectionStrings:Blob</c>'s "packages" container above
+    /// there's no reason for this host to register a
+    /// <see cref="BlobContainerClient"/> for it — same reasoning
+    /// <see cref="Features.Scan.ScanOrchestratorTests"/>'s own
+    /// <c>BuildOrchestrator</c> helper already applies to constructing a
+    /// <c>SmokeRunGate</c> directly rather than resolving one from DI.
+    /// </summary>
+    public string AzuriteConnectionString => _azurite.GetConnectionString();
+
+    /// <summary>
     /// No real email provider is configured (IEmailSender's own doc
     /// comment) — this captures what LoggingEmailSender would otherwise
     /// only write to a logger, so tests can read the real

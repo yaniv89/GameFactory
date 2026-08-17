@@ -1,0 +1,13 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "ConnectionStrings__Forge": "local-dev-placeholder-not-a-real-postgres-connection-string",
+    "ConnectionStrings__Blob": "local-dev-placeholder-not-a-real-azure-storage-connection-string",
+    "Blob__BuildsContainer": "builds",
+    "BuildRunner__CliEntryPath": "../../../packages/cli/dist/index.js",
+    "BuildRunner__NodeExecutablePath": "node",
+    "BuildRunner__TimeoutSeconds": "180"
+  }
+}

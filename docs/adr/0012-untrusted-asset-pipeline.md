@@ -359,3 +359,62 @@ correctly and this one doesn't need to.
   into `@forge/art-pack`'s asset resolution as SPEC 11.4 priority-2
   "project-uploaded asset," plus the editor's own upload/browse UI with
   all six required states per CLAUDE.md 5.4).
+
+## Addendum (E3): the specific ImageSharp version, and why it isn't the newest one
+
+This Decision named `SixLabors.ImageSharp` but not a version. Actually
+adding the package (E3) surfaced something this ADR's own diligence
+missed the first time: reading the package's *license*, not just its API,
+before pinning a version — the same category of check CLAUDE.md Section
+2 exists for, just not one this ADR did explicitly at the time.
+
+`SixLabors.ImageSharp` 3.0.0 onward ships under the **Six Labors Split
+License**, not plain Apache-2.0 — confirmed by reading the actual
+`LICENSE` file inside the 4.1.0 NuGet package, not assumed from the
+package's reputation. Its terms: free under Apache-2.0 for open-source
+consumers, transitive dependencies, non-profits, and for-profit *direct*
+consumers under $1M USD annual revenue — everyone else owes a paid Six
+Labors Commercial License. Forge is exactly the kind of consumer that
+clause is written for: a commercial, for-profit platform, not incidental
+open-source tooling, with the explicit ambition (CLAUDE.md's own "What
+Success Looks Like") of being a real, sizable business. Picking the
+newest ImageSharp version without reading this would have been
+committing this business to a future license fee inside what looks like
+an ordinary dependency choice — nobody reviewing "add an image library"
+would think to re-check licensing on a later routine version bump either.
+
+**Decision: pin to `2.1.13`, the latest release on the 2.1.x line, which
+is still plain Apache-2.0** (confirmed against that specific package's
+own nuspec, not inferred from the major version number alone — NuGet
+license metadata can and does change between minor versions of a
+license-restructuring library). This isn't a stale, abandoned line
+traded for a license technicality: CVE-2025-27598, an out-of-bounds
+write in the GIF decoder (CWE-787 — the exact vulnerability class this
+whole ADR exists to defend against), was backported to 2.1.10, and
+2.1.13 is later than that fix. The 2.1.x branch is actively
+security-maintained, not merely old.
+
+**Verified by actually running the code against both real API surfaces,
+not assumed from documentation:**
+- `Image.Identify()`'s null-vs-throw contract differs between the two
+  license eras — 4.1.0 throws `UnknownImageFormatException` for
+  unrecognized bytes, while 2.1.13 returns `null`. `AssetRunner.Run()` is
+  written against 2.1.13's actual behavior (confirmed with a real
+  Node-free throwaway console app probing both versions side by side),
+  not the newer version's.
+- The decompression-bomb defense this ADR's Decision 4 step 3 claims —
+  reading declared dimensions without allocating pixel data — was proven
+  against a real, hand-crafted 57-byte PNG with a correct signature and a
+  correct-CRC `IHDR` chunk declaring 50000x50000: `Image.Identify`
+  reported the declared size in under 100ms with a memory delta under
+  100KB. `AssetOrchestratorTests.Oversized_Declared_Dimensions_...`
+  exercises the identical crafted bytes as a real xUnit test, not a
+  restated claim.
+
+**Re-evaluate this pin, not before:** if a future CVE affecting image
+decoding is fixed only on the 3.x/4.x line with no 2.x backport, or if
+Forge's own revenue situation changes the license calculus outright (at
+which point purchasing the commercial license becomes the honest
+alternative to silently staying on an unpatched pin). Until then, 2.1.x
+is both the license-safe and the security-current choice — not a
+trade-off between them.

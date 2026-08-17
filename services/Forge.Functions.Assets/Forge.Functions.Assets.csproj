@@ -5,17 +5,76 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Forge.Functions.Assets</RootNamespace>
+    <!-- Required by the Azure Functions Worker SDK build targets below — an isolated-worker Functions app is its own executable host process, not a class library. -->
+    <OutputType>Exe</OutputType>
+    <AzureFunctionsVersion>v4</AzureFunctionsVersion>
   </PropertyGroup>
 
   <!--
-    Becomes an Azure Functions isolated-worker project running asset
-    transcode/atlas processing (docs/SPEC.md Section 14) when implemented,
-    starting in Milestone M6. See Forge.Functions.Build's csproj comment
-    for why package references are deferred rather than guessed here.
+    docs/adr/0012: this is real as of E3. AssetRunner.cs and AssetScanner.cs
+    (and AssetOrchestrator.cs tying them together) are plain C# with no
+    Azure Functions Worker dependency, so they're fully unit-testable in
+    services/Forge.Tests against a real Postgres Testcontainer and a real
+    Azurite Testcontainer's two-container asset split — not a fake
+    standing in for the actual decode this worker exists to isolate, the
+    same rigor Forge.Functions.Build's BuildRunner/BuildScanner already
+    established for C3.
+
+    The trigger wiring below (Program.cs, AssetProcessQueuedAssetsFunction.cs)
+    is, same as those two files' own remarks, the one piece that can't be
+    verified any way other than a real CI build — this repo has no Azure
+    Functions Core Tools / storage emulator wired into its test
+    infrastructure. Everything the timer trigger does beyond DI resolution
+    is one call into AssetOrchestrator.ProcessNextAsync, which the real
+    tests already cover.
   -->
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.52.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" Version="4.3.1" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.1.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <!--
+      docs/adr/0012 Decision 4: SixLabors.ImageSharp is the decoder this
+      whole worker exists to isolate — fully-managed, no native code in
+      the decode path, the ADR's own load-bearing memory-safety argument.
+
+      Pinned to the 2.1.x line specifically, not the newest 3.x/4.x —
+      confirmed by reading the actual package license, not assumed:
+      SixLabors switched 3.0.0 onward to the "Six Labors Split License,"
+      which requires a paid commercial license the moment a for-profit
+      direct consumer's annual revenue exceeds $1M USD
+      (https://github.com/SixLabors/ImageSharp, LICENSE in the 3.x/4.x
+      package). Forge is exactly that kind of consumer — a commercial
+      platform, not incidental open-source tooling — so silently taking
+      the newest version would be committing this business to a future
+      license fee inside a dependency bump nobody would think to
+      re-review. 2.1.x stays plain Apache-2.0 (confirmed against the
+      2.1.13 package's own nuspec) and is still actively security-patched
+      on its own branch, not abandoned: CVE-2025-27598 (an out-of-bounds
+      write in the GIF decoder — the exact CWE-787 class this ADR exists
+      to defend against) was backported to 2.1.10, and 2.1.13 is later
+      than that. Re-evaluate this pin, not before, if a future CVE is
+      fixed only on 3.x+ with no 2.x backport.
+    -->
+    <PackageReference Include="SixLabors.ImageSharp" Version="2.1.13" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Forge.Domain\Forge.Domain.csproj" />
+    <ProjectReference Include="..\Forge.Infrastructure\Forge.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="host.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="local.settings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

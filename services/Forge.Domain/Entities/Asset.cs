@@ -1,9 +1,21 @@
 namespace Forge.Domain.Entities;
 
-/// <summary>docs/adr/0012 Decision 2. Pending -&gt; Ready | Failed, set by <c>Forge.Functions.Assets</c> (E3) after the only decode this pipeline ever does. A Failed asset can only be replaced by a fresh upload (a new row), never resurrected in place — same "the log only ever grows" shape as <see cref="Build"/>/<see cref="BuildStatus"/>.</summary>
+/// <summary>
+/// docs/adr/0012 Decision 2/4. Pending -&gt; Processing -&gt; Ready | Failed,
+/// set by <c>Forge.Functions.Assets</c> (E3) after the only decode this
+/// pipeline ever does. <see cref="Processing"/> is the same "claim mutual
+/// exclusion across ticks, not just within one SQL statement" mechanism
+/// <see cref="BuildStatus.Building"/> already is for <see cref="Build"/>:
+/// without it, a second worker's next timer tick would see this row still
+/// sitting at <see cref="Pending"/> and reprocess it while the first
+/// worker's claim is still in flight. A Failed asset can only be replaced
+/// by a fresh upload (a new row), never resurrected in place — same "the
+/// log only ever grows" shape as <see cref="Build"/>/<see cref="BuildStatus"/>.
+/// </summary>
 public static class AssetStatus
 {
     public const string Pending = "pending";
+    public const string Processing = "processing";
     public const string Ready = "ready";
     public const string Failed = "failed";
 }

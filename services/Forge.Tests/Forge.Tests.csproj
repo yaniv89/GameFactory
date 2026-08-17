@@ -43,6 +43,7 @@
     <ProjectReference Include="..\Forge.Api\Forge.Api.csproj" />
     <ProjectReference Include="..\Forge.Functions.Scan\Forge.Functions.Scan.csproj" />
     <ProjectReference Include="..\Forge.Functions.Build\Forge.Functions.Build.csproj" />
+    <ProjectReference Include="..\Forge.Functions.Assets\Forge.Functions.Assets.csproj" />
     <ProjectReference Include="..\Forge.Play\Forge.Play.csproj" />
   </ItemGroup>
 

@@ -1,4 +1,5 @@
 import type { EventBusImpl } from "@forge/core";
+import { renderDialogueRichText } from "./dialogueRichText.js";
 import { bootGameLogic } from "./gameLogic.js";
 // "./generated/*" doesn't exist in the checked-in source tree at all
 // (.gitignore's own comment on that path) — forge export (M6 Phase 5e)
@@ -23,8 +24,12 @@ function wireDialogueBubble(events: EventBusImpl): void {
   let hideTimeout: ReturnType<typeof setTimeout> | undefined;
   events.on("dialogue:shown", (payload) => {
     const { speaker, text } = payload as { speaker: string; text: string };
+    // Speaker names are a single opaque label, never formatted; the line
+    // itself goes through the sanitizing AST renderer (docs/adr/0011 D2)
+    // so a creator can write *emphasis*/**strong**/`code`/links without
+    // this ever touching .innerHTML.
     speakerEl.textContent = speaker;
-    textEl.textContent = text;
+    renderDialogueRichText(textEl, text);
     bubble.dataset.open = "true";
     clearTimeout(hideTimeout);
     hideTimeout = setTimeout(() => {

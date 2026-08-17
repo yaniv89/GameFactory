@@ -19,6 +19,7 @@
     "@forge/core": "workspace:*",
     "@forge/module-api": "workspace:*",
     "@forge/render-2d": "workspace:*",
+    "@forge/richtext": "workspace:*",
     "@forge/runtime-host": "workspace:*",
     "@jitl/quickjs-wasmfile-release-sync": "^0.32.0",
     "pixi.js": "^8.19.0",
@@ -29,7 +30,9 @@
     "@forge/dialogue": "workspace:*",
     "@playwright/test": "1.62.0",
     "@types/node": "^26.1.2",
+    "@types/jsdom": "^30.0.0",
     "esbuild": "^0.25.12",
+    "jsdom": "^30.0.1",
     "vite": "^6.4.3"
   }
 }

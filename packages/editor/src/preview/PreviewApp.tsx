@@ -19,6 +19,7 @@ import { createModuleRuntime } from "./directModuleHost";
 import { INTERACT_RANGE, NPC_ASSET_ID, PLAYER_ASSET_ID, createPlayerMovementSystem, spawnNpcMarker, spawnPlayer } from "./gameWorld";
 import { TRUSTED_EDITOR_ORIGIN } from "./origins";
 import { isPreviewSceneMessage } from "./protocol";
+import { RichDialogueText } from "./RichDialogueText";
 import "./PreviewApp.css";
 
 type PreviewStatus = "loading" | "ready" | "error";
@@ -319,7 +320,9 @@ export function PreviewApp() {
       {bubble && (
         <div className="fg-preview-app__dialogue" role="status">
           <span className="fg-preview-app__dialogue-speaker">{bubble.speaker}</span>
-          <span className="fg-preview-app__dialogue-text">{bubble.text}</span>
+          <span className="fg-preview-app__dialogue-text">
+            <RichDialogueText text={bubble.text} />
+          </span>
         </div>
       )}
     </div>

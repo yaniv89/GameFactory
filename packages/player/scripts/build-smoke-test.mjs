@@ -14,6 +14,13 @@
 // keeps it external: it resolves its own .wasm payload relative to its own
 // package location at runtime, and inlining its JS here would break that
 // (confirmed the same way, not assumed).
+//
+// jsdom stays external too: it does its own conditional/dynamic requires
+// internally (parser and canvas fallbacks) that static bundling tends not
+// to resolve cleanly. Leaving it as a real node_modules resolution at
+// runtime (this script's own outfile is run via plain `node` from this
+// package's own directory, where jsdom is a real devDependency) sidesteps
+// that risk entirely rather than betting on esbuild handling it.
 import { build } from "esbuild";
 
 await build({
@@ -23,6 +30,6 @@ await build({
   platform: "node",
   format: "esm",
   target: "node22",
-  external: ["quickjs-emscripten"],
+  external: ["quickjs-emscripten", "jsdom"],
   logLevel: "info",
 });

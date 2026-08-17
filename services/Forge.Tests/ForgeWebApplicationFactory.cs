@@ -158,6 +158,9 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
     /// </summary>
     public string AzuriteConnectionString => _azurite.GetConnectionString();
 
+    /// <summary>The real Redis container's own connection string — same reasoning as <see cref="AzuriteConnectionString"/>, needed by <c>PlayTestServer</c> to start a real, independently-bound <c>Forge.Play</c> instance for docs/adr/0010's own C4 E2E proof.</summary>
+    public string RedisConnectionString => _redis.GetConnectionString();
+
     /// <summary>
     /// No real email provider is configured (IEmailSender's own doc
     /// comment) — this captures what LoggingEmailSender would otherwise

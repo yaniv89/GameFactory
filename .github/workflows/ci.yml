@@ -311,6 +311,19 @@ jobs:
       - run: dotnet restore Forge.sln
       - run: dotnet build Forge.sln --no-restore --configuration Release
 
+      # docs/adr/0010 C4's own E2E proof (PublishedBuildE2ETests) drives
+      # a real Chromium via Microsoft.Playwright — this runner has no
+      # pre-installed browser cache the way this session's own sandbox
+      # does (PlaywrightBrowserResolver's own remarks), so it needs a
+      # real install here. playwright.ps1 is generated into the build
+      # output by Microsoft.Playwright's own MSBuild targets, hence
+      # after the build step above, not before. --with-deps also
+      # installs the system libraries Chromium needs, matching the JS
+      # side's own `playwright install --with-deps` steps elsewhere in
+      # this workflow.
+      - name: Install Playwright's Chromium for the .NET test project
+        run: pwsh services/Forge.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+
       - name: Security gate — vulnerable NuGet packages
         run: |
           dotnet list Forge.sln package --vulnerable --include-transitive 2>&1 | tee vulnerable-packages.log

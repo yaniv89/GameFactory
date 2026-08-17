@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Forge.Play</RootNamespace>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!--
+    docs/adr/0010 Decision 5: the play origin's real host — a genuinely
+    separate process/deployment from Forge.Api, not a Host-header branch
+    inside it. Deliberately references ONLY Forge.Infrastructure, never
+    Forge.Domain or Forge.Api: this host has no database connection at
+    all (not ForgeDbContext, not any domain entity), no Identity/
+    OpenIddict, no cookies — it serves public, already-built, already-
+    immutable content by buildId, and the only thing it needs from
+    Forge.Infrastructure is IBuildBundleStorage (Blob) and IRateLimiter
+    (Redis), both of which are already host-agnostic by design.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\Forge.Infrastructure\Forge.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <!--
+    Deliberately no <InternalsVisibleTo> to Forge.Tests, unlike
+    Forge.Api.csproj's own grant: everything Forge.Tests actually needs
+    (PlayApp, ServeBuildEndpoint's route mapping, PlaySecurityHeaders) is
+    already public. Granting one anyway would make this project's own
+    `internal partial class Program` (Program.cs's own remarks on why
+    it's forced internal) visible to Forge.Tests too, which recreates the
+    exact CS0433 collision against Forge.Api's public Program that
+    forcing it internal exists to avoid — confirmed by a real build
+    failure while wiring this up, not assumed.
+  -->
+
+</Project>

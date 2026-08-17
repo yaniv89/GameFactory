@@ -40,6 +40,7 @@ namespace Forge.Tests.Features.PlayOrigin;
 /// ⚠ Not run in this sandbox: no .NET SDK here. Verified when CI runs on
 /// a GitHub-hosted runner.
 /// </summary>
+[Collection("Forge export pipeline")]
 public sealed class PublishedBuildE2ETests : IClassFixture<ForgeWebApplicationFactory>
 {
     private const int TileSize = 32; // packages/editor/src/canvas/gridConstants.ts / packages/player/src/gameWorld.ts

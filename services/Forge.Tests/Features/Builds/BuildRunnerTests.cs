@@ -21,6 +21,7 @@ namespace Forge.Tests.Features.Builds;
 /// ⚠ Not run in this sandbox: no .NET SDK here. Verified when CI runs on
 /// a GitHub-hosted runner.
 /// </summary>
+[Collection("Forge export pipeline")]
 public sealed class BuildRunnerTests
 {
     private static BuildRunnerOptions Options(int timeoutSeconds = 60, string nodeExecutablePath = "node") => new()

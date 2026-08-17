@@ -28,6 +28,7 @@ namespace Forge.Tests.Features.Builds;
 /// ⚠ Not run in this sandbox: no .NET SDK here. Verified when CI runs on
 /// a GitHub-hosted runner.
 /// </summary>
+[Collection("Forge export pipeline")]
 public sealed class BuildOrchestratorTests : IClassFixture<ForgeWebApplicationFactory>
 {
     private readonly ForgeWebApplicationFactory _factory;

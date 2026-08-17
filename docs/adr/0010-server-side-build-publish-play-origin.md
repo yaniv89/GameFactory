@@ -1,9 +1,9 @@
 # 10. Server-side build/publish pipeline and the play origin
 
 ## Status
-Proposed — needs explicit sign-off before implementation starts (CLAUDE.md
-Section 6.1: this touches CSP and origin separation, both NON-NEGOTIABLE
-guardrails).
+Accepted. The one open question (style-src, see Decision 6) is resolved:
+the worker hashes the inline `<style>` block the same way it hashes the
+inline `<script>` block — no CSP exception.
 
 ## Context
 
@@ -93,6 +93,18 @@ narrow CSP mechanism designed for precisely this case, and neither a
 wildcard nor `unsafe-inline`/`unsafe-eval`. Decision 4 below is how that
 hash gets computed and served.
 
+The same is true of styling: `packages/player/index.html` (the template
+`vite build` starts from, checked verbatim before writing this — not
+assumed) has a hand-written `<style>…</style>` block, not a
+`<link rel="stylesheet">`. Unlike the script block, this content is
+**not** per-project — it's the player shell's own static CSS, identical
+across every build of a given engine version, and `vite build` passes it
+through unchanged (confirmed against a real build's actual
+`dist-app/index.html`, not assumed from the source template alone). It
+still needs the same hash-source treatment as the script block for
+exactly the same CSP reason, just computed from build-time-constant
+content rather than per-project content — see Decision 4/6.
+
 ## Decision
 
 ### 1. Scope: reuse the real export pipeline, not SPEC Section 15's aspirational one
@@ -124,7 +136,8 @@ public sealed class Build
     public string? BundleBlobPath { get; set; }  // set on Ready
     public byte[]? BundleSha256 { get; set; }
     public long? SizeBytes { get; set; }
-    public string? InlineScriptSha256Base64 { get; set; } // Decision 4 — the CSP hash source for this build
+    public string? InlineScriptSha256Base64 { get; set; } // Decision 4 — the CSP script-src hash source for this build
+    public string? InlineStyleSha256Base64 { get; set; }  // Decision 4 — the CSP style-src hash source (build-time-constant across builds of one engine version, still computed per build rather than hardcoded — see Decision 4)
     public string? ErrorMessage { get; set; }     // set on Failed; never a raw stack trace (CLAUDE.md 1.1 #5 — no internals in a response a client reads, this is closer to that spirit even though it's operator-facing)
     public Guid? RequestedByUserId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
@@ -202,12 +215,24 @@ Worker dependency (mirroring `ScanOrchestrator`):
    `<tmpOutDir>/index.html` from disk afterward, not off stdout, to avoid
    forcing a large payload through a pipe built for a small one.
 4. On subprocess success: hash `<tmpOutDir>/index.html`'s bytes
-   (`BundleSha256`), extract and hash the inline `<script type="module">…</script>`
-   block's exact text content for the CSP hash source
-   (`InlineScriptSha256Base64` — parsed the same deliberate way
-   `inline-bundle.mjs` itself locates that tag, not a generic HTML
-   parse), upload `index.html` and `LICENSES.txt` to Blob Storage at
-   `builds/{buildId}/`, mark `Status = Ready`.
+   (`BundleSha256`), then extract and hash **both** inline blocks for
+   their CSP hash sources — the `<script type="module">…</script>` block
+   (`InlineScriptSha256Base64`) and the `<style>…</style>` block
+   (`InlineStyleSha256Base64`), parsed the same deliberate way
+   `inline-bundle.mjs` itself locates the script tag, not a generic HTML
+   parse. The style block's content happens to be build-time-constant
+   (packages/player/index.html's own static shell CSS, confirmed against
+   a real build's output, not per-project), but it is still computed from
+   the actual bytes on every build rather than hardcoded as a literal
+   string in `Forge.Play` or the worker: hardcoding would silently drift
+   the moment `packages/player/index.html`'s CSS next changes (an
+   engine-version bump nobody would think to grep C# for), turning into a
+   CSP violation that breaks every newly-published game's layout with no
+   loud failure anywhere. Computing it fresh every time costs one extra
+   regex match and is symmetric with the script hash — there's no reason
+   to special-case it. Uploads `index.html` and `LICENSES.txt` to Blob
+   Storage at `builds/{buildId}/`, writes both hashes into the
+   `meta.json` sidecar (Decision 5), marks `Status = Ready`.
 5. On subprocess failure (non-zero exit, including the CLI's own
    license-check failure — ADR 0009's `writeLicensesFile` already throws
    a clear message for a disallowed license, which becomes
@@ -277,9 +302,10 @@ structurally parallel to `Forge.Api` but deliberately smaller:
     (content-addressed by `buildId`, safe to cache forever), and this
     origin's own CSP header (below) — computed from a small
     `builds/{buildId}/meta.json` sidecar
-    (`{ "inlineScriptSha256Base64": "..." }`) the `Forge.Functions.Build`
-    worker uploads alongside `index.html`, so `Forge.Play` never needs a
-    database round trip to serve a request, only two blob reads.
+    (`{ "inlineScriptSha256Base64": "...", "inlineStyleSha256Base64": "..." }`)
+    the `Forge.Functions.Build` worker uploads alongside `index.html`, so
+    `Forge.Play` never needs a database round trip to serve a request,
+    only two blob reads (the sidecar, then the HTML).
   - `GET /health`.
   - A `buildId` with no blob → `404` (a real "not found," not the
     cross-tenant-masking `404` `Forge.Api` uses for authorization — there
@@ -308,8 +334,8 @@ DNS name until deployment.
 
 ```
 default-src 'none';
-script-src 'self' 'wasm-unsafe-eval' 'sha256-<per-build hash>';
-style-src 'unsafe-inline';   -- Vite inlines the build's own CSS into a <style> tag the same way it inlines JS; a per-build style hash is the more correct fix, tracked as a follow-up rather than blocking this ADR on a second parser
+script-src 'self' 'wasm-unsafe-eval' 'sha256-<per-build script hash>';
+style-src 'self' 'sha256-<per-build style hash>';
 connect-src 'self' https://api.forge.dev;
 img-src 'self' data: blob:;
 font-src 'self' data:;
@@ -326,23 +352,20 @@ authenticated-origin concern; a played game reporting CSP violations
 needs its own unauthenticated ingestion endpoint (real, small, future
 work, not blocking this ADR).
 
-`'sha256-<per-build hash>'` is **not** a static value: `Forge.Play`
-reads it per request from that build's own `meta.json` sidecar and
-builds the header per response. `tools/security/csp-lint.mjs` (Section
-4.9's CI gate) checks for `unsafe-eval`/`unsafe-inline`/wildcards in
-`script-src` — a `'sha256-...'` source is none of those, so this stays
-green under the existing linter without weakening it. **`style-src
-'unsafe-inline'` is a real, named exception to the "never" rule** and I
-am flagging it rather than shipping it quietly: it exists because Vite's
-own build output inlines the page's CSS into a `<style>` tag the same
-way `inline-bundle.mjs` inlines JS, and computing a per-build style hash
-the same way as script needs its own small parser change to
-`inline-bundle.mjs`/the worker, which I did not want to bundle into an
-already-large ADR. **I should not ship this as `unsafe-inline` without
-your explicit sign-off given CLAUDE.md's "never" wording covers CSP
-directives generally, not only `script-src`** — flagging this specific
-point for the confirmation this ADR is already blocked on, not treating
-"CSS is lower-risk than JS" as license to decide it myself.
+Neither `'sha256-<per-build script hash>'` nor `'sha256-<per-build style
+hash>'` is a static value: `Forge.Play` reads both per request from that
+build's own `meta.json` sidecar and builds the header per response.
+`tools/security/csp-lint.mjs` (Section 4.9's CI gate) checks for
+`unsafe-eval`/`unsafe-inline`/wildcards in `script-src` — a `'sha256-...'`
+source is none of those, so this stays green under the existing linter
+without weakening it, and `style-src` carries the identical treatment
+rather than an `unsafe-inline` exception: CLAUDE.md's "never" wording
+covers CSP directives generally, not only `script-src`, so there is no
+principled reason to hold the style block to a looser standard than the
+script block just because Vite happened to inline it too. The extra cost
+is one more regex extraction and one more hash in the worker and the
+`meta.json` sidecar (Decision 4) — genuinely small once the script-hash
+mechanism already exists, not worth trading away the guardrail for.
 
 ## Consequences
 
@@ -355,11 +378,11 @@ point for the confirmation this ADR is already blocked on, not treating
   cross-game `engine.{hash}.js`, atlas packing, bytecode compilation,
   service-worker offline play, build channels
   (`live`/`beta`/`archive`), a real CDN/Front Door in front of
-  `Forge.Play`, Consumption-plan Node packaging for
-  `Forge.Functions.Build`, and per-build CSS hashing (shipped instead as
-  a named, called-out `style-src 'unsafe-inline'` pending your sign-off).
-  Each is real, identifiable follow-on work, not a silently narrowed
-  definition of "done."
+  `Forge.Play`, and Consumption-plan Node packaging for
+  `Forge.Functions.Build`. Each is real, identifiable follow-on work, not
+  a silently narrowed definition of "done." Per-build CSS hashing is
+  **not** on this list — it's in scope for C3/C4, resolved the same way
+  as the script hash, no CSP exception carried forward.
 - **New public, unauthenticated attack surface:** `Forge.Play` is the
   first host in this repo that serves arbitrary creator/third-party
   content to the open internet with no auth at all. Its total lack of

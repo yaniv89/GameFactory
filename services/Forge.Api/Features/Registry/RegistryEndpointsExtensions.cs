@@ -18,6 +18,7 @@ public static class RegistryEndpointsExtensions
         app.MapPackageDetailAndVersions();
         app.MapResolveDependencies();
         app.MapPublishVersion();
+        app.MapReviews();
         return app;
     }
 }

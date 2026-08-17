@@ -86,7 +86,7 @@ public static class ListPackagesEndpoint
         }
 
         return sort == "ranked"
-            ? await HandleRankedAsync(query, pageSize, ct)
+            ? await HandleRankedAsync(query, pageSize, db, ct)
             : await HandleAlphabeticalAsync(query, cursor, pageSize, ct);
     }
 
@@ -113,7 +113,7 @@ public static class ListPackagesEndpoint
         return TypedResults.Ok(new PackageListResponse(packages, nextCursor));
     }
 
-    private static async Task<IResult> HandleRankedAsync(IQueryable<Package> query, int pageSize, CancellationToken ct)
+    private static async Task<IResult> HandleRankedAsync(IQueryable<Package> query, int pageSize, ForgeDbContext db, CancellationToken ct)
     {
         // Only a package with at least one published, gate-4-passed,
         // non-yanked version is rankable at all — an unpublished or
@@ -149,20 +149,56 @@ public static class ListPackagesEndpoint
             .ToListAsync(ct);
 
         var now = DateTimeOffset.UtcNow;
+        var candidateIds = candidates.Select(c => c.Id).ToArray();
+
+        // F1: real ActiveInstalls30d and BayesianRating, batched across the
+        // whole candidate set in three queries total (one per signal, plus
+        // the platform-wide average) rather than one query per candidate —
+        // CLAUDE.md Section 1.5 guardrail 21, no per-entity round-trip
+        // inside a loop.
+        var since = now.AddDays(-30);
+        var installCounts = await db.Licenses
+            .Where(l => candidateIds.Contains(l.PackageId) && l.RevokedAt == null && l.GrantedAt >= since)
+            .Select(l => new { l.PackageId, l.WorkspaceId })
+            .Distinct()
+            .GroupBy(l => l.PackageId)
+            .Select(g => new { PackageId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.PackageId, x => x.Count, ct);
+
+        var reviewStats = await db.Reviews
+            .Where(r => candidateIds.Contains(r.PackageId))
+            .GroupBy(r => r.PackageId)
+            .Select(g => new { PackageId = g.Key, Count = g.Count(), Average = g.Average(r => (double)r.Rating) })
+            .ToDictionaryAsync(x => x.PackageId, x => (Count: x.Count, Average: x.Average), ct);
+
+        // Platform-wide average rating — the Bayesian shrinkage prior every
+        // candidate's own rating regresses toward when it has few reviews
+        // of its own. Neutral 3.0 (the midpoint of the 1-5 scale) only in
+        // the bootstrap case where no review exists anywhere yet.
+        var globalAverageRating = await db.Reviews.AnyAsync(ct)
+            ? await db.Reviews.AverageAsync(r => (double)r.Rating, ct)
+            : 3.0;
+
         var ranked = candidates
-            .Select(c => new
+            .Select(c =>
             {
-                c,
-                Score = PackageRankingCalculator.CalculateScore(
-                    new ListingQualitySignals(
-                        ActiveInstalls30d: null,
-                        BayesianRating: null,
-                        LatestVersionPublishedAt: c.Latest?.PublishedAt,
-                        MeasuredAverageTickMs: c.Latest?.MeasuredAverageTickMs,
-                        LatestVersionSizeBytes: c.Latest?.SizeBytes,
-                        ReadmeLength: c.ReadmeLength,
-                        SupportResponsivenessHours: null),
-                    now),
+                var installs = installCounts.GetValueOrDefault(c.Id, 0);
+                var (reviewCount, averageRating) = reviewStats.GetValueOrDefault(c.Id, (0, 0.0));
+                var bayesianRating = PackageRankingCalculator.CalculateBayesianRating(reviewCount, averageRating, globalAverageRating);
+                return new
+                {
+                    c,
+                    Score = PackageRankingCalculator.CalculateScore(
+                        new ListingQualitySignals(
+                            ActiveInstalls30d: installs,
+                            BayesianRating: bayesianRating,
+                            LatestVersionPublishedAt: c.Latest?.PublishedAt,
+                            MeasuredAverageTickMs: c.Latest?.MeasuredAverageTickMs,
+                            LatestVersionSizeBytes: c.Latest?.SizeBytes,
+                            ReadmeLength: c.ReadmeLength,
+                            SupportResponsivenessHours: null),
+                        now),
+                };
             })
             .OrderByDescending(x => x.Score)
             .Take(pageSize)

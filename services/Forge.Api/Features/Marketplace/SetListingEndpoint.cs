@@ -1,5 +1,4 @@
 using Forge.Api.Authorization;
-using Forge.Api.RateLimiting;
 using Forge.Domain.Entities;
 using Forge.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -22,29 +21,26 @@ namespace Forge.Api.Features.Marketplace;
 /// belongs to someone else 404s rather than 403s, the same
 /// cross-tenant-masking posture every other endpoint in this codebase
 /// already uses (docs/SPEC.md Section 4.5).
+///
+/// Does not register its own route. Scoped package names contain their
+/// own "/" (e.g. <c>@acme/farming</c>), so a plain <c>{name}</c> route
+/// parameter can't carry one — every PUT under <c>/api/v1/packages/</c>
+/// needs the same catch-all-and-manually-split shape
+/// <see cref="Publishing.PublishVersionEndpoint"/> and
+/// <see cref="Registry.PackageDetailAndVersionsEndpoint"/> already use for
+/// exactly this reason, and ASP.NET Core rejects two <c>MapPut</c> calls
+/// on the identical route template as an ambiguous match at request time
+/// (caught by a real CI run: every PUT under this path started 500ing the
+/// moment F1's <see cref="Registry.ReviewsEndpoint"/> tried to register
+/// its own <c>PUT .../reviews</c> on the same template). So
+/// <see cref="Registry.ReviewsEndpoint"/> owns the one PUT route for this
+/// whole path prefix and dispatches to <see cref="Handle"/> here for the
+/// <c>listing</c> trailing segment, the same way it dispatches to its own
+/// review-upsert logic for the <c>reviews</c> segment.
 /// </summary>
 public static class SetListingEndpoint
 {
-    public static IEndpointRouteBuilder MapSetListing(this IEndpointRouteBuilder app)
-    {
-        // Scoped package names contain their own "/" (e.g. @acme/farming),
-        // so a plain {name} route parameter can't carry one — same
-        // catch-all-and-manually-split shape PublishVersionEndpoint and
-        // PackageDetailAndVersionsEndpoint already use for exactly this
-        // reason. Caught by a real CI run: a scoped-named package's PUT
-        // request came back 405 MethodNotAllowed, not 200/400, because
-        // {name} only ever captured the segment up to the first "/".
-        app.MapPut("/api/v1/packages/{*path}", Handle)
-            .RequireAuthorization(ForgeAuthorizationExtensions.BearerPolicy)
-            .WithRateLimit("marketplace", RateLimitKeyStrategy.User, RateLimitPolicies.Api)
-            .WithName("SetListing")
-            .Produces<ListingResponse>()
-            .ProducesValidationProblem()
-            .ProducesProblem(StatusCodes.Status404NotFound);
-        return app;
-    }
-
-    private static async Task<IResult> Handle(
+    internal static async Task<IResult> Handle(
         string path,
         SetListingRequest req,
         ForgeDbContext db,

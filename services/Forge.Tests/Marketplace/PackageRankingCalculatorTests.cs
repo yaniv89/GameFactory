@@ -105,6 +105,75 @@ public sealed class PackageRankingCalculatorTests
     }
 
     [Fact]
+    public void A_Package_With_More_Active_Installs_Always_Outranks_An_Otherwise_Identical_One_With_Fewer()
+    {
+        var popular = AllNull(readmeLength: 500) with { ActiveInstalls30d = 80 };
+        var niche = AllNull(readmeLength: 500) with { ActiveInstalls30d = 2 };
+
+        Assert.True(
+            PackageRankingCalculator.CalculateScore(popular, Now) > PackageRankingCalculator.CalculateScore(niche, Now));
+    }
+
+    [Fact]
+    public void Active_Installs_Score_Is_Log_Compressed_Not_Linear()
+    {
+        // Going from 1 to 10 installs (a 10x jump near the bottom of the
+        // log curve) should move the score by far more than going from 91
+        // to 100 (a similar absolute jump, but the same 10x factor applied
+        // near the top of the curve where log-compression has already
+        // flattened it out) — proof this signal rejects raw incumbency,
+        // per this calculator's own doc comment.
+        var low = AllNull(readmeLength: 0) with { ActiveInstalls30d = 1 };
+        var lowPlus = AllNull(readmeLength: 0) with { ActiveInstalls30d = 10 };
+        var high = AllNull(readmeLength: 0) with { ActiveInstalls30d = 91 };
+        var highPlus = AllNull(readmeLength: 0) with { ActiveInstalls30d = 100 };
+
+        var lowDelta = PackageRankingCalculator.CalculateScore(lowPlus, Now) - PackageRankingCalculator.CalculateScore(low, Now);
+        var highDelta = PackageRankingCalculator.CalculateScore(highPlus, Now) - PackageRankingCalculator.CalculateScore(high, Now);
+
+        Assert.True(lowDelta > highDelta);
+    }
+
+    [Fact]
+    public void A_Higher_Rated_Package_Always_Outranks_An_Otherwise_Identical_Lower_Rated_One()
+    {
+        var loved = AllNull(readmeLength: 500) with { BayesianRating = 4.8 };
+        var disliked = AllNull(readmeLength: 500) with { BayesianRating = 2.0 };
+
+        Assert.True(
+            PackageRankingCalculator.CalculateScore(loved, Now) > PackageRankingCalculator.CalculateScore(disliked, Now));
+    }
+
+    [Fact]
+    public void CalculateBayesianRating_With_Zero_Reviews_Collapses_To_The_Global_Average()
+    {
+        var result = PackageRankingCalculator.CalculateBayesianRating(reviewCount: 0, averageRating: 5.0, globalAverageRating: 3.7);
+
+        Assert.Equal(3.7, result, precision: 6);
+    }
+
+    [Fact]
+    public void CalculateBayesianRating_With_Few_Reviews_Shrinks_Measurably_Toward_The_Global_Average()
+    {
+        // One perfect 5-star review shouldn't outrank a package with two
+        // hundred reviews averaging 4.8 — the exact scenario this
+        // calculator's own doc comment names as the reason this method
+        // exists.
+        var oneReview = PackageRankingCalculator.CalculateBayesianRating(reviewCount: 1, averageRating: 5.0, globalAverageRating: 3.7);
+        var twoHundredReviews = PackageRankingCalculator.CalculateBayesianRating(reviewCount: 200, averageRating: 4.8, globalAverageRating: 3.7);
+
+        Assert.True(twoHundredReviews > oneReview);
+    }
+
+    [Fact]
+    public void CalculateBayesianRating_With_Many_Reviews_Converges_On_Its_Own_Real_Average()
+    {
+        var result = PackageRankingCalculator.CalculateBayesianRating(reviewCount: 5000, averageRating: 4.9, globalAverageRating: 3.0);
+
+        Assert.InRange(result, 4.85, 4.9);
+    }
+
+    [Fact]
     public void EffectiveWeights_Reports_Zero_For_Every_Signal_With_No_Data_Source_And_Renormalizes_The_Rest()
     {
         var signals = AllNull(readmeLength: 500) with

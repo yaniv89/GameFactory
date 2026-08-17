@@ -49,15 +49,26 @@ public static class PackageDetailAndVersionsEndpoint
         var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
 
         // A scoped name is exactly ["@scope", "name-part"]; an unscoped
-        // one is exactly ["name-part"]. "versions", if present, is the
-        // segment immediately after the name ends.
+        // one is exactly ["name-part"]. "versions"/"reviews" (F1), if
+        // present, is the segment immediately after the name ends — a
+        // real name never contains both, so whichever index is >= 0 (at
+        // most one is) is the real split point.
         var versionsIndex = Array.IndexOf(segments, "versions");
-        var nameSegmentCount = versionsIndex < 0 ? segments.Length : versionsIndex;
+        var reviewsIndex = Array.IndexOf(segments, "reviews");
+        var specialIndex = versionsIndex >= 0 ? versionsIndex : reviewsIndex;
+        var nameSegmentCount = specialIndex < 0 ? segments.Length : specialIndex;
         if (nameSegmentCount is not (1 or 2))
         {
             return TypedResults.NotFound();
         }
         var name = string.Join('/', segments[..nameSegmentCount]);
+
+        if (reviewsIndex >= 0)
+        {
+            var reviewsTrailing = segments[(reviewsIndex + 1)..];
+            // No per-review-id lookup in v1 — only the list.
+            return reviewsTrailing.Length == 0 ? await ListReviewsAsync(name, cursor, limit, db, ct) : TypedResults.NotFound();
+        }
 
         if (versionsIndex < 0)
         {
@@ -79,10 +90,44 @@ public static class PackageDetailAndVersionsEndpoint
             .Where(p => p.Name == name)
             .Select(p => new PackageDetailResponse(
                 p.Id, p.Name, p.Kind, p.AuthorUserId, p.DisplayName, p.Summary,
-                p.ReadmeMarkdown, p.HomepageUrl, p.LicenseSpdx, p.IsDeprecated, p.CreatedAt))
+                p.ReadmeMarkdown, p.HomepageUrl, p.LicenseSpdx, p.IsDeprecated, p.CreatedAt,
+                p.Reviews.Count == 0 ? null : p.Reviews.Average(r => (double?)r.Rating),
+                p.Reviews.Count))
             .SingleOrDefaultAsync(ct);
 
         return package is null ? TypedResults.NotFound() : TypedResults.Ok(package);
+    }
+
+    /// <summary>docs/SPEC.md Section 16.2 (F1): <c>GET /api/v1/packages/{name}/reviews</c>, newest first — anonymous, the same public-storefront posture as every other read in this class. <see cref="ReviewListResponse.AverageRating"/>/<see cref="ReviewListResponse.ReviewCount"/> are the raw (non-Bayesian-shrunk) numbers — <see cref="Marketplace.PackageRankingCalculator.CalculateBayesianRating"/> is what <c>ListPackagesEndpoint</c> uses for ranking, deliberately not what a person reads on a package's own page, where the honest raw average is the more meaningful number to show.</summary>
+    private static async Task<IResult> ListReviewsAsync(string name, string? cursor, int? limit, ForgeDbContext db, CancellationToken ct)
+    {
+        var packageId = await db.Packages.Where(p => p.Name == name).Select(p => (Guid?)p.Id).SingleOrDefaultAsync(ct);
+        if (packageId is null) return TypedResults.NotFound();
+
+        var pageSize = Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit);
+
+        var query = db.Reviews.Where(r => r.PackageId == packageId);
+        if (cursor is not null && Guid.TryParse(cursor, out var afterId))
+        {
+            var afterCreatedAt = await db.Reviews.Where(r => r.Id == afterId).Select(r => (DateTimeOffset?)r.CreatedAt).SingleOrDefaultAsync(ct);
+            if (afterCreatedAt is { } after) query = query.Where(r => r.CreatedAt < after);
+        }
+
+        var page = await query
+            .OrderByDescending(r => r.CreatedAt)
+            .Take(pageSize + 1)
+            .Select(r => new ReviewResponse(r.Id, r.UserId, r.Rating, r.Body, r.CreatedAt, r.UpdatedAt))
+            .ToListAsync(ct);
+
+        var hasMore = page.Count > pageSize;
+        var reviews = hasMore ? page[..pageSize] : page;
+        var nextCursor = hasMore ? reviews[^1].Id.ToString() : null;
+
+        var allForPackage = db.Reviews.Where(r => r.PackageId == packageId);
+        var reviewCount = await allForPackage.CountAsync(ct);
+        double? averageRating = reviewCount == 0 ? null : await allForPackage.AverageAsync(r => (double)r.Rating, ct);
+
+        return TypedResults.Ok(new ReviewListResponse(reviews, nextCursor, averageRating, reviewCount));
     }
 
     private static async Task<IResult> ListVersionsAsync(string name, string? cursor, int? limit, ForgeDbContext db, CancellationToken ct)

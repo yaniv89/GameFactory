@@ -245,4 +245,58 @@ public sealed class RegistryEndpointsTests : IClassFixture<ForgeWebApplicationFa
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
+
+    /// <summary>F1: proves ActiveInstalls30d/BayesianRating are wired from real <see cref="License"/>/<see cref="Review"/> rows, not the null placeholders M7 Phase 6 shipped with.</summary>
+    [Fact]
+    public async Task Ranked_Sort_Rewards_Real_Installs_And_Ratings_Over_An_Otherwise_Identical_Package()
+    {
+        var (installedId, _) = await SeedPackageAsync(
+            "@acme/ranked-installed-rated", displayName: "Installed And Rated", readmeMarkdown: new string('a', 1500));
+        await SeedVersionAsync(installedId, "1.0.0", sizeBytes: 1024, measuredAverageTickMs: 0.1, publishedAt: DateTimeOffset.UtcNow);
+
+        var (bareId, _) = await SeedPackageAsync(
+            "@acme/ranked-bare", displayName: "Bare", readmeMarkdown: new string('a', 1500));
+        await SeedVersionAsync(bareId, "1.0.0", sizeBytes: 1024, measuredAverageTickMs: 0.1, publishedAt: DateTimeOffset.UtcNow);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ForgeDbContext>();
+            for (var i = 0; i < 5; i++)
+            {
+                var workspace = new Workspace { Slug = $"ws-install-{Guid.NewGuid():N}", Name = "Installer Workspace", CreatedAt = DateTimeOffset.UtcNow };
+                db.Workspaces.Add(workspace);
+                await db.SaveChangesAsync();
+                db.Licenses.Add(new License
+                {
+                    PackageId = installedId,
+                    WorkspaceId = workspace.Id,
+                    GrantedVia = LicenseGrantedVia.Purchase,
+                    GrantedAt = DateTimeOffset.UtcNow,
+                });
+
+                var reviewer = new User
+                {
+                    IdentitySubjectId = Guid.NewGuid().ToString(),
+                    Email = $"reviewer-{Guid.NewGuid():N}@example.com",
+                    DisplayName = "Reviewer",
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    UpdatedAt = DateTimeOffset.UtcNow,
+                };
+                db.DomainUsers.Add(reviewer);
+                await db.SaveChangesAsync();
+                db.Reviews.Add(new Review { PackageId = installedId, UserId = reviewer.Id, Rating = 5, CreatedAt = DateTimeOffset.UtcNow });
+            }
+            await db.SaveChangesAsync();
+        }
+
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync("/api/v1/packages?sort=ranked");
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<PackageListResponse>();
+
+        var installedIndex = body!.Packages.ToList().FindIndex(p => p.Name == "@acme/ranked-installed-rated");
+        var bareIndex = body.Packages.ToList().FindIndex(p => p.Name == "@acme/ranked-bare");
+        Assert.True(installedIndex >= 0 && bareIndex >= 0, "Both seeded packages should appear in the ranked list.");
+        Assert.True(installedIndex < bareIndex, "Real installs and a real 5-star rating should outrank an otherwise-identical package with neither.");
+    }
 }

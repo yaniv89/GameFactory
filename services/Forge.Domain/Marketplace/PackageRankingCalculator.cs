@@ -5,29 +5,35 @@ namespace Forge.Domain.Marketplace;
 /// is not by download count alone, which rewards incumbency and
 /// encourages gaming."
 ///
-/// Of the seven signals the SPEC weights, three
+/// Of the seven signals the SPEC weights, F1 gave two
 /// (<see cref="ListingQualitySignals.ActiveInstalls30d"/>,
-/// <see cref="ListingQualitySignals.BayesianRating"/>,
-/// <see cref="ListingQualitySignals.SupportResponsivenessHours"/>) have
-/// no data source anywhere in this platform — no install-event tracking,
-/// no ratings/reviews subsystem, no issue tracker. Rather than fabricate
-/// a number for a signal that has never been measured for any package
-/// (which would either unfairly floor every package's score by the same
-/// 55% of total weight, achieving nothing but noise, or fake a neutral
-/// "nobody's rated it yet" default that pretends the rating feature
-/// exists), this calculator excludes an absent signal from the weighted
-/// average entirely and renormalizes the remaining weights to sum to 1 —
-/// the same "don't guess and present it as fact" posture CLAUDE.md
-/// Section 0 states directly, applied to a ranking formula instead of a
-/// Stripe API surface. The moment a real value exists for any of those
-/// three, passing it through <see cref="ListingQualitySignals"/> makes it
-/// participate automatically — no change needed here.
+/// <see cref="ListingQualitySignals.BayesianRating"/>) a real data source
+/// for the first time — <see cref="Entities.License"/> and
+/// <see cref="Entities.Review"/> respectively. One
+/// (<see cref="ListingQualitySignals.SupportResponsivenessHours"/>) still
+/// has none — no issue tracker exists in this platform, and building one
+/// was never F1's scope. Rather than fabricate a number for that signal
+/// (which would either unfairly floor every package's score by its own
+/// share of total weight, achieving nothing but noise, or fake a neutral
+/// default that pretends the feature exists), this calculator excludes
+/// an absent signal from the weighted average entirely and renormalizes
+/// the remaining weights to sum to 1 — the same "don't guess and present
+/// it as fact" posture CLAUDE.md Section 0 states directly, applied to a
+/// ranking formula instead of a Stripe API surface. The moment a real
+/// value exists for support responsiveness too, passing it through
+/// <see cref="ListingQualitySignals"/> makes it participate automatically
+/// — no change needed here.
 ///
-/// Today, that leaves four real signals actually driving the score:
+/// Six real signals now drive the score: active installs (installs are
+/// deliberately log-compressed, see <see cref="ActiveInstallsScore"/>,
+/// for the same "don't reward sheer incumbency" reason raw download
+/// counts are rejected above), a Bayesian-shrunk rating (see
+/// <see cref="BayesianRatingScore"/> for why a naive average would let
+/// one 5-star review outrank a package with two hundred averaging 4.8),
 /// documentation completeness, bundle size cost, maintenance recency,
-/// and the measured performance budget — SPEC's own text calls the
-/// last of these "novel and valuable... ship it from day one" (Section
-/// 16.2), and it's genuinely new: no comparable marketplace publishes a
+/// and the measured performance budget — SPEC's own text calls the last
+/// of these "novel and valuable... ship it from day one" (Section 16.2),
+/// and it's genuinely new: no comparable marketplace publishes a
 /// module's measured frame cost.
 /// </summary>
 public static class PackageRankingCalculator
@@ -39,6 +45,31 @@ public static class PackageRankingCalculator
     private const double BundleSizeCostWeight = 0.10;
     private const double SupportResponsivenessWeight = 0.10;
     private const double DocumentationCompletenessWeight = 0.05;
+
+    /// <summary>
+    /// The install count that earns full marks — deliberately not tied to
+    /// any real observed distribution (there is no real traffic on this
+    /// platform yet to calibrate against), so this is a stated, arbitrary
+    /// ceiling in the same spirit as <see cref="FullCreditReadmeLength"/>,
+    /// not a claim about what "popular" actually means. Log-scaled, not
+    /// linear: SPEC 16.2 itself is explicit that ranking must not reward
+    /// incumbency, and a raw linear count would let the single most-
+    /// installed package dominate this signal for everyone else the same
+    /// way raw download count would.
+    /// </summary>
+    private const int FullCreditInstalls30d = 100;
+
+    /// <summary>
+    /// The Bayesian shrinkage prior's weight, in "equivalent reviews" —
+    /// standard IMDb-style formula (v/(v+m))*R + (m/(v+m))*C. A package
+    /// with fewer than this many reviews gets pulled measurably toward
+    /// the platform-wide average rather than trusting its own small
+    /// sample; one with many more reviews than this converges on its own
+    /// real average. 5 is a stated, defensible floor for "enough reviews
+    /// to mean something," the same category of arbitrary-but-argued
+    /// constant as <see cref="FullCreditInstalls30d"/>/<see cref="FullCreditReadmeLength"/>.
+    /// </summary>
+    private const double BayesianShrinkageReviews = 5.0;
 
     /// <summary>A version published within this window scores full marks for maintenance recency.</summary>
     private static readonly TimeSpan RecencyFullScoreWindow = TimeSpan.FromDays(90);
@@ -68,8 +99,17 @@ public static class PackageRankingCalculator
         double weightedSum = 0;
         double weightTotal = 0;
 
-        // ActiveInstalls30d and BayesianRating: no data source yet — see
-        // this class's own doc comment. Deliberately never contribute.
+        if (signals.ActiveInstalls30d is { } installs30d)
+        {
+            weightedSum += ActiveInstallsWeight * ActiveInstallsScore(installs30d);
+            weightTotal += ActiveInstallsWeight;
+        }
+
+        if (signals.BayesianRating is { } bayesianRating)
+        {
+            weightedSum += RatingWeight * BayesianRatingScore(bayesianRating);
+            weightTotal += RatingWeight;
+        }
 
         if (signals.LatestVersionPublishedAt is { } publishedAt)
         {
@@ -97,6 +137,39 @@ public static class PackageRankingCalculator
 
         return weightTotal > 0 ? weightedSum / weightTotal : 0.0;
     }
+
+    /// <summary>
+    /// The standard Bayesian/IMDb-style shrinkage estimate:
+    /// <c>(v/(v+m))*R + (m/(v+m))*C</c>, where <paramref name="reviewCount"/>
+    /// is v, <paramref name="averageRating"/> (this package's own mean) is
+    /// R, <see cref="BayesianShrinkageReviews"/> is m, and
+    /// <paramref name="globalAverageRating"/> (the platform-wide mean
+    /// across every reviewed package) is C. A package with <c>v = 0</c>
+    /// collapses to exactly C — fully trusting the platform prior, which
+    /// is the honest behavior for "no opinion of its own yet," not an
+    /// edge case to special-case around. Lives here, in Domain, rather
+    /// than inline in the endpoint that calls it, so it's unit-testable
+    /// without EF Core and shares this class's own "arbitrary constant,
+    /// stated and argued" discipline for <see cref="BayesianShrinkageReviews"/>.
+    /// The result is a real 1-5 number — <see cref="ListingQualitySignals.BayesianRating"/>'s
+    /// own doc comment — ready to hand back into <see cref="CalculateScore"/>
+    /// via a fresh <see cref="ListingQualitySignals"/>, not something
+    /// <see cref="CalculateScore"/> derives itself.
+    /// </summary>
+    public static double CalculateBayesianRating(int reviewCount, double averageRating, double globalAverageRating)
+    {
+        if (reviewCount <= 0) return globalAverageRating;
+        double v = reviewCount;
+        var shrunk = (v / (v + BayesianShrinkageReviews) * averageRating) + (BayesianShrinkageReviews / (v + BayesianShrinkageReviews) * globalAverageRating);
+        return Math.Clamp(shrunk, 1.0, 5.0);
+    }
+
+    private static double ActiveInstallsScore(int installs) =>
+        Math.Clamp(Math.Log(1 + Math.Max(0, installs)) / Math.Log(1 + FullCreditInstalls30d), 0.0, 1.0);
+
+    /// <summary>Maps an already-shrunk (<see cref="CalculateBayesianRating"/>) 1-5 rating onto this calculator's 0..1 scale.</summary>
+    private static double BayesianRatingScore(double bayesianRating) =>
+        Math.Clamp((bayesianRating - 1.0) / 4.0, 0.0, 1.0);
 
     private static double MaintenanceRecencyScore(DateTimeOffset publishedAt, DateTimeOffset now)
     {

@@ -17,6 +17,7 @@ public sealed record PackageListResponse(
     IReadOnlyList<PackageSummaryResponse> Packages,
     string? NextCursor);
 
+/// <param name="AverageRating">The raw (non-Bayesian-shrunk) average of this package's own reviews (F1) — null when it has none. The ranking algorithm uses the shrunk estimate instead (<see cref="Forge.Domain.Marketplace.PackageRankingCalculator.CalculateBayesianRating"/>); this is the honest number to show a person looking at the package's own page.</param>
 public sealed record PackageDetailResponse(
     Guid Id,
     string Name,
@@ -28,7 +29,9 @@ public sealed record PackageDetailResponse(
     string? HomepageUrl,
     string LicenseSpdx,
     bool IsDeprecated,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    double? AverageRating,
+    int ReviewCount);
 
 public sealed record PackageVersionSummaryResponse(
     Guid Id,

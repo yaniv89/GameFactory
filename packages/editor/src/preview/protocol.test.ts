@@ -4,8 +4,8 @@ import type { EntityPlacement } from "../store/projectStore";
 import { isPreviewSceneMessage, isPreviewToEditorMessage } from "./protocol";
 
 const VALID_TILES = new Array(GRID_WIDTH * GRID_HEIGHT).fill(0);
-const NPC: EntityPlacement = { id: "e1", kind: "npc", tileX: 3, tileY: 4, dialogue: { speaker: "NPC", text: "Hi" } };
-const PLAYER_START: EntityPlacement = { id: "e2", kind: "player-start", tileX: 1, tileY: 1 };
+const NPC: EntityPlacement = { id: "e1", prefabId: "npc", tileX: 3, tileY: 4, dialogue: { speaker: "NPC", text: "Hi" } };
+const PLAYER_START: EntityPlacement = { id: "e2", prefabId: "player-start", tileX: 1, tileY: 1 };
 
 describe("isPreviewSceneMessage", () => {
   it("accepts a well-formed scene message with entities", () => {
@@ -42,8 +42,8 @@ describe("isPreviewSceneMessage", () => {
     expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES })).toBe(false);
   });
 
-  it("rejects an entity with an invalid kind", () => {
-    const bad = { ...NPC, kind: "dragon" };
+  it("rejects an entity with an unregistered prefabId", () => {
+    const bad = { ...NPC, prefabId: "dragon" };
     expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [bad] })).toBe(false);
   });
 

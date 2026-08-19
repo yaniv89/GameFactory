@@ -146,7 +146,7 @@ export async function bootGameLogic(options: GameLogicOptions): Promise<GameLogi
   function applySceneEntities(scene: PlayerScene): void {
     for (const placement of scene.entities) {
       const { x, y } = tileCenterWorld(placement.tileX, placement.tileY);
-      if (placement.kind === "player-start") {
+      if (placement.prefabId === "player-start") {
         // The player is the same entity across every scene, not
         // respawned — this placement just says where they land in this
         // one. Only spawned fresh the first time any scene declares one.

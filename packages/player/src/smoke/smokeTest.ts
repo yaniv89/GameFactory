@@ -69,10 +69,10 @@ function buildFixtureProjectData(guestBundleSource: string): PlayerProjectData {
         name: "Test Scene",
         tiles: scene1Tiles,
         entities: [
-          { id: "player", kind: "player-start", tileX: SCENE_1_PLAYER_START.x, tileY: SCENE_1_PLAYER_START.y },
+          { id: "player", prefabId: "player-start", tileX: SCENE_1_PLAYER_START.x, tileY: SCENE_1_PLAYER_START.y },
           {
             id: "npc-1",
-            kind: "npc",
+            prefabId: "npc",
             tileX: SCENE_1_PLAYER_START.x,
             // 4 tiles south = 128 world units — outside gameWorld.ts's
             // INTERACT_RANGE (40) at boot, so "walking into range" is a
@@ -88,10 +88,10 @@ function buildFixtureProjectData(guestBundleSource: string): PlayerProjectData {
         name: "Second Scene",
         tiles: scene2Tiles,
         entities: [
-          { id: "player-2", kind: "player-start", tileX: SCENE_2_PLAYER_START.x, tileY: SCENE_2_PLAYER_START.y },
+          { id: "player-2", prefabId: "player-start", tileX: SCENE_2_PLAYER_START.x, tileY: SCENE_2_PLAYER_START.y },
           {
             id: "npc-2",
-            kind: "npc",
+            prefabId: "npc",
             tileX: SCENE_2_PLAYER_START.x,
             tileY: SCENE_2_PLAYER_START.y + 4,
             dialogue: { speaker: "Merchant", text: "Welcome!" },

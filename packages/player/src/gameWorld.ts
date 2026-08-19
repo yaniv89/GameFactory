@@ -1,33 +1,44 @@
-import { TransformSchema, VelocitySchema, type EntityId, type SystemDefinition, type World } from "@forge/core";
+import {
+  NPC_PREFAB,
+  PLAYER_START_PREFAB,
+  TransformSchema,
+  VelocitySchema,
+  spawnFromPrefab,
+  type EntityId,
+  type SystemDefinition,
+  type World,
+} from "@forge/core";
 
 /**
  * The same procedural-marker approach `packages/editor/src/canvas/entityMarkers.ts`
- * and its preview counterpart use — not a real asset pipeline (M6's Art
- * Pack system covers tiles, not character sprites yet; a stated gap, see
- * PackSwapDialog.tsx's own doc comment on this).
+ * and its preview counterpart use — not a real asset pipeline yet (L1–L5,
+ * tasks #134–#138, land the Art Pack manifest categories and ingestion
+ * pipeline this eventually resolves through instead). Keyed by
+ * `Prefab.spriteAssetKey`, not the old numeric-constant-per-kind scheme —
+ * this is the resolution table `spawnFromPrefab`'s `resolveSpriteAssetId`
+ * callback reads.
  */
 export const PLAYER_ASSET_ID = 1;
 export const NPC_ASSET_ID = 2;
 
-export const MOVE_SPEED = 140; // world units/sec
+const SPRITE_ASSET_IDS: Readonly<Record<string, number>> = {
+  player: PLAYER_ASSET_ID,
+  npc: NPC_ASSET_ID,
+};
+
+function resolveSpriteAssetId(spriteAssetKey: string): number {
+  return SPRITE_ASSET_IDS[spriteAssetKey] ?? -1;
+}
+
 /** How close the player must interact-press to trigger an NPC's dialogue. */
 export const INTERACT_RANGE = 40;
 
 export function spawnPlayer(world: World, worldX: number, worldY: number): EntityId {
-  return world.create({
-    Transform: { x: worldX, y: worldY, z: 0, rotation: 0, scaleX: 1, scaleY: 1 },
-    Velocity: { vx: 0, vy: 0, maxSpeed: MOVE_SPEED, friction: 0 },
-    Collider: { shape: 1, width: 0, height: 0, offsetX: 0, offsetY: 0, isTrigger: 0, layer: 0 },
-    PlayerControlled: { inputMapId: 0 },
-    Sprite: { assetId: PLAYER_ASSET_ID, frame: 0, anchorX: 0.5, anchorY: 0.5, tint: 0xffffff, opacity: 1 },
-  });
+  return spawnFromPrefab(world, PLAYER_START_PREFAB, worldX, worldY, resolveSpriteAssetId);
 }
 
 export function spawnNpcMarker(world: World, worldX: number, worldY: number): EntityId {
-  return world.create({
-    Transform: { x: worldX, y: worldY, z: 0, rotation: 0, scaleX: 1, scaleY: 1 },
-    Sprite: { assetId: NPC_ASSET_ID, frame: 0, anchorX: 0.5, anchorY: 0.5, tint: 0xffffff, opacity: 1 },
-  });
+  return spawnFromPrefab(world, NPC_PREFAB, worldX, worldY, resolveSpriteAssetId);
 }
 
 /** Currently-held movement keys, WASD and arrows both accepted. */

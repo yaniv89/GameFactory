@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import { EntityInspector } from "./EntityInspector";
 import type { EntityPlacement } from "../store/projectStore";
 
-const NPC: EntityPlacement = { id: "e1", kind: "npc", tileX: 3, tileY: 4 };
-const PLAYER_START: EntityPlacement = { id: "e2", kind: "player-start", tileX: 1, tileY: 1 };
+const NPC: EntityPlacement = { id: "e1", prefabId: "npc", tileX: 3, tileY: 4 };
+const PLAYER_START: EntityPlacement = { id: "e2", prefabId: "player-start", tileX: 1, tileY: 1 };
 
 describe("EntityInspector", () => {
   it("shows a dialogue form for an npc", () => {

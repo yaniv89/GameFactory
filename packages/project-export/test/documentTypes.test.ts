@@ -78,4 +78,80 @@ describe("migrateDocument", () => {
     expect(migrated.packOverrides).toEqual({});
     expect(migrated.packTerrainRemap).toEqual({});
   });
+
+  // docs/adr/0015-entity-prefab-component-model.md: a document persisted
+  // before EntityPlacement.prefabId existed carried kind: "player-start" |
+  // "npc" instead. The migration is a pure field rename — kind's value and
+  // prefabId's value are the same strings by design — so these assert the
+  // exact resulting object, not just that migration "did something".
+  it("renames a legacy player-start entity's kind to prefabId", () => {
+    const migrated = migrateDocument({
+      scenes: [
+        {
+          id: "s1",
+          name: "Scene 1",
+          entities: [{ id: "e1", kind: "player-start", tileX: 3, tileY: 4 } as never],
+        } as never,
+      ],
+      installedModules: {},
+    });
+
+    expect(migrated.scenes[0]!.entities).toEqual([{ id: "e1", prefabId: "player-start", tileX: 3, tileY: 4 }]);
+  });
+
+  it("renames a legacy npc entity's kind to prefabId, preserving dialogue", () => {
+    const migrated = migrateDocument({
+      scenes: [
+        {
+          id: "s1",
+          name: "Scene 1",
+          entities: [
+            { id: "e2", kind: "npc", tileX: 5, tileY: 5, dialogue: { speaker: "Elder", text: "Welcome." } } as never,
+          ],
+        } as never,
+      ],
+      installedModules: {},
+    });
+
+    expect(migrated.scenes[0]!.entities).toEqual([
+      { id: "e2", prefabId: "npc", tileX: 5, tileY: 5, dialogue: { speaker: "Elder", text: "Welcome." } },
+    ]);
+  });
+
+  it("passes a current-shape entity (prefabId already present) through unchanged", () => {
+    const migrated = migrateDocument({
+      scenes: [
+        {
+          id: "s1",
+          name: "Scene 1",
+          tiles: emptyTiles(),
+          entities: [{ id: "e3", prefabId: "player-start", tileX: 1, tileY: 1 }],
+        },
+      ],
+      installedModules: {},
+    });
+
+    expect(migrated.scenes[0]!.entities).toEqual([{ id: "e3", prefabId: "player-start", tileX: 1, tileY: 1 }]);
+  });
+
+  it("migrates a mix of legacy and current-shape entities in the same scene independently", () => {
+    const migrated = migrateDocument({
+      scenes: [
+        {
+          id: "s1",
+          name: "Scene 1",
+          entities: [
+            { id: "legacy", kind: "npc", tileX: 2, tileY: 2 } as never,
+            { id: "current", prefabId: "player-start", tileX: 0, tileY: 0 },
+          ],
+        } as never,
+      ],
+      installedModules: {},
+    });
+
+    expect(migrated.scenes[0]!.entities).toEqual([
+      { id: "legacy", prefabId: "npc", tileX: 2, tileY: 2 },
+      { id: "current", prefabId: "player-start", tileX: 0, tileY: 0 },
+    ]);
+  });
 });

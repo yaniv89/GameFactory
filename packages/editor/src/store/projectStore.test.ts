@@ -356,7 +356,7 @@ describe("useProjectStore", () => {
 
     useProjectStore.getState().placePlayerStart(sceneId, 3, 4);
     let scene = useProjectStore.getState().document.scenes[0]!;
-    expect(scene.entities).toEqual([{ id: expect.any(String), kind: "player-start", tileX: 3, tileY: 4 }]);
+    expect(scene.entities).toEqual([{ id: expect.any(String), prefabId: "player-start", tileX: 3, tileY: 4 }]);
 
     useProjectStore.getState().undo();
     scene = useProjectStore.getState().document.scenes[0]!;
@@ -387,7 +387,7 @@ describe("useProjectStore", () => {
     const state = useProjectStore.getState();
     const scene = state.document.scenes[0]!;
     expect(scene.entities).toHaveLength(1);
-    expect(scene.entities[0]).toMatchObject({ kind: "npc", tileX: 5, tileY: 5 });
+    expect(scene.entities[0]).toMatchObject({ prefabId: "npc", tileX: 5, tileY: 5 });
     expect(state.selection).toEqual({ kind: "entity", sceneId, entityId: scene.entities[0]!.id });
 
     useProjectStore.getState().undo();
@@ -415,7 +415,7 @@ describe("useProjectStore", () => {
     useProjectStore.getState().undo();
     const restored = useProjectStore.getState().document.scenes[0]!.entities;
     expect(restored).toHaveLength(1);
-    expect(restored[0]).toMatchObject({ id: entityId, kind: "npc", tileX: 5, tileY: 5 });
+    expect(restored[0]).toMatchObject({ id: entityId, prefabId: "npc", tileX: 5, tileY: 5 });
   });
 
   it("removeEntity for a non-existent entity is a no-op", () => {

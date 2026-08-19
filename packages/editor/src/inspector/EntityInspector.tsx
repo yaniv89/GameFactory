@@ -23,7 +23,7 @@ export interface EntityInspectorProps {
 export function EntityInspector({ entity, onConfigureDialogue, onRemove }: EntityInspectorProps) {
   return (
     <div className="fg-entity-inspector">
-      {entity.kind === "npc" && (
+      {entity.prefabId === "npc" && (
         <JsonSchemaForm
           schema={NPC_DIALOGUE_SCHEMA}
           values={{ speaker: entity.dialogue?.speaker ?? "", text: entity.dialogue?.text ?? "" }}
@@ -32,7 +32,7 @@ export function EntityInspector({ entity, onConfigureDialogue, onRemove }: Entit
           }
         />
       )}
-      {entity.kind === "player-start" && (
+      {entity.prefabId === "player-start" && (
         <p className="fg-entity-inspector__hint">The player spawns here when you open the preview.</p>
       )}
       <Button variant="destructive" onClick={() => onRemove(entity.id)}>

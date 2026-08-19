@@ -1,4 +1,5 @@
 import { Button, Dialog } from "@forge/ds";
+import { getPrefab } from "@forge/core";
 import { useEffect, useState } from "react";
 import { EntityInspector } from "../inspector/EntityInspector";
 import { defaultsFromSchema } from "../inspector/jsonSchema";
@@ -152,7 +153,7 @@ export function InspectorPanelContainer() {
     const scene = scenes.find((candidate) => candidate.id === selection.sceneId);
     const entity = scene?.entities.find((candidate) => candidate.id === selection.entityId);
     if (entity) {
-      const label = entity.kind === "npc" ? "NPC" : "Player start";
+      const label = getPrefab(entity.prefabId)?.label ?? entity.prefabId;
       return (
         <InspectorPanel state="populated" selectionLabel={label}>
           <EntityInspector

@@ -31,9 +31,14 @@ export interface DialogueTree {
  * carrying its own independent copy of the same logic.
  */
 export function buildDialogueTreesFromEntities(entities: readonly EntityPlacement[]): readonly DialogueTree[] {
+  // Any prefab with dialogue set becomes a tree — not gated on a specific
+  // prefabId. Dropping the old `kind === "npc"` check is strictly more
+  // correct: it no longer arbitrarily excludes a future non-"npc" prefab
+  // (docs/adr/0015-entity-prefab-component-model.md, the moduleAdapters.ts
+  // row of its call-site table) that happens to carry dialogue too.
   return entities
     .filter((entity): entity is EntityPlacement & { dialogue: NonNullable<EntityPlacement["dialogue"]> } =>
-      entity.kind === "npc" && entity.dialogue !== undefined,
+      entity.dialogue !== undefined,
     )
     .map((entity) => ({ id: entity.id, nodes: [{ speaker: entity.dialogue.speaker, text: entity.dialogue.text }] }));
 }

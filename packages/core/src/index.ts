@@ -6,6 +6,7 @@ export * from "./ecs/query";
 export * from "./ecs/commandBuffer";
 export * from "./ecs/world";
 export * from "./components/core";
+export * from "./prefabs/prefab";
 export * from "./scheduler/phase";
 export * from "./scheduler/tickContext";
 export * from "./scheduler/system";

@@ -332,20 +332,20 @@ export function PreviewApp() {
 function reconcileEntities(gameWorld: GameWorld, entities: readonly EntityPlacement[]): void {
   const { world, npcEntitiesByPlacementId } = gameWorld;
 
-  const playerPlacement = entities.find((entity) => entity.kind === "player-start");
+  const playerPlacement = entities.find((entity) => entity.prefabId === "player-start");
   if (playerPlacement && gameWorld.playerEntity === undefined) {
     const { x, y } = tileCenterWorld(playerPlacement.tileX, playerPlacement.tileY);
     gameWorld.playerEntity = spawnPlayer(world, x, y);
   }
 
-  const seenIds = new Set(entities.filter((entity) => entity.kind === "npc").map((entity) => entity.id));
+  const seenIds = new Set(entities.filter((entity) => entity.prefabId === "npc").map((entity) => entity.id));
   for (const [placementId, entityId] of npcEntitiesByPlacementId) {
     if (seenIds.has(placementId)) continue;
     world.destroy(entityId);
     npcEntitiesByPlacementId.delete(placementId);
   }
   for (const entity of entities) {
-    if (entity.kind !== "npc") continue;
+    if (entity.prefabId !== "npc") continue;
     const { x, y } = tileCenterWorld(entity.tileX, entity.tileY);
     const existing = npcEntitiesByPlacementId.get(entity.id);
     if (existing === undefined) {

@@ -37,7 +37,7 @@ function buildFixtureProjectData(): unknown {
         id: "scene-1",
         name: "CLI Smoke Test Scene",
         tiles,
-        entities: [{ id: "player", kind: "player-start", tileX: 2, tileY: 2 }],
+        entities: [{ id: "player", prefabId: "player-start", tileX: 2, tileY: 2 }],
       },
     ],
     installedModules: [{ name: "@forge/dialogue", version: "1.0.0", config: { trees: [] } }],

@@ -1,3 +1,4 @@
+import { isPrefabId } from "@forge/core";
 import { GRID_HEIGHT, GRID_WIDTH } from "../canvas/gridConstants";
 import type { EntityPlacement } from "../store/projectStore";
 
@@ -42,7 +43,7 @@ function isValidEntity(value: unknown): value is EntityPlacement {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Record<string, unknown>;
   if (typeof candidate.id !== "string") return false;
-  if (candidate.kind !== "player-start" && candidate.kind !== "npc") return false;
+  if (!isPrefabId(candidate.prefabId)) return false;
   if (typeof candidate.tileX !== "number" || !Number.isFinite(candidate.tileX)) return false;
   if (typeof candidate.tileY !== "number" || !Number.isFinite(candidate.tileY)) return false;
   if (candidate.dialogue !== undefined) {

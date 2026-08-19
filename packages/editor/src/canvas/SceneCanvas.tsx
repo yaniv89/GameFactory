@@ -8,7 +8,7 @@ import { buildEntityTextures } from "./entityMarkers";
 import { GRID_HEIGHT, GRID_WIDTH, TILE_SIZE } from "./gridConstants";
 import { buildPackAwarePaletteTextures, loadActivePackContext } from "./packTiles";
 import { TILE_PALETTE } from "./tilePalette";
-import { useProjectStore, type EntityPlacement } from "../store/projectStore";
+import { useProjectStore } from "../store/projectStore";
 import "./SceneCanvas.css";
 
 const MIN_ZOOM = 0.25;
@@ -123,7 +123,7 @@ export function SceneCanvas() {
   const [selectedTileId, setSelectedTileId] = useState<number>(TILE_PALETTE[0]!.id);
   const [tool, setTool] = useState<CanvasTool>("tiles");
 
-  const entityTexturesRef = useRef<Map<EntityPlacement["kind"], Texture> | null>(null);
+  const entityTexturesRef = useRef<Map<string, Texture> | null>(null);
   const entitySpritesRef = useRef<Map<string, Sprite>>(new Map());
 
   // No scene-tab/"active scene" concept yet (Phase 7's documented gap) —
@@ -377,7 +377,7 @@ export function SceneCanvas() {
     for (const entity of entities) {
       let sprite = sprites.get(entity.id);
       if (!sprite) {
-        sprite = new Sprite(textures.get(entity.kind));
+        sprite = new Sprite(textures.get(entity.prefabId));
         sprite.anchor.set(0.5);
         rig.host.worldContainer.addChild(sprite);
         sprites.set(entity.id, sprite);

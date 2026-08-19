@@ -57,9 +57,9 @@ describe("toExportProjectInput", () => {
           name: "Village",
           tiles: emptyTiles(),
           entities: [
-            { id: "player-1", kind: "player-start", tileX: 2, tileY: 3 },
-            { id: "npc-1", kind: "npc", tileX: 5, tileY: 5, dialogue: { speaker: "Elder", text: "Welcome." } },
-            { id: "npc-2", kind: "npc", tileX: 6, tileY: 6 },
+            { id: "player-1", prefabId: "player-start", tileX: 2, tileY: 3 },
+            { id: "npc-1", prefabId: "npc", tileX: 5, tileY: 5, dialogue: { speaker: "Elder", text: "Welcome." } },
+            { id: "npc-2", prefabId: "npc", tileX: 6, tileY: 6 },
           ],
         },
       ],
@@ -68,9 +68,9 @@ describe("toExportProjectInput", () => {
     expect(result.scenes).toHaveLength(1);
     const [scene] = result.scenes;
     expect(scene!.entities).toEqual([
-      { id: "player-1", kind: "player-start", tileX: 2, tileY: 3 },
-      { id: "npc-1", kind: "npc", tileX: 5, tileY: 5, dialogue: { speaker: "Elder", text: "Welcome." } },
-      { id: "npc-2", kind: "npc", tileX: 6, tileY: 6 },
+      { id: "player-1", prefabId: "player-start", tileX: 2, tileY: 3 },
+      { id: "npc-1", prefabId: "npc", tileX: 5, tileY: 5, dialogue: { speaker: "Elder", text: "Welcome." } },
+      { id: "npc-2", prefabId: "npc", tileX: 6, tileY: 6 },
     ]);
     // exactOptionalPropertyTypes: npc-2 must have no "dialogue" key at all, not dialogue: undefined.
     expect("dialogue" in scene!.entities[2]!).toBe(false);
@@ -159,8 +159,8 @@ describe("toExportProjectInput", () => {
           name: "Village",
           tiles: emptyTiles(),
           entities: [
-            { id: "npc-elder", kind: "npc", tileX: 1, tileY: 1, dialogue: { speaker: "Elder", text: "Welcome." } },
-            { id: "npc-silent", kind: "npc", tileX: 2, tileY: 2 },
+            { id: "npc-elder", prefabId: "npc", tileX: 1, tileY: 1, dialogue: { speaker: "Elder", text: "Welcome." } },
+            { id: "npc-silent", prefabId: "npc", tileX: 2, tileY: 2 },
           ],
         },
         {
@@ -168,7 +168,7 @@ describe("toExportProjectInput", () => {
           name: "Cave",
           tiles: emptyTiles(),
           entities: [
-            { id: "npc-hermit", kind: "npc", tileX: 3, tileY: 3, dialogue: { speaker: "Hermit", text: "Go away." } },
+            { id: "npc-hermit", prefabId: "npc", tileX: 3, tileY: 3, dialogue: { speaker: "Hermit", text: "Go away." } },
           ],
         },
       ],

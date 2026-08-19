@@ -65,7 +65,7 @@ export function toExportProjectInput(document: ProjectDocument, options: ToExpor
     entities: scene.entities.map(
       (entity): PlayerEntityPlacement => ({
         id: entity.id,
-        kind: entity.kind,
+        prefabId: entity.prefabId,
         tileX: entity.tileX,
         tileY: entity.tileY,
         // exactOptionalPropertyTypes: omit the key entirely rather than

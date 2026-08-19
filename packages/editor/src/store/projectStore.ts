@@ -153,7 +153,7 @@ function applyCommand(document: ProjectDocument, command: ProjectCommand): void 
     case "entity/set-player-start": {
       const scene = document.scenes.find((candidate) => candidate.id === command.sceneId);
       if (!scene) return;
-      const index = scene.entities.findIndex((entity) => entity.kind === "player-start");
+      const index = scene.entities.findIndex((entity) => entity.prefabId === "player-start");
       if (index !== -1) scene.entities.splice(index, 1);
       if (command.entity) scene.entities.push(command.entity);
       return;
@@ -396,8 +396,8 @@ export const useProjectStore = create<ProjectStoreState>()(
         set((state) => {
           const scene = state.document.scenes.find((candidate) => candidate.id === sceneId);
           if (!scene) return;
-          const existing = scene.entities.find((entity) => entity.kind === "player-start");
-          const entity: EntityPlacement = { id: crypto.randomUUID(), kind: "player-start", tileX, tileY };
+          const existing = scene.entities.find((entity) => entity.prefabId === "player-start");
+          const entity: EntityPlacement = { id: crypto.randomUUID(), prefabId: "player-start", tileX, tileY };
           const forward: ProjectCommand = { type: "entity/set-player-start", sceneId, entity };
           const inverse: ProjectCommand = { type: "entity/set-player-start", sceneId, entity: existing };
           applyCommand(state.document, forward);
@@ -409,7 +409,7 @@ export const useProjectStore = create<ProjectStoreState>()(
         set((state) => {
           const scene = state.document.scenes.find((candidate) => candidate.id === sceneId);
           if (!scene) return;
-          const entity: EntityPlacement = { id: crypto.randomUUID(), kind: "npc", tileX, tileY };
+          const entity: EntityPlacement = { id: crypto.randomUUID(), prefabId: "npc", tileX, tileY };
           const forward: ProjectCommand = { type: "entity/add", sceneId, entity };
           const inverse: ProjectCommand = { type: "entity/delete", sceneId, entityId: entity.id };
           applyCommand(state.document, forward);

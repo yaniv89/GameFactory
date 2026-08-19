@@ -22,10 +22,11 @@ export interface EntityDialogue {
 
 export interface EntityPlacement {
   readonly id: string;
-  readonly kind: "player-start" | "npc";
+  /** References a `Prefab` (`@forge/core`) by id — not a closed union, per docs/adr/0015-entity-prefab-component-model.md. */
+  readonly prefabId: string;
   readonly tileX: number;
   readonly tileY: number;
-  /** Only meaningful for `kind: "npc"` — the one-line dialogue it says on interact (Phase 7). */
+  /** Only meaningful for a prefab whose entity can speak — today, `"npc"` — the one-line dialogue it says on interact (Phase 7). */
   readonly dialogue?: EntityDialogue;
 }
 
@@ -93,6 +94,24 @@ function migrateInstalledModuleEntry(value: LegacyModuleConfig | InstalledModule
 }
 
 /**
+ * A document persisted before `EntityPlacement.prefabId` existed carried
+ * `kind: "player-start" | "npc"` instead — the pre-docs/adr/0015 shape.
+ * `kind`'s value and `prefabId`'s value are the same strings by design
+ * (`PLAYER_START_PREFAB.id === "player-start"`, `NPC_PREFAB.id === "npc"`
+ * in `@forge/core`), so this migration is a pure field rename, not a value
+ * remap — it changes no entity's rendered behavior.
+ */
+type LegacyEntityPlacement = Omit<EntityPlacement, "prefabId"> & { readonly kind?: "player-start" | "npc" };
+
+function migrateEntityPlacement(entity: LegacyEntityPlacement): EntityPlacement {
+  if ("prefabId" in entity && typeof (entity as Partial<EntityPlacement>).prefabId === "string") {
+    return entity as EntityPlacement;
+  }
+  const { kind, ...rest } = entity;
+  return { ...rest, prefabId: kind ?? "npc" };
+}
+
+/**
  * Fills in any field a partial/foreign document is missing — used both by
  * the editor's own `persist` rehydration and to normalize a document
  * fetched from `GetDocumentEndpoint` (can be `undefined` entirely, or an
@@ -101,7 +120,11 @@ function migrateInstalledModuleEntry(value: LegacyModuleConfig | InstalledModule
 export function migrateDocument(document: Partial<ProjectDocument> | undefined): ProjectDocument {
   const installedModules = document?.installedModules ?? {};
   return {
-    scenes: (document?.scenes ?? []).map((scene) => ({ ...scene, tiles: scene.tiles ?? emptyTiles() })),
+    scenes: (document?.scenes ?? []).map((scene) => ({
+      ...scene,
+      tiles: scene.tiles ?? emptyTiles(),
+      entities: (scene.entities ?? []).map((entity) => migrateEntityPlacement(entity as LegacyEntityPlacement)),
+    })),
     installedModules: Object.fromEntries(
       Object.entries(installedModules).map(([name, value]) => [name, migrateInstalledModuleEntry(value)]),
     ),

@@ -68,8 +68,8 @@ public sealed class PublishedBuildE2ETests : IClassFixture<ForgeWebApplicationFa
                 tiles = Enumerable.Repeat(0, 300).ToArray(),
                 entities = new object[]
                 {
-                    new { id = "player-1", kind = "player-start", tileX = PlayerStart.X, tileY = PlayerStart.Y },
-                    new { id = "npc-1", kind = "npc", tileX = NpcTile.X, tileY = NpcTile.Y, dialogue = new { speaker = DialogueSpeaker, text = DialogueText } },
+                    new { id = "player-1", prefabId = "player-start", tileX = PlayerStart.X, tileY = PlayerStart.Y },
+                    new { id = "npc-1", prefabId = "npc", tileX = NpcTile.X, tileY = NpcTile.Y, dialogue = new { speaker = DialogueSpeaker, text = DialogueText } },
                 },
             },
         },

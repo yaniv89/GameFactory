@@ -89,6 +89,30 @@ async function enemyAlive(previewFrame: Frame): Promise<boolean> {
 }
 
 /**
+ * I1a gave the demo enemy its own real AI — it now notices and attacks the
+ * player unprompted (proven, on its own terms, by `enemyAi.spec.ts`). This
+ * spec's own `PLAYER_START` sits well within `ENEMY_DETECT_RADIUS`, so
+ * without disarming it, the enemy's own real retaliation would land during
+ * this test's real-time waits and pollute `findFloatingDamageText`'s
+ * "first FloatingText entity" lookup with the enemy's own damage number
+ * instead of the player's.
+ *
+ * A post-boot debug-hook mutation can't reliably win this race: by the
+ * time any test code can poll for `enemyEntity`/`playerEntity` and
+ * round-trip a write back into the iframe, real wall-clock time (and real
+ * game ticks) have already elapsed — verified the hard way, this landed
+ * the enemy's own first hit before a poll-then-mutate fix could ever catch
+ * it. `page.addInitScript` (in the test body below) sets a DEV-only flag
+ * on `window` *before the iframe's own scripts run at all*, and
+ * `PreviewApp.tsx`'s own boot effect checks it and pins the demo enemy's
+ * `EnemyAi.attackCooldownUntil` (never its `Health.invulnerableUntil` —
+ * that field also gates whether the player's own swings can land, via
+ * `createMeleeAttackSystem`'s own check, which would make the enemy
+ * unkillable) before its very first tick. `enemyAi.spec.ts` is the one
+ * spec that deliberately never sets this flag, since proving the real
+ * attack is its whole point. Test-setup isolation, not faking the
+ * mechanic actually under test here (the hit/death event wiring).
+ *
  * Re-closes to melee reach of the (possibly knocked-back) enemy by moving
  * the player directly, so the next swing is guaranteed to connect. Also
  * zeroes the enemy's own residual knockback velocity — without that, its
@@ -115,6 +139,12 @@ test.describe("H1d: floating damage number + enemy death particle burst, in a re
       if (msg.type() === "error") consoleErrors.push(msg.text());
     });
     page.on("pageerror", (err) => consoleErrors.push(err.message));
+
+    // See repositionPlayerNextToEnemy's own doc comment above for why this
+    // has to be an init script, not a post-boot debug-hook write.
+    await page.addInitScript(() => {
+      (window as unknown as { __forgeTestDisableEnemyAggro: boolean }).__forgeTestDisableEnemyAggro = true;
+    });
 
     await page.goto("/");
     await page.getByRole("button", { name: "Create a scene" }).click();

@@ -76,6 +76,28 @@ async function repositionPlayerNextToEnemy(previewFrame: Frame): Promise<void> {
   }, MELEE_REACH);
 }
 
+/**
+ * I1a gave the demo enemy its own real AI — it now notices and attacks the
+ * player unprompted (proven, on its own terms, by `enemyAi.spec.ts`). This
+ * spec's own `PLAYER_START` sits well within `ENEMY_DETECT_RADIUS`, so
+ * without disarming it, the enemy's own real retaliation would drain
+ * health this test never intended — it's about item drop/pickup/HUD
+ * wiring, not combat balance.
+ *
+ * A post-boot debug-hook mutation can't reliably win this race (real
+ * wall-clock time and real game ticks elapse before any test code can
+ * poll for `enemyEntity`/`playerEntity` and round-trip a write back into
+ * the iframe — verified the hard way). `page.addInitScript` (in the test
+ * body below) sets a DEV-only flag on `window` *before the iframe's own
+ * scripts run at all*, and `PreviewApp.tsx`'s own boot effect checks it
+ * and pins the demo enemy's `EnemyAi.attackCooldownUntil` (never its
+ * `Health.invulnerableUntil` — that field also gates whether the player's
+ * own swings can land, via `createMeleeAttackSystem`'s own check, which
+ * would make the enemy unkillable and break this test's own 3-swing kill
+ * sequence) before its very first tick. Test-setup isolation, not faking
+ * the mechanic actually under test here.
+ */
+
 async function setPlayerHealth(previewFrame: Frame, current: number, max: number): Promise<void> {
   await previewFrame.evaluate(
     ([c, m]) => {
@@ -94,6 +116,12 @@ test.describe("H1e: item drop, pickup, and HUD health bar + slot, in a real brow
       if (msg.type() === "error") consoleErrors.push(msg.text());
     });
     page.on("pageerror", (err) => consoleErrors.push(err.message));
+
+    // See the doc comment above `setPlayerHealth` for why this has to be
+    // an init script, not a post-boot debug-hook write.
+    await page.addInitScript(() => {
+      (window as unknown as { __forgeTestDisableEnemyAggro: boolean }).__forgeTestDisableEnemyAggro = true;
+    });
 
     await page.goto("/");
     await page.getByRole("button", { name: "Create a scene" }).click();

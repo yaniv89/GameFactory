@@ -1,4 +1,4 @@
-import type { Animator, Collider, Health, Interactable, Pickup, PlayerControlled, Sprite, Velocity } from "../components/core";
+import type { Animator, Collider, EnemyAi, Health, Interactable, Pickup, PlayerControlled, Sprite, Velocity } from "../components/core";
 import type { EntityId } from "../ecs/entity";
 import type { World } from "../ecs/world";
 import { COLLIDER_SHAPE_BOX, COLLIDER_SHAPE_CIRCLE } from "../physics/aabb";
@@ -44,6 +44,17 @@ export interface Prefab {
     readonly interactable?: Partial<Interactable>;
     readonly health?: Partial<Health>;
     readonly pickup?: Partial<Pickup>;
+    /**
+     * `homeX`/`homeY`/`wanderTargetX`/`wanderTargetY` are never taken from
+     * here — `spawnFromPrefab` always sets all four to the entity's own
+     * spawn position (there is no sensible static prefab default for
+     * "where was I placed," the same reason `Transform.x`/`y` themselves
+     * aren't prefab fields). This is only for `attackCooldownUntil`, which
+     * every entity should genuinely start at 0 (able to attack
+     * immediately) — included for completeness, not because a prefab is
+     * expected to override it.
+     */
+    readonly enemyAi?: Partial<EnemyAi>;
   };
 }
 
@@ -94,14 +105,15 @@ export const NPC_PREFAB: Prefab = {
 };
 
 /**
- * H1c's demo combat target — a stationary, damageable, knockback-able
- * entity `createMeleeAttackSystem`/`createKnockbackPhysicsSystem` (and
- * later I1's real AI/wander behavior) act on. `health`'s presence, not a
- * separate tag component, is what those systems query by (this file's own
- * doc comment on `HealthSchema` explains why) — `velocity.friction`
- * is the knockback-recovery decay rate `createKnockbackPhysicsSystem`
- * reads, `maxSpeed: 0` because nothing drives this entity's own movement
- * input yet (no AI/wander system exists before I1).
+ * H1c's demo combat target — a damageable, knockback-able entity
+ * `createMeleeAttackSystem`/`createKnockbackPhysicsSystem` act on.
+ * `health`'s presence, not a separate tag component, is what those
+ * systems query by (this file's own doc comment on `HealthSchema`
+ * explains why) — `velocity.friction` is the knockback-recovery decay
+ * rate `createKnockbackPhysicsSystem` reads. `maxSpeed` is now non-zero
+ * (I1a): `createEnemyAiSystem` is what drives this entity's own movement
+ * input, slower than the player's own 140 so a player who chooses to can
+ * out-run/kite it rather than always being forced to fight in place.
  */
 export const ENEMY_PREFAB: Prefab = {
   id: "enemy",
@@ -110,9 +122,10 @@ export const ENEMY_PREFAB: Prefab = {
   components: {
     sprite: { frame: 0, anchorX: 0.5, anchorY: 0.5, tint: 0xffffff, opacity: 1 },
     animator: {},
-    velocity: { vx: 0, vy: 0, maxSpeed: 0, friction: 6 },
+    velocity: { vx: 0, vy: 0, maxSpeed: 90, friction: 6 },
     collider: { shape: COLLIDER_SHAPE_BOX, width: 24, height: 24, offsetX: 0, offsetY: 0, isTrigger: 0, layer: 0 },
     health: { current: 30, max: 30, invulnerableUntil: 0, flashUntil: 0 },
+    enemyAi: {},
   },
 };
 
@@ -200,5 +213,11 @@ export function spawnFromPrefab(
   if (c.interactable) initial.Interactable = { ...c.interactable };
   if (c.health) initial.Health = { ...c.health };
   if (c.pickup) initial.Pickup = { ...c.pickup };
+  if (c.enemyAi) {
+    // homeX/homeY/wanderTargetX/wanderTargetY always come from the spawn
+    // position itself, never the prefab — see this field's own doc
+    // comment on `Prefab.components.enemyAi`.
+    initial.EnemyAi = { homeX: worldX, homeY: worldY, wanderTargetX: worldX, wanderTargetY: worldY, attackCooldownUntil: 0, ...c.enemyAi };
+  }
   return world.create(initial);
 }

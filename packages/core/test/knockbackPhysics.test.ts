@@ -106,4 +106,39 @@ describe("createKnockbackPhysicsSystem", () => {
     expect(world.get(player, "Transform")).toMatchObject({ x: 10, y: 10 });
     expect(world.get(player, "Velocity")).toMatchObject({ vx: -999, vy: -999 });
   });
+
+  it("still integrates an EnemyAi entity while it's within its own invulnerability window — hit-stun plays out as before I1a", () => {
+    const world = makeWorld();
+    const entity = world.create({
+      Transform: { x: 0, y: 0 },
+      Velocity: { vx: 200, vy: 0, maxSpeed: 90, friction: 6 },
+      Health: { current: 20, max: 30, invulnerableUntil: 10 }, // still invulnerable for a long while
+      EnemyAi: {},
+    });
+    world.flush();
+
+    const scheduler = new Scheduler(world);
+    scheduler.addSystem(createKnockbackPhysicsSystem({ world }));
+    scheduler.tick(FIXED_STEP_MS);
+
+    expect(world.get(entity, "Transform")!.x).toBeGreaterThan(0);
+  });
+
+  it("stops integrating an EnemyAi entity the moment its invulnerability window has passed — I1a's own createEnemyAiSystem takes over from here, and fighting it over the same Transform would double-move the entity", () => {
+    const world = makeWorld();
+    const entity = world.create({
+      Transform: { x: 0, y: 0 },
+      Velocity: { vx: 200, vy: 0, maxSpeed: 90, friction: 6 },
+      Health: { current: 20, max: 30, invulnerableUntil: 0 }, // already expired
+      EnemyAi: {},
+    });
+    world.flush();
+
+    const scheduler = new Scheduler(world);
+    scheduler.addSystem(createKnockbackPhysicsSystem({ world }));
+    scheduler.tick(FIXED_STEP_MS);
+
+    expect(world.get(entity, "Transform")).toMatchObject({ x: 0, y: 0 });
+    expect(world.get(entity, "Velocity")).toMatchObject({ vx: 200, vy: 0 }); // left exactly as-is, not decayed either
+  });
 });

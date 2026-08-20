@@ -88,16 +88,17 @@ describe("spawnFromPrefab", () => {
     expect(world.has(entity, "PlayerControlled")).toBe(false);
   });
 
-  it("spawns ENEMY_PREFAB with a real box Collider, Velocity, and full Health — the H1c combat target shape", () => {
+  it("spawns ENEMY_PREFAB with a real box Collider, Velocity, full Health, and EnemyAi homed on its own spawn point — the I1a combat+AI target shape", () => {
     const world = makeWorld();
     const entity = spawnFromPrefab(world, ENEMY_PREFAB, 50, 60, () => 3);
     world.flush();
 
     expect(world.get(entity, "Transform")).toMatchObject({ x: 50, y: 60 });
     expect(world.get(entity, "Sprite")).toMatchObject({ assetId: 3, frame: 0 });
-    expect(world.get(entity, "Velocity")).toMatchObject({ vx: 0, vy: 0, maxSpeed: 0, friction: 6 });
+    expect(world.get(entity, "Velocity")).toMatchObject({ vx: 0, vy: 0, maxSpeed: 90, friction: 6 });
     expect(world.get(entity, "Collider")).toMatchObject({ shape: 0, width: 24, height: 24, isTrigger: 0 });
     expect(world.get(entity, "Health")).toMatchObject({ current: 30, max: 30, invulnerableUntil: 0, flashUntil: 0 });
+    expect(world.get(entity, "EnemyAi")).toMatchObject({ homeX: 50, homeY: 60, wanderTargetX: 50, wanderTargetY: 60, attackCooldownUntil: 0 });
     expect(world.has(entity, "PlayerControlled")).toBe(false);
   });
 

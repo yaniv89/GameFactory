@@ -1,6 +1,7 @@
 import {
   COIN_PICKUP_PREFAB,
   createCharacterAnimationSystem,
+  createEnemyAiSystem,
   createFloatingTextSystem,
   createHitFlashSystem,
   createKnockbackPhysicsSystem,
@@ -81,6 +82,26 @@ const MELEE_DAMAGE = 10;
 const MELEE_KNOCKBACK_SPEED = 220;
 const MELEE_INVULNERABILITY_SEC = 0.4;
 const MELEE_FLASH_SEC = 0.15;
+
+/**
+ * I1a's enemy-AI tuning — the mirror image of the MELEE_* block above:
+ * this is what an `EnemyAi` entity does *to the player*, not what the
+ * player does to it. `ENEMY_ATTACK_RANGE` deliberately matches
+ * `MELEE_REACH` (both sides of the same-size scuffle); `ENEMY_ATTACK_DAMAGE`
+ * is set below `MELEE_DAMAGE` so a stationary, unresponsive player loses a
+ * fight to a single enemy slower than the enemy loses to an attentive
+ * player — the intended difficulty shape for a first encounter, not a
+ * balance afterthought. `ENEMY_DETECT_RADIUS`/`ENEMY_WANDER_RADIUS` are in
+ * world units (TILE_SIZE=32), roughly 4 and 2 tiles respectively.
+ */
+const ENEMY_DETECT_RADIUS = 130;
+const ENEMY_ATTACK_RANGE = MELEE_REACH;
+const ENEMY_ATTACK_DAMAGE = 6;
+const ENEMY_ATTACK_COOLDOWN_SEC = 1;
+const ENEMY_ATTACK_INVULNERABILITY_SEC = 0.4;
+const ENEMY_ATTACK_FLASH_SEC = 0.15;
+const ENEMY_WANDER_RADIUS = 64;
+const ENEMY_WANDER_SPEED = 40;
 
 /** H1d's damage-number tuning. */
 const DAMAGE_NUMBER_TTL_SEC = 0.8;
@@ -353,6 +374,21 @@ export function PreviewApp() {
           }),
         );
         scheduler.addSystem(createKnockbackPhysicsSystem({ world }));
+        scheduler.addSystem(
+          createEnemyAiSystem({
+            world,
+            events: combatEvents,
+            detectRadius: ENEMY_DETECT_RADIUS,
+            attackRange: ENEMY_ATTACK_RANGE,
+            attackDamage: ENEMY_ATTACK_DAMAGE,
+            attackCooldownSec: ENEMY_ATTACK_COOLDOWN_SEC,
+            attackInvulnerabilitySec: ENEMY_ATTACK_INVULNERABILITY_SEC,
+            attackFlashSec: ENEMY_ATTACK_FLASH_SEC,
+            wanderRadius: ENEMY_WANDER_RADIUS,
+            wanderSpeed: ENEMY_WANDER_SPEED,
+            isWalkable,
+          }),
+        );
         scheduler.addSystem(createCharacterAnimationSystem({ world, frameCount: WALK_FRAME_COUNT, fps: WALK_FPS }));
         scheduler.addSystem(createHitFlashSystem({ world }));
         scheduler.addSystem(createFloatingTextSystem({ world }));
@@ -449,6 +485,27 @@ export function PreviewApp() {
         const demoEnemySpawn = tileCenterWorld(DEMO_ENEMY_TILE.x, DEMO_ENEMY_TILE.y);
         const enemyEntity = spawnEnemy(world, demoEnemySpawn.x, demoEnemySpawn.y);
         world.flush();
+        // Test-only, DEV-gated escape hatch: several pre-I1a Playwright
+        // specs (damageAndDeath/pickupAndHud/previewAudio) place the
+        // player right next to this demo enemy for reasons unrelated to
+        // combat AI (event wiring, HUD wiring, audio wiring) — since I1a
+        // the enemy now notices and attacks on its own, and no amount of
+        // post-boot polling from the test side can reliably outrace its
+        // very first tick once a player entity exists. Setting this flag
+        // via `page.addInitScript` (before the iframe's own scripts ever
+        // run) disarms the enemy's own attack from its first tick, with
+        // zero effect on its `Health`/collider — it's still fully
+        // damageable by the player's own swings, exactly what those specs
+        // need. `enemyAi.spec.ts` is the one spec that deliberately never
+        // sets this, since proving the real attack is its whole point.
+        // Written after the flush above: `world.set` on a just-created
+        // entity requires it to have already been materialized out of the
+        // command buffer, the same reason every other spawn helper in this
+        // file flushes immediately after creating.
+        if (import.meta.env.DEV && (window as unknown as { __forgeTestDisableEnemyAggro?: boolean }).__forgeTestDisableEnemyAggro) {
+          world.set(enemyEntity, "EnemyAi", { attackCooldownUntil: Number.MAX_SAFE_INTEGER });
+          world.flush();
+        }
 
         gameWorldRef.current = {
           world,

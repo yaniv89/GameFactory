@@ -24,4 +24,5 @@ export * from "./systems/knockbackPhysics";
 export * from "./systems/hitFlash";
 export * from "./systems/floatingText";
 export * from "./systems/pickup";
+export * from "./systems/enemyAi";
 export * from "./save/serialize";

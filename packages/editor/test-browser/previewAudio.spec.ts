@@ -66,6 +66,28 @@ async function audioProbe(previewFrame: Frame) {
   return previewFrame.evaluate(() => (window as unknown as PreviewDebugWindow).__audioProbe!);
 }
 
+/**
+ * I1a gave the demo enemy its own real AI — it now notices and attacks the
+ * player unprompted (proven, on its own terms, by `enemyAi.spec.ts`). This
+ * spec's own `PLAYER_START` sits well within `ENEMY_DETECT_RADIUS`, so
+ * without disarming it, the enemy's own real retaliation would call
+ * `playImpact()` (an oscillator) before this test's own `beforeAnything`
+ * zero-count assertion ever runs.
+ *
+ * A post-boot debug-hook mutation can't reliably win this race (real
+ * wall-clock time and real game ticks elapse before any test code can
+ * poll for `enemyEntity`/`playerEntity` and round-trip a write back into
+ * the iframe — verified the hard way). `page.addInitScript` (in the test
+ * body below) sets a DEV-only flag on `window` *before the iframe's own
+ * scripts run at all*, and `PreviewApp.tsx`'s own boot effect checks it
+ * and pins the demo enemy's `EnemyAi.attackCooldownUntil` (never its
+ * `Health.invulnerableUntil` — that field also gates whether the player's
+ * own swings can land, via `createMeleeAttackSystem`'s own check, which
+ * would silence this spec's own expected impact/death oscillator calls)
+ * before its very first tick. Test-setup isolation, not faking the
+ * mechanic actually under test here (the audio-cue wiring).
+ */
+
 async function repositionPlayerNextToEnemy(previewFrame: Frame): Promise<void> {
   await previewFrame.evaluate((reach) => {
     const gameWorld = (window as unknown as PreviewDebugWindow).__forgePreviewDebug!.gameWorld!;
@@ -83,6 +105,12 @@ test.describe("H1f: audio on every beat, in a real browser", () => {
       if (msg.type() === "error") consoleErrors.push(msg.text());
     });
     page.on("pageerror", (err) => consoleErrors.push(err.message));
+
+    // See the doc comment above `repositionPlayerNextToEnemy` for why this
+    // has to be an init script, not a post-boot debug-hook write.
+    await page.addInitScript(() => {
+      (window as unknown as { __forgeTestDisableEnemyAggro: boolean }).__forgeTestDisableEnemyAggro = true;
+    });
 
     // Installed before any navigation, so it's in place before the preview
     // iframe's own `previewAudio.ts` module ever calls `new AudioContext()`.

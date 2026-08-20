@@ -1,4 +1,4 @@
-import { TransformSchema, VelocitySchema } from "../components/core";
+import { HealthSchema, TransformSchema, VelocitySchema } from "../components/core";
 import type { Query } from "../ecs/query";
 import type { SystemDefinition } from "../scheduler/system";
 import type { World } from "../ecs/world";
@@ -32,8 +32,19 @@ export interface KnockbackPhysicsSystemOptions {
  * Deliberately does not resolve collision against walls/tiles: a knocked-
  * back entity can be shoved through a wall in this slice. A stated,
  * accepted simplification, not a silent gap — real per-entity collision
- * response against the tilemap is I1's "combat, AI" breadth work, not
- * this hit-reaction primitive's job.
+ * response against the tilemap is later work, not this hit-reaction
+ * primitive's job.
+ *
+ * I1a gave enemies their own `createEnemyAiSystem`, which actively drives
+ * `Transform`/`Velocity` every tick once an entity is no longer within its
+ * own `Health.invulnerableUntil` hit-stun window — exactly the same
+ * "two systems fighting over one Transform" hazard the `PlayerControlled`
+ * exclusion above already guards against. An `EnemyAi`-carrying entity
+ * whose invulnerability has already expired is excluded here too, so
+ * `createEnemyAiSystem` gets sole, immediate control the instant hit-stun
+ * ends rather than fighting this system's own decaying residual velocity
+ * for the rest of its natural decay — a deliberate "hit-stun duration
+ * bounds the knockback" simplification, not an accident.
  */
 export function createKnockbackPhysicsSystem(options: KnockbackPhysicsSystemOptions): SystemDefinition {
   const { world } = options;
@@ -45,6 +56,8 @@ export function createKnockbackPhysicsSystem(options: KnockbackPhysicsSystemOpti
     run: (ctx, entities: Query) => {
       entities.forEach((entity) => {
         if (world.has(entity, "PlayerControlled")) return;
+        const health = world.get<typeof HealthSchema>(entity, "Health");
+        if (world.has(entity, "EnemyAi") && health && ctx.elapsed >= health.invulnerableUntil) return;
         const transform = world.get<typeof TransformSchema>(entity, "Transform");
         const velocity = world.get<typeof VelocitySchema>(entity, "Velocity");
         if (!transform || !velocity) return;

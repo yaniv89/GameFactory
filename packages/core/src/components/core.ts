@@ -141,6 +141,29 @@ export const PickupSchema = {
 } as const satisfies ComponentSchema;
 export type Pickup = ComponentValue<typeof PickupSchema>;
 
+/**
+ * I1a's enemy AI state — presence marks an entity as AI-driven (queried by
+ * `createEnemyAiSystem`, the same "presence is the tag" pattern `Health`/
+ * `PlayerControlled` already establish), and its fields are the *per-entity*
+ * state a shared behavior needs to persist between ticks: where to return
+ * to when idle (`homeX`/`homeY`, set once at spawn), the current wander
+ * destination, and the next tick this entity is allowed to land another
+ * attack. Tuning that's the same for every AI entity today (detect radius,
+ * attack damage, cooldown length, speeds) lives in `createEnemyAiSystem`'s
+ * own options instead of here, the same split `createMeleeAttackSystem`
+ * already draws between per-entity `Health` fields and system-level attack
+ * tuning.
+ */
+export const EnemyAiSchema = {
+  homeX: "f32",
+  homeY: "f32",
+  wanderTargetX: "f32",
+  wanderTargetY: "f32",
+  /** `TickContext.elapsed` timestamp — the next tick this entity may land another attack, the same "compare elapsed directly, no countdown bookkeeping" shape `Health.invulnerableUntil` already uses. */
+  attackCooldownUntil: "f32",
+} as const satisfies ComponentSchema;
+export type EnemyAi = ComponentValue<typeof EnemyAiSchema>;
+
 export interface CoreComponents {
   readonly Transform: ReturnType<World["defineComponent"]>;
   readonly Sprite: ReturnType<World["defineComponent"]>;
@@ -152,6 +175,7 @@ export interface CoreComponents {
   readonly Health: ReturnType<World["defineComponent"]>;
   readonly FloatingText: ReturnType<World["defineComponent"]>;
   readonly Pickup: ReturnType<World["defineComponent"]>;
+  readonly EnemyAi: ReturnType<World["defineComponent"]>;
 }
 
 /** Registers every core component against `world`. Call once, at world construction. */
@@ -218,6 +242,13 @@ export function registerCoreComponents(world: World): CoreComponents {
     Pickup: world.defineComponent("Pickup", PickupSchema, {
       itemId: -1,
       amount: 0,
+    }),
+    EnemyAi: world.defineComponent("EnemyAi", EnemyAiSchema, {
+      homeX: 0,
+      homeY: 0,
+      wanderTargetX: 0,
+      wanderTargetY: 0,
+      attackCooldownUntil: 0,
     }),
   };
 }

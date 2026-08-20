@@ -176,11 +176,13 @@ describe("createMeleeAttackSystem", () => {
     expect(world.get(enemy, "Health")).toMatchObject({ current: 20 });
   });
 
-  it("never lets a target's health drop below zero", () => {
+  it("a lethal hit reports zero remaining health on combat:hit, never negative", () => {
     const world = makeWorld();
     spawnPlayer(world, 0, 0, FACING_EAST);
     const enemy = spawnEnemy(world, REACH, 0, 5); // less than one hit's worth of health
     const events = new EventBusImpl<MeleeAttackEventMap>();
+    const onHit = vi.fn();
+    events.on("combat:hit", onHit);
     const flag = attackFlag();
     flag.request();
 
@@ -188,6 +190,46 @@ describe("createMeleeAttackSystem", () => {
     scheduler.addSystem(makeSystem(world, events, flag.consume));
     scheduler.tick(FIXED_STEP_MS);
 
-    expect(world.get(enemy, "Health")).toMatchObject({ current: 0 });
+    expect(onHit).toHaveBeenCalledWith(expect.objectContaining({ target: enemy, damage: DAMAGE, targetHealthRemaining: 0 }));
+  });
+
+  it("a lethal hit also emits combat:death with the target's last position, and destroys it outright", () => {
+    const world = makeWorld();
+    spawnPlayer(world, 0, 0, FACING_EAST);
+    const enemy = spawnEnemy(world, REACH, 0, 5); // less than one hit's worth of health
+    const events = new EventBusImpl<MeleeAttackEventMap>();
+    const onDeath = vi.fn();
+    events.on("combat:death", onDeath);
+    const flag = attackFlag();
+    flag.request();
+
+    const scheduler = new Scheduler(world);
+    scheduler.addSystem(makeSystem(world, events, flag.consume));
+    scheduler.tick(FIXED_STEP_MS);
+    world.flush();
+
+    expect(onDeath).toHaveBeenCalledTimes(1);
+    expect(onDeath).toHaveBeenCalledWith(expect.objectContaining({ target: enemy, x: REACH, y: 0 }));
+    expect(world.isAlive(enemy)).toBe(false);
+    expect(world.get(enemy, "Health")).toBeUndefined();
+  });
+
+  it("a non-lethal hit does not emit combat:death and does not destroy the target", () => {
+    const world = makeWorld();
+    spawnPlayer(world, 0, 0, FACING_EAST);
+    const enemy = spawnEnemy(world, REACH, 0, 30);
+    const events = new EventBusImpl<MeleeAttackEventMap>();
+    const onDeath = vi.fn();
+    events.on("combat:death", onDeath);
+    const flag = attackFlag();
+    flag.request();
+
+    const scheduler = new Scheduler(world);
+    scheduler.addSystem(makeSystem(world, events, flag.consume));
+    scheduler.tick(FIXED_STEP_MS);
+    world.flush();
+
+    expect(onDeath).not.toHaveBeenCalled();
+    expect(world.isAlive(enemy)).toBe(true);
   });
 });

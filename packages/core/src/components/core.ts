@@ -106,6 +106,24 @@ export const HealthSchema = {
 } as const satisfies ComponentSchema;
 export type Health = ComponentValue<typeof HealthSchema>;
 
+/**
+ * H1d's floating damage number — a standalone entity `createMeleeAttackSystem`'s
+ * `"combat:hit"` listener spawns (renderer-owned, not `spawnFromPrefab`'d:
+ * there's no player-authored prefab for a transient combat-log popup),
+ * aged and destroyed by `createFloatingTextSystem`, drawn by
+ * `@forge/render-2d`'s `createTextSyncSystem`. `age`/`ttl` are seconds,
+ * not `TickContext.elapsed` timestamps — unlike `Health`'s fields, a
+ * floating number's lifetime is relative to when *it* spawned, not the
+ * world's start.
+ */
+export const FloatingTextSchema = {
+  /** The number to display — always shown with a leading "-" (H1d's only user: damage taken). */
+  value: "f32",
+  age: "f32",
+  ttl: "f32",
+} as const satisfies ComponentSchema;
+export type FloatingText = ComponentValue<typeof FloatingTextSchema>;
+
 export interface CoreComponents {
   readonly Transform: ReturnType<World["defineComponent"]>;
   readonly Sprite: ReturnType<World["defineComponent"]>;
@@ -115,6 +133,7 @@ export interface CoreComponents {
   readonly PlayerControlled: ReturnType<World["defineComponent"]>;
   readonly Interactable: ReturnType<World["defineComponent"]>;
   readonly Health: ReturnType<World["defineComponent"]>;
+  readonly FloatingText: ReturnType<World["defineComponent"]>;
 }
 
 /** Registers every core component against `world`. Call once, at world construction. */
@@ -172,6 +191,11 @@ export function registerCoreComponents(world: World): CoreComponents {
       max: 0,
       invulnerableUntil: 0,
       flashUntil: 0,
+    }),
+    FloatingText: world.defineComponent("FloatingText", FloatingTextSchema, {
+      value: 0,
+      age: 0,
+      ttl: 0.8,
     }),
   };
 }

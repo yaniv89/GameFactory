@@ -22,4 +22,5 @@ export * from "./systems/characterAnimation";
 export * from "./systems/meleeAttack";
 export * from "./systems/knockbackPhysics";
 export * from "./systems/hitFlash";
+export * from "./systems/floatingText";
 export * from "./save/serialize";

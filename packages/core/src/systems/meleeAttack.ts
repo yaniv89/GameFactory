@@ -14,8 +14,16 @@ export interface MeleeHitEvent {
   readonly targetHealthRemaining: number;
 }
 
+export interface MeleeDeathEvent {
+  readonly target: EntityId;
+  /** The target's own position at the moment it died — captured here since the entity is destroyed before a listener could look it up itself. */
+  readonly x: number;
+  readonly y: number;
+}
+
 export type MeleeAttackEventMap = {
   "combat:hit": MeleeHitEvent;
+  "combat:death": MeleeDeathEvent;
 };
 
 export interface MeleeAttackSystemOptions {
@@ -43,7 +51,12 @@ export interface MeleeAttackSystemOptions {
  * `createCollisionSystem` uses (`computeColliderAABB`/`aabbOverlap`),
  * reused directly rather than reimplemented. A target still inside its own
  * `Health.invulnerableUntil` window is skipped, so one swing can't
- * double-hit something its hitbox happens to still overlap.
+ * double-hit something its hitbox happens to still overlap. A hit that
+ * drops a target's health to 0 emits `"combat:death"` (H1d's death-particle
+ * burst) in addition to `"combat:hit"` (H1d's damage number, which should
+ * still show the killing blow's own damage) and destroys the target
+ * outright — dead is dead, not a lingering zero-health entity waiting on
+ * some other system to notice.
  *
  * No persisting hitbox entity, no multi-frame duration: a swing is one
  * check on the tick it's requested, not a hazard zone that lingers. A
@@ -89,21 +102,29 @@ export function createMeleeAttackSystem(options: MeleeAttackSystemOptions): Syst
           computeColliderAABB(targetTransform, targetCollider, targetAABB);
           if (!aabbOverlap(hitboxAABB, targetAABB)) return;
 
-          const dx = targetTransform.x - transform.x;
-          const dy = targetTransform.y - transform.y;
-          const distance = Math.hypot(dx, dy) || 1;
-          const knockbackVx = (dx / distance) * knockbackSpeed;
-          const knockbackVy = (dy / distance) * knockbackSpeed;
-
           const remainingHealth = Math.max(0, health.current - damage);
           world.set(target, "Health", {
             current: remainingHealth,
             invulnerableUntil: ctx.elapsed + invulnerabilitySec,
             flashUntil: ctx.elapsed + flashSec,
           });
-          world.set(target, "Velocity", { vx: knockbackVx, vy: knockbackVy });
-
           events.emit("combat:hit", { attacker, target, damage, targetHealthRemaining: remainingHealth });
+
+          if (remainingHealth <= 0) {
+            // Dead: no point knocking back or flashing an entity about to
+            // be destroyed — createHitFlashSystem/createKnockbackPhysicsSystem
+            // would never get another tick to act on it anyway.
+            events.emit("combat:death", { target, x: targetTransform.x, y: targetTransform.y });
+            world.destroy(target);
+            return;
+          }
+
+          if (world.has(target, "Velocity")) {
+            const dx = targetTransform.x - transform.x;
+            const dy = targetTransform.y - transform.y;
+            const distance = Math.hypot(dx, dy) || 1;
+            world.set(target, "Velocity", { vx: (dx / distance) * knockbackSpeed, vy: (dy / distance) * knockbackSpeed });
+          }
         });
       });
     },

@@ -26,5 +26,6 @@ export * from "./tileGrid";
 export * from "./entityDiff";
 export * from "./interpolation";
 export * from "./spriteSync";
+export * from "./textSync";
 export * from "./tilemapLayer";
 export * from "./renderHost";

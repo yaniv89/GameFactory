@@ -1,5 +1,6 @@
 import {
   createCharacterAnimationSystem,
+  createFloatingTextSystem,
   createHitFlashSystem,
   createKnockbackPhysicsSystem,
   createMeleeAttackSystem,
@@ -19,10 +20,11 @@ import {
   RenderHost,
   TilemapLayer,
   createSpriteSyncSystem,
+  createTextSyncSystem,
   createTransformSnapshotSystem,
   TransformSnapshotStore,
 } from "@forge/render-2d";
-import { Sprite, type Texture } from "pixi.js";
+import { Graphics, Sprite, Text, type Texture } from "pixi.js";
 import { useEffect, useRef, useState } from "react";
 import { buildPackAwareCharacterTextures, type CharacterFrameSet } from "../canvas/characterTextures";
 import { buildEntityTextures } from "../canvas/entityMarkers";
@@ -69,6 +71,18 @@ const MELEE_DAMAGE = 10;
 const MELEE_KNOCKBACK_SPEED = 220;
 const MELEE_INVULNERABILITY_SEC = 0.4;
 const MELEE_FLASH_SEC = 0.15;
+
+/** H1d's damage-number tuning. */
+const DAMAGE_NUMBER_TTL_SEC = 0.8;
+const DAMAGE_NUMBER_SPAWN_OFFSET_Y = -14; // spawn just above the target's own anchor point, not centered on it
+
+/** H1d's death-particle-burst tuning — a small procedural flourish (Graphics, not sprite art), same "flat primitives are an honest placeholder" reasoning as tilePalette.ts's own flat swatches. */
+const DEATH_BURST_PARTICLE_COUNT = 10;
+const DEATH_BURST_MIN_SPEED = 60;
+const DEATH_BURST_MAX_SPEED = 160;
+const DEATH_BURST_TTL_SEC = 0.5;
+const DEATH_BURST_PARTICLE_RADIUS = 3;
+const DEATH_BURST_COLOR = 0x5d964d; // goblin skin (gensprite_h1.py's GOBLIN palette) — this repo's only enemy today
 
 type PreviewStatus = "loading" | "ready" | "error";
 
@@ -245,6 +259,7 @@ export function PreviewApp() {
         scheduler.addSystem(createKnockbackPhysicsSystem({ world }));
         scheduler.addSystem(createCharacterAnimationSystem({ world, frameCount: WALK_FRAME_COUNT, fps: WALK_FPS }));
         scheduler.addSystem(createHitFlashSystem({ world }));
+        scheduler.addSystem(createFloatingTextSystem({ world }));
         scheduler.addSystem(
           createSpriteSyncSystem({
             world,
@@ -260,6 +275,68 @@ export function PreviewApp() {
             },
           }),
         );
+        scheduler.addSystem(
+          createTextSyncSystem<Text>({
+            world,
+            container: host.worldContainer,
+            createText: () => {
+              const text = new Text({ text: "", style: { fill: 0xff5050, fontSize: 14, fontWeight: "bold" } });
+              text.anchor.set(0.5, 1);
+              return text;
+            },
+          }),
+        );
+
+        // H1d's death-particle burst: a small procedural flourish, not an
+        // ECS-driven effect like the damage number above — see
+        // DEATH_BURST_* constants' own doc comment for why this one stays
+        // simple, direct Pixi state instead of new components/systems.
+        interface DeathParticle {
+          readonly graphic: Graphics;
+          readonly vx: number;
+          readonly vy: number;
+          age: number;
+        }
+        const deathParticles: DeathParticle[] = [];
+        const spawnDeathBurst = (x: number, y: number): void => {
+          for (let i = 0; i < DEATH_BURST_PARTICLE_COUNT; i++) {
+            const angle = (i / DEATH_BURST_PARTICLE_COUNT) * Math.PI * 2 + Math.random() * 0.5;
+            const speed = DEATH_BURST_MIN_SPEED + Math.random() * (DEATH_BURST_MAX_SPEED - DEATH_BURST_MIN_SPEED);
+            const graphic = new Graphics().circle(0, 0, DEATH_BURST_PARTICLE_RADIUS).fill(DEATH_BURST_COLOR);
+            graphic.position.set(x, y);
+            host.worldContainer.addChild(graphic);
+            deathParticles.push({ graphic, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, age: 0 });
+          }
+        };
+        const updateDeathParticles = (dtSec: number): void => {
+          for (let i = deathParticles.length - 1; i >= 0; i--) {
+            const particle = deathParticles[i]!;
+            particle.age += dtSec;
+            if (particle.age >= DEATH_BURST_TTL_SEC) {
+              host.worldContainer.removeChild(particle.graphic);
+              particle.graphic.destroy();
+              deathParticles.splice(i, 1);
+              continue;
+            }
+            particle.graphic.position.x += particle.vx * dtSec;
+            particle.graphic.position.y += particle.vy * dtSec;
+            particle.graphic.alpha = 1 - particle.age / DEATH_BURST_TTL_SEC;
+          }
+        };
+
+        combatEvents.on("combat:hit", (payload) => {
+          const targetTransform = world.get<typeof TransformSchema>(payload.target, "Transform");
+          if (!targetTransform) return; // defensive: nothing to anchor a floating number to without a live Transform.
+          world.create({
+            Transform: { x: targetTransform.x, y: targetTransform.y + DAMAGE_NUMBER_SPAWN_OFFSET_Y },
+            FloatingText: { value: payload.damage, age: 0, ttl: DAMAGE_NUMBER_TTL_SEC },
+          });
+          world.flush();
+        });
+        combatEvents.on("combat:death", (payload) => {
+          spawnDeathBurst(payload.x, payload.y);
+        });
+
         const demoEnemySpawn = tileCenterWorld(DEMO_ENEMY_TILE.x, DEMO_ENEMY_TILE.y);
         const enemyEntity = spawnEnemy(world, demoEnemySpawn.x, demoEnemySpawn.y);
         world.flush();
@@ -268,6 +345,7 @@ export function PreviewApp() {
 
         const onTick = (ticker: { deltaMS: number }) => {
           scheduler.tick(ticker.deltaMS);
+          updateDeathParticles(ticker.deltaMS / 1000);
           const playerEntity = gameWorldRef.current?.playerEntity;
           const playerTransform = playerEntity !== undefined ? world.get<typeof TransformSchema>(playerEntity, "Transform") : undefined;
           if (playerTransform) {

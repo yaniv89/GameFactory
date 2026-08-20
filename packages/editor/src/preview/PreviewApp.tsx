@@ -11,6 +11,7 @@ import {
   HealthSchema,
   Scheduler,
   TransformSchema,
+  VelocitySchema,
   World,
   type EntityId,
   type EventBus,
@@ -38,6 +39,7 @@ import { WALL_TILE_ID, buildPaletteTextures } from "../canvas/tilePalette";
 import type { EntityPlacement } from "../store/projectStore";
 import { fitZoom as fitZoomOf, followCamera as followCameraOf, followZoom as followZoomOf } from "./cameraFollow";
 import { createModuleRuntime } from "./directModuleHost";
+import { createPreviewAudio, type PreviewAudio } from "./previewAudio";
 import {
   COIN_ASSET_ID,
   ENEMY_ASSET_ID,
@@ -89,6 +91,9 @@ const DEATH_BURST_MAX_SPEED = 160;
 const DEATH_BURST_TTL_SEC = 0.5;
 const DEATH_BURST_PARTICLE_RADIUS = 3;
 const DEATH_BURST_COLOR = 0x5d964d; // goblin skin (gensprite_h1.py's GOBLIN palette) — this repo's only enemy today
+
+/** H1f's footstep cadence — world units of real player travel between footstep cues, not a fixed timer, so a step lands at the same point in the walk cycle regardless of frame rate. Close to a walk-cycle stride at TILE_SIZE's own scale. */
+const FOOTSTEP_STRIDE_DISTANCE = 26;
 
 type PreviewStatus = "loading" | "ready" | "error";
 
@@ -195,6 +200,10 @@ export function PreviewApp() {
   const healthBarRootRef = useRef<HTMLDivElement>(null);
   const healthBarFillRef = useRef<HTMLDivElement>(null);
   const healthBarLabelRef = useRef<HTMLSpanElement>(null);
+  /** H1f's audio layer, created once at boot and disposed on unmount — see previewAudio.ts's own doc comment for why this is raw Web Audio rather than a library. */
+  const previewAudioRef = useRef<PreviewAudio | null>(null);
+  /** World units of player travel accumulated since the last footstep cue — distance-based cadence, not a fixed timer, so a step always lands at the same point in the walk regardless of frame rate. */
+  const footstepDistanceRef = useRef(0);
 
   const [status, setStatus] = useState<PreviewStatus>("loading");
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
@@ -261,6 +270,8 @@ export function PreviewApp() {
         const entityTextures = buildEntityTextures(host.app.renderer, TILE_SIZE);
         const combatEvents = new EventBusImpl<MeleeAttackEventMap>();
         const pickupEvents = new EventBusImpl<PickupEventMap>();
+        const audio = createPreviewAudio();
+        previewAudioRef.current = audio;
         scheduler.addSystem(createTransformSnapshotSystem(world, snapshots));
         scheduler.addSystem(createPlayerMovementSystem(world, isWalkable, keysHeldRef.current));
         scheduler.addSystem(
@@ -351,6 +362,7 @@ export function PreviewApp() {
         };
 
         combatEvents.on("combat:hit", (payload) => {
+          audio.playImpact();
           const targetTransform = world.get<typeof TransformSchema>(payload.target, "Transform");
           if (!targetTransform) return; // defensive: nothing to anchor a floating number to without a live Transform.
           world.create({
@@ -360,6 +372,7 @@ export function PreviewApp() {
           world.flush();
         });
         combatEvents.on("combat:death", (payload) => {
+          audio.playDeath();
           spawnDeathBurst(payload.x, payload.y);
           // H1e's item drop: every kill leaves a real, walkable-over coin
           // at the enemy's own last position — not a chance roll (I1's
@@ -368,6 +381,7 @@ export function PreviewApp() {
           world.flush();
         });
         pickupEvents.on("pickup:collected", (payload) => {
+          audio.playPickup();
           setCoinCount((count) => count + payload.amount);
         });
 
@@ -396,6 +410,26 @@ export function PreviewApp() {
             followCamera(camera, playerTransform.x, playerTransform.y);
             camera.applyTo(host.worldContainer);
             layer.cull(camera.visibleWorldBounds(TILE_SIZE));
+          }
+
+          // H1f's footstep cadence: real distance traveled this tick, not
+          // wall-clock time, so a step lands the same way regardless of
+          // frame rate. Standing still (or blocked by a wall — Velocity
+          // reports the *applied* displacement, per createPlayerMovementSystem's
+          // own doc comment) resets the accumulator rather than letting a
+          // stale partial stride carry into the next walk.
+          const playerVelocity = playerEntity !== undefined ? world.get<typeof VelocitySchema>(playerEntity, "Velocity") : undefined;
+          if (playerVelocity) {
+            const speed = Math.hypot(playerVelocity.vx, playerVelocity.vy);
+            if (speed > 0) {
+              footstepDistanceRef.current += speed * (ticker.deltaMS / 1000);
+              if (footstepDistanceRef.current >= FOOTSTEP_STRIDE_DISTANCE) {
+                footstepDistanceRef.current -= FOOTSTEP_STRIDE_DISTANCE;
+                audio.playFootstep();
+              }
+            } else {
+              footstepDistanceRef.current = 0;
+            }
           }
 
           // H1e's HUD health bar: direct DOM mutation (this ref-based
@@ -445,6 +479,8 @@ export function PreviewApp() {
         rigRef.current?.host.destroy();
         rigRef.current = null;
         gameWorldRef.current = null;
+        previewAudioRef.current?.dispose();
+        previewAudioRef.current = null;
       });
     };
   }, []);
@@ -549,10 +585,15 @@ export function PreviewApp() {
   // "E" to interact with the nearest NPC in range, Space to swing.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      // H1f: the first real keypress the preview already requires for
+      // focus is also the browser-mandated user gesture that unlocks
+      // Web Audio — idempotent, so unconditional here is simplest.
+      previewAudioRef.current?.resume();
       keysHeldRef.current.add(event.key);
       if (event.key === MELEE_ATTACK_KEY) {
         event.preventDefault(); // stop the page from scrolling on Space, the same way a real game would capture it
         attackRequestedRef.current = true;
+        previewAudioRef.current?.playSwing(); // the whoosh plays on every real swing attempt, hit or miss — matches a real game's weapon sound
         return;
       }
       if (event.key.toLowerCase() !== "e") return;

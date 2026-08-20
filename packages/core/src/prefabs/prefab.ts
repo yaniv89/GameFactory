@@ -1,4 +1,4 @@
-import type { Animator, Collider, EnemyAi, Health, Interactable, Pickup, PlayerControlled, Sprite, Velocity } from "../components/core";
+import { MOUNT_NO_RIDER, type Animator, type Collider, type EnemyAi, type Health, type Interactable, type Mount, type Pickup, type PlayerControlled, type Sprite, type Velocity } from "../components/core";
 import type { EntityId } from "../ecs/entity";
 import type { World } from "../ecs/world";
 import { COLLIDER_SHAPE_BOX, COLLIDER_SHAPE_CIRCLE } from "../physics/aabb";
@@ -55,6 +55,15 @@ export interface Prefab {
      * expected to override it.
      */
     readonly enemyAi?: Partial<EnemyAi>;
+    /**
+     * `riderEntity`/`riderBaseMaxSpeed` are never taken from here —
+     * `spawnFromPrefab` always sets `riderEntity` to `MOUNT_NO_RIDER` (a
+     * freshly spawned mount is never pre-ridden) and `riderBaseMaxSpeed`
+     * to 0 (meaningless until something actually mounts it). This is only
+     * for `range`/`mountedMaxSpeed`, the per-prefab tuning a mount
+     * genuinely differs on.
+     */
+    readonly mount?: Partial<Mount>;
   };
 }
 
@@ -153,11 +162,31 @@ export const COIN_PICKUP_PREFAB: Prefab = {
   },
 };
 
+/**
+ * I1b's rideable entity — no `Collider`, matching `NPC_PREFAB`'s own
+ * precedent: `createMountSystem` does its own direct distance check (the
+ * same shape `INTERACT_RANGE`'s NPC-dialogue lookup already uses in the
+ * editor preview), not an AABB overlap test, so nothing reads this
+ * entity's collider. `mountedMaxSpeed` (260) comfortably exceeds
+ * `PLAYER_START_PREFAB.components.velocity.maxSpeed` (140) so riding is a
+ * genuine, felt speed boost, not a marginal one.
+ */
+export const MOUNT_PREFAB: Prefab = {
+  id: "mount",
+  label: "Mount",
+  spriteAssetKey: "mount",
+  components: {
+    sprite: { frame: 0, anchorX: 0.5, anchorY: 0.5, tint: 0xffffff, opacity: 1 },
+    mount: { range: 40, mountedMaxSpeed: 260 },
+  },
+};
+
 const PREFAB_REGISTRY: Readonly<Record<string, Prefab>> = {
   [PLAYER_START_PREFAB.id]: PLAYER_START_PREFAB,
   [NPC_PREFAB.id]: NPC_PREFAB,
   [ENEMY_PREFAB.id]: ENEMY_PREFAB,
   [COIN_PICKUP_PREFAB.id]: COIN_PICKUP_PREFAB,
+  [MOUNT_PREFAB.id]: MOUNT_PREFAB,
 };
 
 /**
@@ -218,6 +247,11 @@ export function spawnFromPrefab(
     // position itself, never the prefab — see this field's own doc
     // comment on `Prefab.components.enemyAi`.
     initial.EnemyAi = { homeX: worldX, homeY: worldY, wanderTargetX: worldX, wanderTargetY: worldY, attackCooldownUntil: 0, ...c.enemyAi };
+  }
+  if (c.mount) {
+    // riderEntity/riderBaseMaxSpeed always start unridden — see this
+    // field's own doc comment on `Prefab.components.mount`.
+    initial.Mount = { riderEntity: MOUNT_NO_RIDER, range: 40, mountedMaxSpeed: 0, riderBaseMaxSpeed: 0, ...c.mount };
   }
   return world.create(initial);
 }

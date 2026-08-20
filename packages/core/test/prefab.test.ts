@@ -5,6 +5,7 @@ import {
   COIN_ITEM_ID,
   COIN_PICKUP_PREFAB,
   ENEMY_PREFAB,
+  MOUNT_PREFAB,
   NPC_PREFAB,
   PLAYER_START_PREFAB,
   PREFAB_IDS,
@@ -13,6 +14,7 @@ import {
   spawnFromPrefab,
   type Prefab,
 } from "../src/prefabs/prefab";
+import { MOUNT_NO_RIDER } from "../src/components/core";
 
 function makeWorld() {
   const world = new World();
@@ -21,8 +23,8 @@ function makeWorld() {
 }
 
 describe("PREFAB_IDS / getPrefab / isPrefabId", () => {
-  it("registers exactly the four first-party prefabs (docs/adr/0015 decision 3; enemy added in H1c, coin-pickup in H1e)", () => {
-    expect([...PREFAB_IDS].sort()).toEqual(["coin-pickup", "enemy", "npc", "player-start"]);
+  it("registers exactly the five first-party prefabs (docs/adr/0015 decision 3; enemy added in H1c, coin-pickup in H1e, mount in I1b)", () => {
+    expect([...PREFAB_IDS].sort()).toEqual(["coin-pickup", "enemy", "mount", "npc", "player-start"]);
   });
 
   it("getPrefab resolves a known id and returns undefined for an unknown one", () => {
@@ -30,6 +32,7 @@ describe("PREFAB_IDS / getPrefab / isPrefabId", () => {
     expect(getPrefab("npc")).toBe(NPC_PREFAB);
     expect(getPrefab("enemy")).toBe(ENEMY_PREFAB);
     expect(getPrefab("coin-pickup")).toBe(COIN_PICKUP_PREFAB);
+    expect(getPrefab("mount")).toBe(MOUNT_PREFAB);
     expect(getPrefab("dragon")).toBeUndefined();
   });
 
@@ -111,6 +114,20 @@ describe("spawnFromPrefab", () => {
     expect(world.get(entity, "Sprite")).toMatchObject({ assetId: 4, frame: 0 });
     expect(world.get(entity, "Collider")).toMatchObject({ shape: 1, width: 16, height: 16, isTrigger: 1 });
     expect(world.get(entity, "Pickup")).toMatchObject({ itemId: COIN_ITEM_ID, amount: 1 });
+    expect(world.has(entity, "Health")).toBe(false);
+    expect(world.has(entity, "Velocity")).toBe(false);
+    expect(world.has(entity, "PlayerControlled")).toBe(false);
+  });
+
+  it("spawns MOUNT_PREFAB unridden, with no Collider — the I1b rideable-entity shape", () => {
+    const world = makeWorld();
+    const entity = spawnFromPrefab(world, MOUNT_PREFAB, 90, 100, () => 5);
+    world.flush();
+
+    expect(world.get(entity, "Transform")).toMatchObject({ x: 90, y: 100 });
+    expect(world.get(entity, "Sprite")).toMatchObject({ assetId: 5, frame: 0 });
+    expect(world.get(entity, "Mount")).toMatchObject({ riderEntity: MOUNT_NO_RIDER, range: 40, mountedMaxSpeed: 260, riderBaseMaxSpeed: 0 });
+    expect(world.has(entity, "Collider")).toBe(false);
     expect(world.has(entity, "Health")).toBe(false);
     expect(world.has(entity, "Velocity")).toBe(false);
     expect(world.has(entity, "PlayerControlled")).toBe(false);

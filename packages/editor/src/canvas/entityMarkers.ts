@@ -1,4 +1,4 @@
-import { COIN_PICKUP_PREFAB, PLAYER_START_PREFAB, NPC_PREFAB } from "@forge/core";
+import { COIN_PICKUP_PREFAB, MOUNT_PREFAB, PLAYER_START_PREFAB, NPC_PREFAB } from "@forge/core";
 import { Graphics, type Renderer, type Texture } from "pixi.js";
 
 /**
@@ -14,6 +14,8 @@ export const PLAYER_MARKER_COLOR = 0x5ec8f2; // cyan
 export const NPC_MARKER_COLOR = 0xd162c9; // magenta
 /** H1e's dropped coin — gold, deliberately duller/more yellow than `--accent-running`'s amber so it never reads as "the running state" (CLAUDE.md 5.1). */
 export const COIN_MARKER_COLOR = 0xe0c14c;
+/** I1b's rideable mount — a saddle-brown distinct from every other marker/tile color and, per CLAUDE.md 5.1, well clear of `--accent-running`'s amber. */
+export const MOUNT_MARKER_COLOR = 0x8a5a3b;
 
 /** Keyed by `EntityPlacement.prefabId` — not a closed union, per docs/adr/0015-entity-prefab-component-model.md. */
 export function buildEntityTextures(renderer: Renderer, tileSize: number): Map<string, Texture> {
@@ -32,6 +34,16 @@ export function buildEntityTextures(renderer: Renderer, tileSize: number): Map<s
   const coin = new Graphics().circle(center, center, radius * 0.6).fill(COIN_MARKER_COLOR);
   textures.set(COIN_PICKUP_PREFAB.id, renderer.generateTexture(coin));
   coin.destroy();
+
+  // A rounded rectangle, not another circle — CLAUDE.md 5.6's "color is
+  // never the only signal" applies to game-world markers too, not just
+  // editor chrome, and every other marker here is a circle.
+  const mountSize = radius * 2.1;
+  const mount = new Graphics()
+    .roundRect(center - mountSize / 2, center - mountSize / 2, mountSize, mountSize, mountSize * 0.3)
+    .fill(MOUNT_MARKER_COLOR);
+  textures.set(MOUNT_PREFAB.id, renderer.generateTexture(mount));
+  mount.destroy();
 
   return textures;
 }

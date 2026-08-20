@@ -25,4 +25,5 @@ export * from "./systems/hitFlash";
 export * from "./systems/floatingText";
 export * from "./systems/pickup";
 export * from "./systems/enemyAi";
+export * from "./systems/mount";
 export * from "./save/serialize";

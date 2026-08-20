@@ -1,11 +1,13 @@
 import {
   COIN_PICKUP_PREFAB,
+  MOUNT_PREFAB,
   createCharacterAnimationSystem,
   createEnemyAiSystem,
   createFloatingTextSystem,
   createHitFlashSystem,
   createKnockbackPhysicsSystem,
   createMeleeAttackSystem,
+  createMountSystem,
   createPickupSystem,
   registerCoreComponents,
   EventBusImpl,
@@ -47,11 +49,13 @@ import {
   COIN_ASSET_ID,
   ENEMY_ASSET_ID,
   INTERACT_RANGE,
+  MOUNT_ASSET_ID,
   NPC_ASSET_ID,
   PLAYER_ASSET_ID,
   createPlayerMovementSystem,
   spawnCoinPickup,
   spawnEnemy,
+  spawnMount,
   spawnNpcMarker,
   spawnPlayer,
 } from "./gameWorld";
@@ -73,6 +77,9 @@ const WALK_FPS = 8;
 
 /** H1c's fixed demo enemy spawn — see `spawnEnemy`'s own doc comment for why this isn't sourced from scene placements yet. Tile (13, 8), a few tiles from a typical player start, well clear of the map's own edges. */
 const DEMO_ENEMY_TILE = { x: 13, y: 8 };
+
+/** I1b's fixed demo mount spawn — same "not sourced from scene placements yet" gap `spawnMount`'s own doc comment states. Tile (5, 8): same walkable row as `DEMO_ENEMY_TILE`, well clear of it and of the map's own edges. */
+const DEMO_MOUNT_TILE = { x: 5, y: 8 };
 
 /** H1c's melee-swing tuning — one designed unit, not scattered magic numbers at each call site. */
 const MELEE_ATTACK_KEY = " "; // Space — KeyboardEvent.key for the spacebar.
@@ -159,6 +166,8 @@ interface GameWorld {
   readonly npcEntitiesByPlacementId: Map<string, EntityId>;
   /** H1c's fixed demo combat target (`spawnEnemy`'s own doc comment explains why it isn't placement-sourced yet). */
   readonly enemyEntity: EntityId;
+  /** I1b's fixed demo mount (`spawnMount`'s own doc comment explains why it isn't placement-sourced yet). */
+  readonly mountEntity: EntityId;
   /** `createMeleeAttackSystem`'s own event bus — H1d's damage-number/death-particle work subscribes to `"combat:hit"`/`"combat:death"` here. */
   readonly combatEvents: EventBus<MeleeAttackEventMap>;
   /** `createPickupSystem`'s own event bus — H1e's HUD coin-slot counter subscribes to `"pickup:collected"` here. */
@@ -231,6 +240,8 @@ export function PreviewApp() {
   const keysHeldRef = useRef<Set<string>>(new Set());
   /** Set true on a Space keydown, consumed (and cleared) by `createMeleeAttackSystem`'s `consumeAttackRequest` — an edge, not "held," so pinning the key down doesn't spam a swing every tick. */
   const attackRequestedRef = useRef(false);
+  /** I1b's mount/dismount request: set true on an "E" press that found no NPC dialogue target in range, consumed (and cleared) by `createMountSystem`'s own `consumeMountRequest` — the same "own the input state" edge shape `attackRequestedRef` already establishes. */
+  const mountRequestedRef = useRef(false);
   const bubbleTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lifecycleRef = useRef<Promise<void>>(Promise.resolve());
   const tickerCallbackRef = useRef<((ticker: { deltaMS: number }) => void) | null>(null);
@@ -389,6 +400,16 @@ export function PreviewApp() {
             isWalkable,
           }),
         );
+        scheduler.addSystem(
+          createMountSystem({
+            world,
+            consumeMountRequest: () => {
+              const requested = mountRequestedRef.current;
+              mountRequestedRef.current = false;
+              return requested;
+            },
+          }),
+        );
         scheduler.addSystem(createCharacterAnimationSystem({ world, frameCount: WALK_FRAME_COUNT, fps: WALK_FPS }));
         scheduler.addSystem(createHitFlashSystem({ world }));
         scheduler.addSystem(createFloatingTextSystem({ world }));
@@ -405,6 +426,7 @@ export function PreviewApp() {
               const animatedFrame = frameSet?.frames[frame];
               if (animatedFrame) return animatedFrame;
               if (assetId === COIN_ASSET_ID) return entityTextures.get(COIN_PICKUP_PREFAB.id);
+              if (assetId === MOUNT_ASSET_ID) return entityTextures.get(MOUNT_PREFAB.id);
               return entityTextures.get(assetId === PLAYER_ASSET_ID ? "player-start" : "npc");
             },
           }),
@@ -507,12 +529,17 @@ export function PreviewApp() {
           world.flush();
         }
 
+        const demoMountSpawn = tileCenterWorld(DEMO_MOUNT_TILE.x, DEMO_MOUNT_TILE.y);
+        const mountEntity = spawnMount(world, demoMountSpawn.x, demoMountSpawn.y);
+        world.flush();
+
         gameWorldRef.current = {
           world,
           scheduler,
           playerEntity: undefined,
           npcEntitiesByPlacementId: new Map(),
           enemyEntity,
+          mountEntity,
           combatEvents,
           pickupEvents,
         };
@@ -750,26 +777,38 @@ export function PreviewApp() {
       }
       if (event.key.toLowerCase() !== "e") return;
       const gameWorld = gameWorldRef.current;
+      if (gameWorld?.playerEntity === undefined) return;
       const dialogue = dialogueRef.current;
-      if (gameWorld?.playerEntity === undefined || !dialogue) return;
       const playerTransform = gameWorld.world.get<typeof TransformSchema>(gameWorld.playerEntity, "Transform");
       if (!playerTransform) return;
 
       let nearestId: string | undefined;
       let nearestDistance = INTERACT_RANGE;
-      for (const [placementId, npcEntity] of gameWorld.npcEntitiesByPlacementId) {
-        if (!dialogue.dialogueEntityByPlacementId.has(placementId)) continue; // no dialogue configured
-        const npcTransform = gameWorld.world.get<typeof TransformSchema>(npcEntity, "Transform");
-        if (!npcTransform) continue;
-        const distance = Math.hypot(playerTransform.x - npcTransform.x, playerTransform.y - npcTransform.y);
-        if (distance <= nearestDistance) {
-          nearestDistance = distance;
-          nearestId = placementId;
+      if (dialogue) {
+        for (const [placementId, npcEntity] of gameWorld.npcEntitiesByPlacementId) {
+          if (!dialogue.dialogueEntityByPlacementId.has(placementId)) continue; // no dialogue configured
+          const npcTransform = gameWorld.world.get<typeof TransformSchema>(npcEntity, "Transform");
+          if (!npcTransform) continue;
+          const distance = Math.hypot(playerTransform.x - npcTransform.x, playerTransform.y - npcTransform.y);
+          if (distance <= nearestDistance) {
+            nearestDistance = distance;
+            nearestId = placementId;
+          }
         }
       }
-      if (!nearestId) return;
-      const dialogueEntity = dialogue.dialogueEntityByPlacementId.get(nearestId)!;
-      dialogue.runtime.ctx.events.emit("dialogue:start", { entity: dialogueEntity, treeId: nearestId });
+
+      if (nearestId) {
+        const dialogueEntity = dialogue!.dialogueEntityByPlacementId.get(nearestId)!;
+        dialogue!.runtime.ctx.events.emit("dialogue:start", { entity: dialogueEntity, treeId: nearestId });
+        return;
+      }
+
+      // No NPC dialogue target in range — I1b's mount/dismount instead.
+      // createMountSystem itself decides whether this actually mounts,
+      // dismounts, or does nothing (no mount in range and not currently
+      // riding one); this is just the same "E was pressed" edge NPC
+      // interact already consumes, falling through to a second consumer.
+      mountRequestedRef.current = true;
     };
     const onKeyUp = (event: KeyboardEvent) => {
       keysHeldRef.current.delete(event.key);

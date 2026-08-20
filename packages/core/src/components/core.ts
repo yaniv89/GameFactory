@@ -164,6 +164,37 @@ export const EnemyAiSchema = {
 } as const satisfies ComponentSchema;
 export type EnemyAi = ComponentValue<typeof EnemyAiSchema>;
 
+/**
+ * `Mount.riderEntity` sentinel meaning "not currently ridden." `riderEntity`
+ * is stored as `u32` (not `i32`): a packed `EntityId` (generation << 20 |
+ * index, see `ecs/entity.ts`) can exceed the signed 32-bit range once a
+ * slot's generation climbs past ~2048, and this codebase's other "no
+ * value" sentinels (`Sprite.assetId: -1`, `Animator.clipId: -1`) all live
+ * in genuinely signed fields where -1 is unambiguous — a `u32` field has
+ * no such spare bit, so this uses the type's own max value instead, a
+ * packed id no real entity can ever reach in practice.
+ */
+export const MOUNT_NO_RIDER = 0xffffffff;
+
+/**
+ * I1b's rideable entity — presence marks an entity as mountable (queried
+ * by `createMountSystem`, the same "presence is the tag" pattern `Health`/
+ * `EnemyAi` already establish). `range` and `mountedMaxSpeed` are
+ * per-entity so different mount prefabs (a slow ox cart vs. a fast horse)
+ * can differ; `riderEntity`/`riderBaseMaxSpeed` are the *live* ride state
+ * — `riderBaseMaxSpeed` captures the rider's own `Velocity.maxSpeed` at
+ * the moment of mounting so dismounting can restore exactly that value
+ * without `createMountSystem` needing to know any rider's "normal" speed
+ * ahead of time.
+ */
+export const MountSchema = {
+  riderEntity: "u32",
+  range: "f32",
+  mountedMaxSpeed: "f32",
+  riderBaseMaxSpeed: "f32",
+} as const satisfies ComponentSchema;
+export type Mount = ComponentValue<typeof MountSchema>;
+
 export interface CoreComponents {
   readonly Transform: ReturnType<World["defineComponent"]>;
   readonly Sprite: ReturnType<World["defineComponent"]>;
@@ -176,6 +207,7 @@ export interface CoreComponents {
   readonly FloatingText: ReturnType<World["defineComponent"]>;
   readonly Pickup: ReturnType<World["defineComponent"]>;
   readonly EnemyAi: ReturnType<World["defineComponent"]>;
+  readonly Mount: ReturnType<World["defineComponent"]>;
 }
 
 /** Registers every core component against `world`. Call once, at world construction. */
@@ -249,6 +281,12 @@ export function registerCoreComponents(world: World): CoreComponents {
       wanderTargetX: 0,
       wanderTargetY: 0,
       attackCooldownUntil: 0,
+    }),
+    Mount: world.defineComponent("Mount", MountSchema, {
+      riderEntity: MOUNT_NO_RIDER,
+      range: 40,
+      mountedMaxSpeed: 260,
+      riderBaseMaxSpeed: 0,
     }),
   };
 }

@@ -20,6 +20,15 @@ export const MOUNT_MARKER_COLOR = 0x8a5a3b;
 export const WEAPON_MARKER_COLOR = 0xb8c4cc;
 /** Texture map key for the wielded-weapon marker — not a `Prefab.id` (the weapon entity isn't a prefab; `createEquipmentSystem` creates/destroys it directly), so this is its own plain string constant instead. */
 export const WEAPON_MARKER_TEXTURE_KEY = "weapon";
+/**
+ * Texture map key for I1d's VFX particle — baked *white*, unlike every
+ * other marker here (which bake their own final color straight into the
+ * texture): `spawnVfxBurst` gives every burst its own `Sprite.tint`
+ * (impact sparks vs. a death burst want different colors from the exact
+ * same texture), and a white base is what makes Pixi's multiplicative
+ * tint reproduce that color exactly.
+ */
+export const VFX_PARTICLE_TEXTURE_KEY = "vfx-particle";
 
 /** Keyed by `EntityPlacement.prefabId` — not a closed union, per docs/adr/0015-entity-prefab-component-model.md. */
 export function buildEntityTextures(renderer: Renderer, tileSize: number): Map<string, Texture> {
@@ -63,6 +72,11 @@ export function buildEntityTextures(renderer: Renderer, tileSize: number): Map<s
   const weaponTexture = renderer.generateTexture(weapon);
   weapon.destroy();
   textures.set(WEAPON_MARKER_TEXTURE_KEY, weaponTexture);
+
+  const vfxParticle = new Graphics().circle(0, 0, tileSize * 0.09).fill(0xffffff);
+  const vfxParticleTexture = renderer.generateTexture(vfxParticle);
+  vfxParticle.destroy();
+  textures.set(VFX_PARTICLE_TEXTURE_KEY, vfxParticleTexture);
 
   return textures;
 }

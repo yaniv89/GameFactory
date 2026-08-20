@@ -34,6 +34,8 @@ export const MOUNT_ASSET_ID = 5;
  * are already plain constants known ahead of time.
  */
 export const WEAPON_ASSET_ID = 6;
+/** I1d's VFX particle visual — same "not a prefab, plain pre-resolved constant" reasoning as `WEAPON_ASSET_ID`: `spawnVfxBurst` creates/destroys particle entities directly, never through `spawnFromPrefab`. */
+export const VFX_PARTICLE_ASSET_ID = 7;
 
 const SPRITE_ASSET_IDS: Readonly<Record<string, number>> = {
   player: PLAYER_ASSET_ID,

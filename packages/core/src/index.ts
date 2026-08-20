@@ -27,4 +27,5 @@ export * from "./systems/pickup";
 export * from "./systems/enemyAi";
 export * from "./systems/mount";
 export * from "./systems/equipment";
+export * from "./systems/vfx";
 export * from "./save/serialize";

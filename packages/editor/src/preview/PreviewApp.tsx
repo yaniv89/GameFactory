@@ -10,7 +10,9 @@ import {
   createMeleeAttackSystem,
   createMountSystem,
   createPickupSystem,
+  createVfxParticleSystem,
   registerCoreComponents,
+  spawnVfxBurst,
   EventBusImpl,
   HealthSchema,
   Scheduler,
@@ -34,10 +36,10 @@ import {
   createTransformSnapshotSystem,
   TransformSnapshotStore,
 } from "@forge/render-2d";
-import { Graphics, Sprite, Text, type Texture } from "pixi.js";
+import { Sprite, Text, type Texture } from "pixi.js";
 import { useEffect, useRef, useState } from "react";
 import { buildPackAwareCharacterTextures, type CharacterFrameSet } from "../canvas/characterTextures";
-import { buildEntityTextures, WEAPON_MARKER_TEXTURE_KEY } from "../canvas/entityMarkers";
+import { buildEntityTextures, VFX_PARTICLE_TEXTURE_KEY, WEAPON_MARKER_TEXTURE_KEY } from "../canvas/entityMarkers";
 import { GRID_HEIGHT, GRID_WIDTH, TILE_SIZE } from "../canvas/gridConstants";
 import { loadActivePackContext } from "../canvas/packTiles";
 import { WALL_TILE_ID, buildAutotileWallTextures, buildPaletteTextures } from "../canvas/tilePalette";
@@ -53,6 +55,7 @@ import {
   MOUNT_ASSET_ID,
   NPC_ASSET_ID,
   PLAYER_ASSET_ID,
+  VFX_PARTICLE_ASSET_ID,
   WEAPON_ASSET_ID,
   createPlayerMovementSystem,
   spawnCoinPickup,
@@ -121,13 +124,30 @@ const ENEMY_WANDER_SPEED = 40;
 const DAMAGE_NUMBER_TTL_SEC = 0.8;
 const DAMAGE_NUMBER_SPAWN_OFFSET_Y = -14; // spawn just above the target's own anchor point, not centered on it
 
-/** H1d's death-particle-burst tuning — a small procedural flourish (Graphics, not sprite art), same "flat primitives are an honest placeholder" reasoning as tilePalette.ts's own flat swatches. */
-const DEATH_BURST_PARTICLE_COUNT = 10;
-const DEATH_BURST_MIN_SPEED = 60;
-const DEATH_BURST_MAX_SPEED = 160;
-const DEATH_BURST_TTL_SEC = 0.5;
-const DEATH_BURST_PARTICLE_RADIUS = 3;
-const DEATH_BURST_COLOR = 0x5d964d; // goblin skin (gensprite_h1.py's GOBLIN palette) — this repo's only enemy today
+/**
+ * I1d's hit-effect pipeline tuning — real `VfxBurstOptions` (@forge/core),
+ * not scattered magic numbers at each `spawnVfxBurst` call site. Replaces
+ * H1d's original ad hoc, ECS-external death-particle-burst code (raw
+ * `Pixi.Graphics` state hand-updated in this file's own `onTick`) with the
+ * real, tested `createVfxParticleSystem`.
+ */
+const DEATH_BURST_OPTIONS = {
+  count: 10,
+  minSpeed: 60,
+  maxSpeed: 160,
+  ttl: 0.5,
+  tint: 0x5d964d, // goblin skin (gensprite_h1.py's GOBLIN palette) — this repo's only enemy today
+  particleAssetId: VFX_PARTICLE_ASSET_ID,
+} as const;
+/** A smaller, quicker, neutral-colored burst on every landed hit (not just a kill) — a felt "impact spark" H1d never had, since the old ad hoc code only fired on death. */
+const IMPACT_SPARK_OPTIONS = {
+  count: 5,
+  minSpeed: 40,
+  maxSpeed: 110,
+  ttl: 0.25,
+  tint: 0xf2d98a, // pale spark — distinct from DEATH_BURST_OPTIONS' own green and from --accent-running's amber
+  particleAssetId: VFX_PARTICLE_ASSET_ID,
+} as const;
 
 /** H1f's footstep cadence — world units of real player travel between footstep cues, not a fixed timer, so a step lands at the same point in the walk cycle regardless of frame rate. Close to a walk-cycle stride at TILE_SIZE's own scale. */
 const FOOTSTEP_STRIDE_DISTANCE = 26;
@@ -435,6 +455,7 @@ export function PreviewApp() {
         scheduler.addSystem(createHitFlashSystem({ world }));
         scheduler.addSystem(createFloatingTextSystem({ world }));
         scheduler.addSystem(createPickupSystem({ world, events: pickupEvents }));
+        scheduler.addSystem(createVfxParticleSystem({ world }));
         scheduler.addSystem(
           createSpriteSyncSystem({
             world,
@@ -449,6 +470,7 @@ export function PreviewApp() {
               if (assetId === COIN_ASSET_ID) return entityTextures.get(COIN_PICKUP_PREFAB.id);
               if (assetId === MOUNT_ASSET_ID) return entityTextures.get(MOUNT_PREFAB.id);
               if (assetId === WEAPON_ASSET_ID) return entityTextures.get(WEAPON_MARKER_TEXTURE_KEY);
+              if (assetId === VFX_PARTICLE_ASSET_ID) return entityTextures.get(VFX_PARTICLE_TEXTURE_KEY);
               return entityTextures.get(assetId === PLAYER_ASSET_ID ? "player-start" : "npc");
             },
           }),
@@ -465,56 +487,22 @@ export function PreviewApp() {
           }),
         );
 
-        // H1d's death-particle burst: a small procedural flourish, not an
-        // ECS-driven effect like the damage number above — see
-        // DEATH_BURST_* constants' own doc comment for why this one stays
-        // simple, direct Pixi state instead of new components/systems.
-        interface DeathParticle {
-          readonly graphic: Graphics;
-          readonly vx: number;
-          readonly vy: number;
-          age: number;
-        }
-        const deathParticles: DeathParticle[] = [];
-        const spawnDeathBurst = (x: number, y: number): void => {
-          for (let i = 0; i < DEATH_BURST_PARTICLE_COUNT; i++) {
-            const angle = (i / DEATH_BURST_PARTICLE_COUNT) * Math.PI * 2 + Math.random() * 0.5;
-            const speed = DEATH_BURST_MIN_SPEED + Math.random() * (DEATH_BURST_MAX_SPEED - DEATH_BURST_MIN_SPEED);
-            const graphic = new Graphics().circle(0, 0, DEATH_BURST_PARTICLE_RADIUS).fill(DEATH_BURST_COLOR);
-            graphic.position.set(x, y);
-            host.worldContainer.addChild(graphic);
-            deathParticles.push({ graphic, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, age: 0 });
-          }
-        };
-        const updateDeathParticles = (dtSec: number): void => {
-          for (let i = deathParticles.length - 1; i >= 0; i--) {
-            const particle = deathParticles[i]!;
-            particle.age += dtSec;
-            if (particle.age >= DEATH_BURST_TTL_SEC) {
-              host.worldContainer.removeChild(particle.graphic);
-              particle.graphic.destroy();
-              deathParticles.splice(i, 1);
-              continue;
-            }
-            particle.graphic.position.x += particle.vx * dtSec;
-            particle.graphic.position.y += particle.vy * dtSec;
-            particle.graphic.alpha = 1 - particle.age / DEATH_BURST_TTL_SEC;
-          }
-        };
-
         combatEvents.on("combat:hit", (payload) => {
           audio.playImpact();
           const targetTransform = world.get<typeof TransformSchema>(payload.target, "Transform");
-          if (!targetTransform) return; // defensive: nothing to anchor a floating number to without a live Transform.
+          if (!targetTransform) return; // defensive: nothing to anchor a floating number/spark to without a live Transform.
           world.create({
             Transform: { x: targetTransform.x, y: targetTransform.y + DAMAGE_NUMBER_SPAWN_OFFSET_Y },
             FloatingText: { value: payload.damage, age: 0, ttl: DAMAGE_NUMBER_TTL_SEC },
           });
+          // I1d: a real impact spark on every landed hit, not just a kill —
+          // H1d's original ad hoc code only ever fired on death.
+          spawnVfxBurst(world, targetTransform.x, targetTransform.y, IMPACT_SPARK_OPTIONS);
           world.flush();
         });
         combatEvents.on("combat:death", (payload) => {
           audio.playDeath();
-          spawnDeathBurst(payload.x, payload.y);
+          spawnVfxBurst(world, payload.x, payload.y, DEATH_BURST_OPTIONS);
           // H1e's item drop: every kill leaves a real, walkable-over coin
           // at the enemy's own last position — not a chance roll (I1's
           // job to decide loot tables), every death drops exactly one.
@@ -568,7 +556,6 @@ export function PreviewApp() {
 
         const onTick = (ticker: { deltaMS: number }) => {
           scheduler.tick(ticker.deltaMS);
-          updateDeathParticles(ticker.deltaMS / 1000);
           const playerEntity = gameWorldRef.current?.playerEntity;
           const playerTransform = playerEntity !== undefined ? world.get<typeof TransformSchema>(playerEntity, "Transform") : undefined;
           if (playerTransform) {

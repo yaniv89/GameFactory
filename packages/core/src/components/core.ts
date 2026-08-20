@@ -125,6 +125,24 @@ export const FloatingTextSchema = {
 export type FloatingText = ComponentValue<typeof FloatingTextSchema>;
 
 /**
+ * I1d's VFX particle — a standalone entity `spawnVfxBurst` creates (a
+ * handful at once, one per particle: `@forge/core` components have no
+ * array fields, per docs/adr/0002-dynamic-shape-components-deferred.md,
+ * so a "burst" is genuinely N sibling entities, not one entity holding N
+ * directions), aged, moved, and faded by `createVfxParticleSystem`, drawn
+ * by the ordinary `[Transform, Sprite]` sprite-sync path every other
+ * visible entity already uses — no bespoke render-2d system needed, unlike
+ * `FloatingText`'s own `Text`-specific one. `age`/`ttl` are seconds
+ * relative to when *this particle* spawned, the same shape `FloatingText`'s
+ * own fields already establish.
+ */
+export const VfxParticleSchema = {
+  age: "f32",
+  ttl: "f32",
+} as const satisfies ComponentSchema;
+export type VfxParticle = ComponentValue<typeof VfxParticleSchema>;
+
+/**
  * H1e's world item — a standalone entity marking itself collectible on
  * contact with a `PlayerControlled` entity (`createPickupSystem` queries by
  * this component's mere presence, the same "presence is the tag" pattern
@@ -225,6 +243,7 @@ export interface CoreComponents {
   readonly Interactable: ReturnType<World["defineComponent"]>;
   readonly Health: ReturnType<World["defineComponent"]>;
   readonly FloatingText: ReturnType<World["defineComponent"]>;
+  readonly VfxParticle: ReturnType<World["defineComponent"]>;
   readonly Pickup: ReturnType<World["defineComponent"]>;
   readonly EnemyAi: ReturnType<World["defineComponent"]>;
   readonly Mount: ReturnType<World["defineComponent"]>;
@@ -291,6 +310,10 @@ export function registerCoreComponents(world: World): CoreComponents {
       value: 0,
       age: 0,
       ttl: 0.8,
+    }),
+    VfxParticle: world.defineComponent("VfxParticle", VfxParticleSchema, {
+      age: 0,
+      ttl: 0.5,
     }),
     Pickup: world.defineComponent("Pickup", PickupSchema, {
       itemId: -1,

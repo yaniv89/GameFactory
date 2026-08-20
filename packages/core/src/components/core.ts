@@ -40,6 +40,8 @@ export const AnimatorSchema = {
   speed: "f32",
   loop: "bool",
   elapsed: "f32",
+  /** Facing direction, row index into a directional sprite sheet: 0=south, 1=west, 2=east, 3=north. Holds its last value while idle (Velocity magnitude ~0) — see `createCharacterAnimationSystem`. */
+  facing: "u8",
 } as const satisfies ComponentSchema;
 export type Animator = ComponentValue<typeof AnimatorSchema>;
 
@@ -119,6 +121,7 @@ export function registerCoreComponents(world: World): CoreComponents {
       speed: 1,
       loop: 1,
       elapsed: 0,
+      facing: 0,
     }),
     Collider: world.defineComponent("Collider", ColliderSchema, {
       shape: 0,

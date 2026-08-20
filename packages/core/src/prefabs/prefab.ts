@@ -61,6 +61,7 @@ export const PLAYER_START_PREFAB: Prefab = {
   spriteAssetKey: "player",
   components: {
     sprite: { frame: 0, anchorX: 0.5, anchorY: 0.5, tint: 0xffffff, opacity: 1 },
+    animator: {},
     velocity: { vx: 0, vy: 0, maxSpeed: 140, friction: 0 },
     collider: { shape: 1, width: 0, height: 0, offsetX: 0, offsetY: 0, isTrigger: 0, layer: 0 },
     playerControlled: { inputMapId: 0 },
@@ -73,6 +74,7 @@ export const NPC_PREFAB: Prefab = {
   spriteAssetKey: "npc",
   components: {
     sprite: { frame: 0, anchorX: 0.5, anchorY: 0.5, tint: 0xffffff, opacity: 1 },
+    animator: {},
   },
 };
 

@@ -41,6 +41,7 @@ export function PreviewPanel() {
   // bridge store. Scoped to scenes[0]: SceneCanvas doesn't have a
   // scene-tab/"active scene" concept yet (Phase 7's documented gap).
   const entities = useProjectStore((state) => state.document.scenes[0]?.entities);
+  const activePack = useProjectStore((state) => state.document.activePack);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent): void => {
@@ -64,7 +65,7 @@ export function PreviewPanel() {
   // RenderHost boot.
   useEffect(() => {
     if (status !== "ready" || !tiles) return;
-    const message: EditorToPreviewMessage = { type: "forge:preview:scene", tiles, entities: entities ?? [] };
+    const message: EditorToPreviewMessage = { type: "forge:preview:scene", tiles, entities: entities ?? [], ...(activePack !== undefined ? { activePack } : {}) };
     // "*" is the only valid targetOrigin here, not a lazy default: the
     // iframe is sandbox="allow-scripts" with no allow-same-origin, so its
     // origin is browser-opaque — no literal origin string (including
@@ -76,7 +77,7 @@ export function PreviewPanel() {
     // general, false positive for this specific, structurally-safe case.
     // nosemgrep: javascript.browser.security.wildcard-postmessage-configuration.wildcard-postmessage-configuration
     iframeRef.current?.contentWindow?.postMessage(message, "*");
-  }, [status, tiles, entities]);
+  }, [status, tiles, entities, activePack]);
 
   return (
     <div className="fg-preview-panel">

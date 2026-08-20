@@ -1,4 +1,4 @@
-import { registerCoreComponents, Scheduler, TransformSchema, World, type EntityId } from "@forge/core";
+import { createCharacterAnimationSystem, registerCoreComponents, Scheduler, TransformSchema, World, type EntityId } from "@forge/core";
 import { dialogueModule } from "@forge/dialogue";
 import { buildDialogueTreesFromEntities } from "@forge/project-export";
 import {
@@ -9,10 +9,12 @@ import {
   createTransformSnapshotSystem,
   TransformSnapshotStore,
 } from "@forge/render-2d";
-import { Sprite } from "pixi.js";
+import { Sprite, type Texture } from "pixi.js";
 import { useEffect, useRef, useState } from "react";
+import { buildPackAwareCharacterTextures, type CharacterFrameSet } from "../canvas/characterTextures";
 import { buildEntityTextures } from "../canvas/entityMarkers";
 import { GRID_HEIGHT, GRID_WIDTH, TILE_SIZE } from "../canvas/gridConstants";
+import { loadActivePackContext } from "../canvas/packTiles";
 import { WALL_TILE_ID, buildPaletteTextures } from "../canvas/tilePalette";
 import type { EntityPlacement } from "../store/projectStore";
 import { createModuleRuntime } from "./directModuleHost";
@@ -21,6 +23,16 @@ import { TRUSTED_EDITOR_ORIGIN } from "./origins";
 import { isPreviewSceneMessage } from "./protocol";
 import { RichDialogueText } from "./RichDialogueText";
 import "./PreviewApp.css";
+
+/** `Sprite.assetId` -> the active pack's own `characters.sheets` role id — the one place this preview maps "which prefab" to "which pack-declared art role." */
+const ASSET_ID_TO_CHARACTER_ROLE: Readonly<Record<number, string>> = {
+  [PLAYER_ASSET_ID]: "hero",
+  [NPC_ASSET_ID]: "villager",
+};
+
+/** Every character sheet this repo's own generated art (`gensprite_h1.py`) and `createCharacterAnimationSystem` agree on: a 4-direction, 4-frame walk cycle at 8fps. A pack declaring a different `walk` animation shape is a known limitation, not silently handled — see `characterTextures.ts`'s own doc comment on what a pack can and can't override yet. */
+const WALK_FRAME_COUNT = 4;
+const WALK_FPS = 8;
 
 type PreviewStatus = "loading" | "ready" | "error";
 
@@ -87,6 +99,10 @@ export function PreviewApp() {
   const rigRef = useRef<RenderRig | null>(null);
   const gameWorldRef = useRef<GameWorld | null>(null);
   const dialogueRef = useRef<DialogueRuntime | null>(null);
+  /** Populated asynchronously once a `forge:preview:scene` message names an `activePack` — read every tick by the sprite-sync `resolveTexture` closure below, which is wired once at boot before any pack has necessarily loaded. Empty map (not undefined) so a lookup miss and "still loading" look identical: fall back to the placeholder marker either way. */
+  const characterTexturesRef = useRef<Map<string, CharacterFrameSet>>(new Map());
+  /** The `activePack` name this preview has already loaded (or attempted to) — guards against re-fetching the same pack's manifest on every scene message (tile paints fire these constantly) and against a stale, slower-to-resolve fetch clobbering a newer one. */
+  const loadedPackNameRef = useRef<string | undefined>(undefined);
   const keysHeldRef = useRef<Set<string>>(new Set());
   const bubbleTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lifecycleRef = useRef<Promise<void>>(Promise.resolve());
@@ -151,13 +167,20 @@ export function PreviewApp() {
         const entityTextures = buildEntityTextures(host.app.renderer, TILE_SIZE);
         scheduler.addSystem(createTransformSnapshotSystem(world, snapshots));
         scheduler.addSystem(createPlayerMovementSystem(world, isWalkable, keysHeldRef.current));
+        scheduler.addSystem(createCharacterAnimationSystem({ world, frameCount: WALK_FRAME_COUNT, fps: WALK_FPS }));
         scheduler.addSystem(
           createSpriteSyncSystem({
             world,
             container: host.worldContainer,
             snapshots,
             createSprite: () => new Sprite(),
-            resolveTexture: (assetId: number) => entityTextures.get(assetId === PLAYER_ASSET_ID ? "player-start" : "npc"),
+            resolveTexture: (assetId: number, frame: number): Texture | undefined => {
+              const role = ASSET_ID_TO_CHARACTER_ROLE[assetId];
+              const frameSet = role ? characterTexturesRef.current.get(role) : undefined;
+              const animatedFrame = frameSet?.frames[frame];
+              if (animatedFrame) return animatedFrame;
+              return entityTextures.get(assetId === PLAYER_ASSET_ID ? "player-start" : "npc");
+            },
           }),
         );
         gameWorldRef.current = { world, scheduler, playerEntity: undefined, npcEntitiesByPlacementId: new Map() };
@@ -242,7 +265,27 @@ export function PreviewApp() {
       const rig = rigRef.current;
       const gameWorld = gameWorldRef.current;
       if (!rig || !gameWorld) return;
-      const { tiles, entities } = event.data;
+      const { tiles, entities, activePack } = event.data;
+
+      // Fire-and-forget, guarded against duplicate/stale loads: most
+      // `forge:preview:scene` messages (every tile paint) repeat the same
+      // `activePack`, and this only needs to (re)fetch the manifest and
+      // slice character textures when it actually changes. Sprite
+      // rendering self-heals once `characterTexturesRef` updates — the
+      // sprite-sync system above calls `resolveTexture` unconditionally
+      // every tick, so no explicit re-render/refresh is needed here.
+      if (activePack !== loadedPackNameRef.current) {
+        loadedPackNameRef.current = activePack;
+        characterTexturesRef.current = new Map(); // clear immediately: don't keep showing the outgoing pack's art while the new one loads.
+        void loadActivePackContext(activePack)
+          .then((context) => buildPackAwareCharacterTextures(context))
+          .then((textures) => {
+            if (loadedPackNameRef.current === activePack) characterTexturesRef.current = textures;
+          })
+          .catch((err) => {
+            console.warn("[forge:preview] failed to load character art for the active pack — falling back to placeholder markers.", err);
+          });
+      }
 
       for (let y = 0; y < GRID_HEIGHT; y++) {
         for (let x = 0; x < GRID_WIDTH; x++) {

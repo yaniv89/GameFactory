@@ -87,6 +87,12 @@ export function createPlayerMovementSystem(world: World, isWalkable: (worldX: nu
         if (nextX !== transform.x || nextY !== transform.y) {
           world.set(entity, "Transform", { x: nextX, y: nextY });
         }
+        // The *actual* applied displacement, not the raw input axis — a
+        // move a wall blocked reports zero velocity on that axis, which is
+        // what `createCharacterAnimationSystem` needs to stop the walk
+        // cycle exactly when the player visibly stops, not merely when
+        // they release the key.
+        world.set(entity, "Velocity", { vx: ctx.dt > 0 ? (nextX - transform.x) / ctx.dt : 0, vy: ctx.dt > 0 ? (nextY - transform.y) / ctx.dt : 0 });
       });
     },
   };

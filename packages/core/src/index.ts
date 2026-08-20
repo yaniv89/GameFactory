@@ -18,4 +18,5 @@ export * from "./scene/sceneManager";
 export * from "./physics/aabb";
 export * from "./physics/spatialHash";
 export * from "./physics/collisionSystem";
+export * from "./systems/characterAnimation";
 export * from "./save/serialize";

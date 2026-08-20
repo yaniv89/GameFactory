@@ -4,13 +4,24 @@
   "version": "1.0.0",
   "kind": "artpack",
   "engine": ">=1.0.0 <2.0.0",
-  "grid": { "tileSize": 32 },
+  "grid": { "tileSize": 32, "spriteSize": { "width": 32, "height": 48 } },
   "implements": ["forge/topdown-rpg-basic@1"],
   "tilesets": {
     "outdoor-base": {
       "src": "tilesets/outdoor-base.png",
       "columns": 3,
       "terrains": ["grass", "dirt", "water"]
+    }
+  },
+  "characters": {
+    "template": {
+      "animations": { "walk": { "frames": 4, "fps": 8, "directions": 4 } },
+      "anchor": { "x": 0.5, "y": 0.9375 }
+    },
+    "sheets": {
+      "hero": "characters/hero_walk.png",
+      "villager": "characters/villager_walk.png",
+      "goblin": "characters/goblin_walk.png"
     }
   },
   "locales": ["en"]

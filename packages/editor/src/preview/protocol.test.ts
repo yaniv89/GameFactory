@@ -62,6 +62,20 @@ describe("isPreviewSceneMessage", () => {
     expect(isPreviewSceneMessage("forge:preview:scene")).toBe(false);
     expect(isPreviewSceneMessage({})).toBe(false);
   });
+
+  it("accepts a message with no activePack field (no pack installed)", () => {
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [] })).toBe(true);
+  });
+
+  it("accepts a message with a string activePack", () => {
+    expect(
+      isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], activePack: "@forge-fixtures/starter-pack" }),
+    ).toBe(true);
+  });
+
+  it("rejects a message with a non-string activePack", () => {
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], activePack: 42 })).toBe(false);
+  });
 });
 
 describe("isPreviewToEditorMessage", () => {

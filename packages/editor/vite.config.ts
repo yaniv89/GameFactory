@@ -34,6 +34,16 @@ function serveFixturePacks(): Plugin {
           return;
         }
         res.setHeader("Content-Type", FIXTURE_CONTENT_TYPES[extname(filePath)] ?? "application/octet-stream");
+        // The preview iframe (`sandbox="allow-scripts"`, no
+        // `allow-same-origin`) fetches pack assets from a browser-enforced
+        // opaque "null" origin — the same cross-origin shape a real
+        // `cdn.forge.dev` would see from `play.forge.dev` in production
+        // (docs/SPEC.md 10.6). This content is public, unauthenticated,
+        // non-credentialed static asset data (never a project document, a
+        // token, or anything tenant-scoped), so an open CORS policy here
+        // mirrors what a real asset CDN would need for the same reason,
+        // not a shortcut specific to this dev server.
+        res.setHeader("Access-Control-Allow-Origin", "*");
         res.end(readFileSync(filePath));
       });
     },

@@ -63,18 +63,19 @@ describe("spawnFromPrefab", () => {
       layer: 0,
     });
     expect(world.get(entity, "PlayerControlled")).toMatchObject({ inputMapId: 0 });
-    // NPC_PREFAB declares no Interactable/Animator component — neither should PLAYER_START_PREFAB spawn one.
+    expect(world.get(entity, "Animator")).toMatchObject({ clipId: -1, playing: 0, speed: 1, loop: 1, elapsed: 0, facing: 0 });
+    // NPC_PREFAB declares no Interactable component — neither should PLAYER_START_PREFAB spawn one.
     expect(world.has(entity, "Interactable")).toBe(false);
-    expect(world.has(entity, "Animator")).toBe(false);
   });
 
-  it("spawns NPC_PREFAB with only Transform and Sprite — no Velocity/Collider/PlayerControlled", () => {
+  it("spawns NPC_PREFAB with Transform, Sprite, and Animator — no Velocity/Collider/PlayerControlled", () => {
     const world = makeWorld();
     const entity = spawnFromPrefab(world, NPC_PREFAB, 10, 20, () => 2);
     world.flush();
 
     expect(world.get(entity, "Transform")).toMatchObject({ x: 10, y: 20 });
     expect(world.get(entity, "Sprite")).toMatchObject({ assetId: 2, frame: 0, anchorX: 0.5, anchorY: 0.5, tint: 0xffffff, opacity: 1 });
+    expect(world.get(entity, "Animator")).toMatchObject({ clipId: -1, playing: 0, speed: 1, loop: 1, elapsed: 0, facing: 0 });
     expect(world.has(entity, "Velocity")).toBe(false);
     expect(world.has(entity, "Collider")).toBe(false);
     expect(world.has(entity, "PlayerControlled")).toBe(false);

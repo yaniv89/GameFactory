@@ -50,3 +50,7 @@ packages/player/src/generated/
 # `.claude/hooks/` ARE tracked (shared project config); this is the
 # per-checkout worktree scratch dir, which is not. ---
 .claude/worktrees/
+
+# --- Python bytecode cache (tools/art-pipeline/) ---
+__pycache__/
+*.pyc

@@ -1,5 +1,41 @@
 import { expect, test } from "./fixtures";
 
+// Real, measured mean colors of the packs' own textured tiles (computed
+// directly from the committed PNGs, not guessed) -- exact-match pixel
+// assertions no longer work now that these are real photo-crop textures
+// rather than flat placeholder fills (see packRendering.spec.ts's own
+// comment on the same issue). Tolerances are generous enough to cover
+// each tile's own measured stddev at whatever point ends up sampled.
+const STARTER_GRASS_MEAN_RGB = [68, 137, 31];
+const STARTER_WATER_MEAN_RGB = [19, 191, 193];
+const DESERT_SAND_MEAN_RGB = [244, 213, 185];
+const TILE_TOLERANCE = 60;
+
+function isNearColor(actual: number[] | undefined, expectedRgb: number[], tolerance = TILE_TOLERANCE): boolean {
+  if (!actual || actual[3] !== 255) return false;
+  return expectedRgb.every((expected, channel) => Math.abs(actual[channel]! - expected) <= tolerance);
+}
+
+function expectNearColor(actual: number[] | undefined, expectedRgb: number[], tolerance = TILE_TOLERANCE): void {
+  expect(actual, "pixel was undefined").toBeDefined();
+  expect(actual![3]).toBe(255);
+  for (let channel = 0; channel < 3; channel++) {
+    expect(
+      Math.abs(actual![channel]! - expectedRgb[channel]!),
+      `channel ${channel}: got ${actual![channel]}, expected near ${expectedRgb[channel]} (+/-${tolerance})`,
+    ).toBeLessThanOrEqual(tolerance);
+  }
+}
+
+// Polls (like the exact-match `.poll().toEqual()` this replaces used to)
+// until the sampled pixel actually becomes near `expectedRgb` -- needed
+// because a live re-render is async (a new texture fetch/slice), and a
+// poll that only checks "some real pixel is here" (e.g. alpha === 255)
+// can pass trivially on a still-stale previous frame.
+async function pollNearColor(sample: () => Promise<number[] | undefined>, expectedRgb: number[], tolerance = TILE_TOLERANCE): Promise<void> {
+  await expect.poll(async () => isNearColor(await sample(), expectedRgb, tolerance), { timeout: 5000 }).toBe(true);
+}
+
 /**
  * docs/SPEC.md Section 11.5's hero interaction, proven end to end in a
  * real browser: apply a real diff-backed swap and watch the canvas
@@ -91,9 +127,8 @@ test.describe("Pack-swap dialog, in a real browser", () => {
 
     // Live re-render, no reload: TilemapLayer.refreshTextures re-slices
     // the already-painted tile against the newly active pack.
-    await expect
-      .poll(() => pixelAt(clickX, clickY), { timeout: 5000 })
-      .toEqual([34, 139, 34, 255]); // starter-pack's real grass color, not the flat default.
+    // starter-pack's own real, textured grass tile, not the flat default.
+    await pollNearColor(() => pixelAt(clickX, clickY), STARTER_GRASS_MEAN_RGB);
 
     await page.getByRole("button", { name: "Swap Art Pack" }).click();
     await dialog.waitFor({ state: "visible" });
@@ -208,7 +243,7 @@ test.describe("Pack-swap dialog, in a real browser", () => {
     // below are diffing real pack art, not placeholders.
     await canvasPanel.getByRole("radio", { name: "Water" }).click();
     await canvas.click({ position: { x: clickX, y: clickY } });
-    await expect.poll(() => mainPixelAt(clickX, clickY)).toEqual([0, 105, 148, 255]);
+    await pollNearColor(() => mainPixelAt(clickX, clickY), STARTER_WATER_MEAN_RGB);
 
     await page.getByRole("button", { name: "Swap Art Pack" }).click();
     const dialog = page.getByRole("dialog");
@@ -255,7 +290,7 @@ test.describe("Pack-swap dialog, in a real browser", () => {
 
     // Before remapping: source shows starter-pack's real water; target
     // shows the flat-color placeholder (desert-pack has no 'water' tag).
-    await expect.poll(() => previewPixelAt("sourceCanvas", previewX, previewY), { timeout: 5000 }).toEqual([0, 105, 148, 255]);
+    await pollNearColor(() => previewPixelAt("sourceCanvas", previewX, previewY), STARTER_WATER_MEAN_RGB);
     await expect.poll(() => previewPixelAt("targetCanvas", previewX, previewY), { timeout: 5000 }).toEqual([58, 110, 165, 255]);
 
     await dialog.getByRole("button", { name: "Remap manually" }).click();
@@ -264,8 +299,8 @@ test.describe("Pack-swap dialog, in a real browser", () => {
     // After remapping 'water' -> 'sand': target now shows desert-pack's
     // real sand texture, not the placeholder — and the source side is
     // untouched (starter-pack still declares 'water' itself).
-    await expect.poll(() => previewPixelAt("targetCanvas", previewX, previewY), { timeout: 5000 }).toEqual([237, 201, 175, 255]);
-    await expect.poll(() => previewPixelAt("sourceCanvas", previewX, previewY), { timeout: 5000 }).toEqual([0, 105, 148, 255]);
+    await pollNearColor(() => previewPixelAt("targetCanvas", previewX, previewY), DESERT_SAND_MEAN_RGB);
+    expectNearColor(await previewPixelAt("sourceCanvas", previewX, previewY), STARTER_WATER_MEAN_RGB);
 
     // "Apply anyway", not "Apply swap": this scenario has a real FAIL
     // finding (desert-pack has no 'water' equivalent), which relabels
@@ -278,7 +313,7 @@ test.describe("Pack-swap dialog, in a real browser", () => {
     // was chosen (not a preview-only draft) — applying just swaps the
     // active pack, and the same remap the preview already reflected now
     // shows up on the real, live canvas too.
-    await expect.poll(() => mainPixelAt(clickX, clickY), { timeout: 5000 }).toEqual([237, 201, 175, 255]);
+    await pollNearColor(() => mainPixelAt(clickX, clickY), DESERT_SAND_MEAN_RGB);
 
     expect(consoleErrors).toEqual([]);
   });

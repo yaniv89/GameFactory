@@ -17,6 +17,7 @@ import { GRID_HEIGHT, GRID_WIDTH, TILE_SIZE } from "../canvas/gridConstants";
 import { loadActivePackContext } from "../canvas/packTiles";
 import { WALL_TILE_ID, buildPaletteTextures } from "../canvas/tilePalette";
 import type { EntityPlacement } from "../store/projectStore";
+import { fitZoom as fitZoomOf, followCamera as followCameraOf, followZoom as followZoomOf } from "./cameraFollow";
 import { createModuleRuntime } from "./directModuleHost";
 import { INTERACT_RANGE, NPC_ASSET_ID, PLAYER_ASSET_ID, createPlayerMovementSystem, spawnNpcMarker, spawnPlayer } from "./gameWorld";
 import { TRUSTED_EDITOR_ORIGIN } from "./origins";
@@ -65,11 +66,19 @@ interface DialogueBubble {
 const CANVAS_BACKGROUND = 0x232a26;
 const DIALOGUE_BUBBLE_MS = 3500;
 
+const WORLD_WIDTH = GRID_WIDTH * TILE_SIZE;
+const WORLD_HEIGHT = GRID_HEIGHT * TILE_SIZE;
+
 function fitZoom(viewportWidth: number, viewportHeight: number): number {
-  const worldWidth = GRID_WIDTH * TILE_SIZE;
-  const worldHeight = GRID_HEIGHT * TILE_SIZE;
-  if (worldWidth <= 0 || worldHeight <= 0) return 1;
-  return Math.min(viewportWidth / worldWidth, viewportHeight / worldHeight);
+  return fitZoomOf(viewportWidth, viewportHeight, WORLD_WIDTH, WORLD_HEIGHT);
+}
+
+function followZoom(viewportWidth: number, viewportHeight: number): number {
+  return followZoomOf(viewportWidth, viewportHeight, WORLD_WIDTH, WORLD_HEIGHT);
+}
+
+function followCamera(camera: Camera, targetX: number, targetY: number): void {
+  followCameraOf(camera, targetX, targetY, WORLD_WIDTH, WORLD_HEIGHT);
 }
 
 function tileCenterWorld(tileX: number, tileY: number): { x: number; y: number } {
@@ -103,6 +112,8 @@ export function PreviewApp() {
   const characterTexturesRef = useRef<Map<string, CharacterFrameSet>>(new Map());
   /** The `activePack` name this preview has already loaded (or attempted to) — guards against re-fetching the same pack's manifest on every scene message (tile paints fire these constantly) and against a stale, slower-to-resolve fetch clobbering a newer one. */
   const loadedPackNameRef = useRef<string | undefined>(undefined);
+  /** The panel's current pixel size — read by the per-tick camera-follow logic (H1b) so it doesn't need to re-measure the DOM every frame; kept current by the boot effect and the resize observer below. */
+  const viewportSizeRef = useRef({ width: 1, height: 1 });
   const keysHeldRef = useRef<Set<string>>(new Set());
   const bubbleTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lifecycleRef = useRef<Promise<void>>(Promise.resolve());
@@ -135,6 +146,11 @@ export function PreviewApp() {
           return;
         }
 
+        // Fit-the-whole-map, centered — same as before H1b, and kept until
+        // a real player entity exists to follow (below). Zooming in before
+        // there's anyone to center on would just be an arbitrary crop of
+        // an otherwise-empty map, not a camera "following" anything.
+        viewportSizeRef.current = { width, height };
         const camera = new Camera({ viewportWidth: width, viewportHeight: height });
         camera.zoom = fitZoom(width, height);
         camera.x = (GRID_WIDTH * TILE_SIZE) / 2;
@@ -185,7 +201,18 @@ export function PreviewApp() {
         );
         gameWorldRef.current = { world, scheduler, playerEntity: undefined, npcEntitiesByPlacementId: new Map() };
 
-        const onTick = (ticker: { deltaMS: number }) => scheduler.tick(ticker.deltaMS);
+        const onTick = (ticker: { deltaMS: number }) => {
+          scheduler.tick(ticker.deltaMS);
+          const playerEntity = gameWorldRef.current?.playerEntity;
+          const playerTransform = playerEntity !== undefined ? world.get<typeof TransformSchema>(playerEntity, "Transform") : undefined;
+          if (playerTransform) {
+            const { width: vw, height: vh } = viewportSizeRef.current;
+            camera.zoom = followZoom(vw, vh);
+            followCamera(camera, playerTransform.x, playerTransform.y);
+            camera.applyTo(host.worldContainer);
+            layer.cull(camera.visibleWorldBounds(TILE_SIZE));
+          }
+        };
         tickerCallbackRef.current = onTick;
         host.app.ticker.add(onTick);
 
@@ -231,11 +258,22 @@ export function PreviewApp() {
       const { width, height } = entry.contentRect;
       const rig = rigRef.current;
       if (!rig || width <= 0 || height <= 0) return;
+      viewportSizeRef.current = { width, height };
       rig.host.resize(width, height);
       rig.camera.resizeViewport(width, height);
-      rig.camera.zoom = fitZoom(width, height);
+      // Before a player exists, keep fitting the whole map (same as boot);
+      // once one does, the per-tick follow logic (onTick, above) already
+      // recomputes zoom and re-clamps every frame regardless of what's set
+      // here — this only needs to avoid clobbering that with a stale
+      // fit-zoom on a resize that lands between two follow ticks.
+      const hasPlayer = gameWorldRef.current?.playerEntity !== undefined;
+      rig.camera.zoom = hasPlayer ? followZoom(width, height) : fitZoom(width, height);
+      if (!hasPlayer) {
+        rig.camera.x = (GRID_WIDTH * TILE_SIZE) / 2;
+        rig.camera.y = (GRID_HEIGHT * TILE_SIZE) / 2;
+      }
       rig.camera.applyTo(rig.host.worldContainer);
-      rig.layer.cull(rig.camera.visibleWorldBounds());
+      rig.layer.cull(rig.camera.visibleWorldBounds(TILE_SIZE));
     });
     observer.observe(container);
     return () => observer.disconnect();

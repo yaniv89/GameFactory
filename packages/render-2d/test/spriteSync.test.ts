@@ -12,6 +12,7 @@ class FakeSprite implements SpriteLike {
   alpha = 1;
   visible = false;
   texture: unknown;
+  zIndex = 0;
 }
 
 class FakeContainer {
@@ -54,6 +55,23 @@ describe("createSpriteSyncSystem", () => {
     expect(container.children[0]!.position).toEqual({ x: 5, y: 5 });
     expect(container.children[0]!.visible).toBe(true);
     void entity;
+  });
+
+  it("sets zIndex from the sprite's own interpolated y — the Y-depth sort a sortableChildren container reads", () => {
+    const world = makeWorld();
+    world.create({ Transform: { x: 0, y: 120 }, Sprite: {} });
+    world.flush();
+
+    const container = new FakeContainer();
+    const system = createSpriteSyncSystem({
+      world,
+      container,
+      snapshots: new TransformSnapshotStore(),
+      createSprite: () => new FakeSprite(),
+    });
+    system.run(ctxAt(1), world.query(["Transform", "Sprite"]));
+
+    expect(container.children[0]!.zIndex).toBe(120);
   });
 
   it("reuses the same sprite instance across runs instead of recreating it", () => {

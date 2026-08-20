@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { registerCoreComponents } from "../src/components/core";
 import { World } from "../src/ecs/world";
 import {
+  COIN_ITEM_ID,
+  COIN_PICKUP_PREFAB,
   ENEMY_PREFAB,
   NPC_PREFAB,
   PLAYER_START_PREFAB,
@@ -19,14 +21,15 @@ function makeWorld() {
 }
 
 describe("PREFAB_IDS / getPrefab / isPrefabId", () => {
-  it("registers exactly the three first-party prefabs (docs/adr/0015 decision 3; enemy added in H1c)", () => {
-    expect([...PREFAB_IDS].sort()).toEqual(["enemy", "npc", "player-start"]);
+  it("registers exactly the four first-party prefabs (docs/adr/0015 decision 3; enemy added in H1c, coin-pickup in H1e)", () => {
+    expect([...PREFAB_IDS].sort()).toEqual(["coin-pickup", "enemy", "npc", "player-start"]);
   });
 
   it("getPrefab resolves a known id and returns undefined for an unknown one", () => {
     expect(getPrefab("player-start")).toBe(PLAYER_START_PREFAB);
     expect(getPrefab("npc")).toBe(NPC_PREFAB);
     expect(getPrefab("enemy")).toBe(ENEMY_PREFAB);
+    expect(getPrefab("coin-pickup")).toBe(COIN_PICKUP_PREFAB);
     expect(getPrefab("dragon")).toBeUndefined();
   });
 
@@ -57,8 +60,8 @@ describe("spawnFromPrefab", () => {
     expect(world.get(entity, "Velocity")).toMatchObject({ vx: 0, vy: 0, maxSpeed: 140, friction: 0 });
     expect(world.get(entity, "Collider")).toMatchObject({
       shape: 1,
-      width: 0,
-      height: 0,
+      width: 20,
+      height: 20,
       offsetX: 0,
       offsetY: 0,
       isTrigger: 0,
@@ -66,6 +69,8 @@ describe("spawnFromPrefab", () => {
     });
     expect(world.get(entity, "PlayerControlled")).toMatchObject({ inputMapId: 0 });
     expect(world.get(entity, "Animator")).toMatchObject({ clipId: -1, playing: 0, speed: 1, loop: 1, elapsed: 0, facing: 0 });
+    // H1e: a real, full Health the HUD health bar reads live.
+    expect(world.get(entity, "Health")).toMatchObject({ current: 100, max: 100, invulnerableUntil: 0, flashUntil: 0 });
     // NPC_PREFAB declares no Interactable component — neither should PLAYER_START_PREFAB spawn one.
     expect(world.has(entity, "Interactable")).toBe(false);
   });
@@ -93,6 +98,20 @@ describe("spawnFromPrefab", () => {
     expect(world.get(entity, "Velocity")).toMatchObject({ vx: 0, vy: 0, maxSpeed: 0, friction: 6 });
     expect(world.get(entity, "Collider")).toMatchObject({ shape: 0, width: 24, height: 24, isTrigger: 0 });
     expect(world.get(entity, "Health")).toMatchObject({ current: 30, max: 30, invulnerableUntil: 0, flashUntil: 0 });
+    expect(world.has(entity, "PlayerControlled")).toBe(false);
+  });
+
+  it("spawns COIN_PICKUP_PREFAB with a trigger circle Collider and a real Pickup — the H1e item-drop shape", () => {
+    const world = makeWorld();
+    const entity = spawnFromPrefab(world, COIN_PICKUP_PREFAB, 70, 80, () => 4);
+    world.flush();
+
+    expect(world.get(entity, "Transform")).toMatchObject({ x: 70, y: 80 });
+    expect(world.get(entity, "Sprite")).toMatchObject({ assetId: 4, frame: 0 });
+    expect(world.get(entity, "Collider")).toMatchObject({ shape: 1, width: 16, height: 16, isTrigger: 1 });
+    expect(world.get(entity, "Pickup")).toMatchObject({ itemId: COIN_ITEM_ID, amount: 1 });
+    expect(world.has(entity, "Health")).toBe(false);
+    expect(world.has(entity, "Velocity")).toBe(false);
     expect(world.has(entity, "PlayerControlled")).toBe(false);
   });
 

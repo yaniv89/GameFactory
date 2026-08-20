@@ -1,17 +1,21 @@
 import {
+  COIN_PICKUP_PREFAB,
   createCharacterAnimationSystem,
   createFloatingTextSystem,
   createHitFlashSystem,
   createKnockbackPhysicsSystem,
   createMeleeAttackSystem,
+  createPickupSystem,
   registerCoreComponents,
   EventBusImpl,
+  HealthSchema,
   Scheduler,
   TransformSchema,
   World,
   type EntityId,
   type EventBus,
   type MeleeAttackEventMap,
+  type PickupEventMap,
 } from "@forge/core";
 import { dialogueModule } from "@forge/dialogue";
 import { buildDialogueTreesFromEntities } from "@forge/project-export";
@@ -35,11 +39,13 @@ import type { EntityPlacement } from "../store/projectStore";
 import { fitZoom as fitZoomOf, followCamera as followCameraOf, followZoom as followZoomOf } from "./cameraFollow";
 import { createModuleRuntime } from "./directModuleHost";
 import {
+  COIN_ASSET_ID,
   ENEMY_ASSET_ID,
   INTERACT_RANGE,
   NPC_ASSET_ID,
   PLAYER_ASSET_ID,
   createPlayerMovementSystem,
+  spawnCoinPickup,
   spawnEnemy,
   spawnNpcMarker,
   spawnPlayer,
@@ -100,8 +106,10 @@ interface GameWorld {
   readonly npcEntitiesByPlacementId: Map<string, EntityId>;
   /** H1c's fixed demo combat target (`spawnEnemy`'s own doc comment explains why it isn't placement-sourced yet). */
   readonly enemyEntity: EntityId;
-  /** `createMeleeAttackSystem`'s own event bus — H1d's damage-number/death-particle work is the next thing planned to subscribe to `"combat:hit"` here. */
+  /** `createMeleeAttackSystem`'s own event bus — H1d's damage-number/death-particle work subscribes to `"combat:hit"`/`"combat:death"` here. */
   readonly combatEvents: EventBus<MeleeAttackEventMap>;
+  /** `createPickupSystem`'s own event bus — H1e's HUD coin-slot counter subscribes to `"pickup:collected"` here. */
+  readonly pickupEvents: EventBus<PickupEventMap>;
 }
 
 /** The dialogue module's own world, rebuilt whenever the NPC/dialogue set changes (see the doc comment on the scene-message effect below for why this is a *separate*, disposable world from GameWorld). */
@@ -173,10 +181,25 @@ export function PreviewApp() {
   const bubbleTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lifecycleRef = useRef<Promise<void>>(Promise.resolve());
   const tickerCallbackRef = useRef<((ticker: { deltaMS: number }) => void) | null>(null);
+  /**
+   * H1e's HUD health bar is driven straight from the ECS every tick
+   * (`onTick`, below) via direct DOM mutation through these refs, not
+   * React state — Health can change every fixed step once something
+   * damages the player (I1's job; nothing does yet), and routing that
+   * through `setState` would re-render the whole component at up to 60Hz
+   * for a single number. The coin-slot counter below is the opposite
+   * shape on purpose: pickups are rare, discrete events, so plain React
+   * state (the same "event fires, setState once" shape `bubble`'s own
+   * `onShown` callback already uses) is the right tool there.
+   */
+  const healthBarRootRef = useRef<HTMLDivElement>(null);
+  const healthBarFillRef = useRef<HTMLDivElement>(null);
+  const healthBarLabelRef = useRef<HTMLSpanElement>(null);
 
   const [status, setStatus] = useState<PreviewStatus>("loading");
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [bubble, setBubble] = useState<DialogueBubble | null>(null);
+  const [coinCount, setCoinCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -237,6 +260,7 @@ export function PreviewApp() {
         const snapshots = new TransformSnapshotStore();
         const entityTextures = buildEntityTextures(host.app.renderer, TILE_SIZE);
         const combatEvents = new EventBusImpl<MeleeAttackEventMap>();
+        const pickupEvents = new EventBusImpl<PickupEventMap>();
         scheduler.addSystem(createTransformSnapshotSystem(world, snapshots));
         scheduler.addSystem(createPlayerMovementSystem(world, isWalkable, keysHeldRef.current));
         scheduler.addSystem(
@@ -260,6 +284,7 @@ export function PreviewApp() {
         scheduler.addSystem(createCharacterAnimationSystem({ world, frameCount: WALK_FRAME_COUNT, fps: WALK_FPS }));
         scheduler.addSystem(createHitFlashSystem({ world }));
         scheduler.addSystem(createFloatingTextSystem({ world }));
+        scheduler.addSystem(createPickupSystem({ world, events: pickupEvents }));
         scheduler.addSystem(
           createSpriteSyncSystem({
             world,
@@ -271,6 +296,7 @@ export function PreviewApp() {
               const frameSet = role ? characterTexturesRef.current.get(role) : undefined;
               const animatedFrame = frameSet?.frames[frame];
               if (animatedFrame) return animatedFrame;
+              if (assetId === COIN_ASSET_ID) return entityTextures.get(COIN_PICKUP_PREFAB.id);
               return entityTextures.get(assetId === PLAYER_ASSET_ID ? "player-start" : "npc");
             },
           }),
@@ -335,13 +361,29 @@ export function PreviewApp() {
         });
         combatEvents.on("combat:death", (payload) => {
           spawnDeathBurst(payload.x, payload.y);
+          // H1e's item drop: every kill leaves a real, walkable-over coin
+          // at the enemy's own last position — not a chance roll (I1's
+          // job to decide loot tables), every death drops exactly one.
+          spawnCoinPickup(world, payload.x, payload.y);
+          world.flush();
+        });
+        pickupEvents.on("pickup:collected", (payload) => {
+          setCoinCount((count) => count + payload.amount);
         });
 
         const demoEnemySpawn = tileCenterWorld(DEMO_ENEMY_TILE.x, DEMO_ENEMY_TILE.y);
         const enemyEntity = spawnEnemy(world, demoEnemySpawn.x, demoEnemySpawn.y);
         world.flush();
 
-        gameWorldRef.current = { world, scheduler, playerEntity: undefined, npcEntitiesByPlacementId: new Map(), enemyEntity, combatEvents };
+        gameWorldRef.current = {
+          world,
+          scheduler,
+          playerEntity: undefined,
+          npcEntitiesByPlacementId: new Map(),
+          enemyEntity,
+          combatEvents,
+          pickupEvents,
+        };
 
         const onTick = (ticker: { deltaMS: number }) => {
           scheduler.tick(ticker.deltaMS);
@@ -354,6 +396,21 @@ export function PreviewApp() {
             followCamera(camera, playerTransform.x, playerTransform.y);
             camera.applyTo(host.worldContainer);
             layer.cull(camera.visibleWorldBounds(TILE_SIZE));
+          }
+
+          // H1e's HUD health bar: direct DOM mutation (this ref-based
+          // approach's own doc comment, above, explains why not setState),
+          // reading the real live `Health` the moment there's a player to
+          // read it from.
+          const playerHealth = playerEntity !== undefined ? world.get<typeof HealthSchema>(playerEntity, "Health") : undefined;
+          if (playerHealth && healthBarFillRef.current && healthBarRootRef.current) {
+            const ratio = playerHealth.max > 0 ? Math.max(0, Math.min(1, playerHealth.current / playerHealth.max)) : 0;
+            healthBarFillRef.current.style.width = `${ratio * 100}%`;
+            healthBarRootRef.current.setAttribute("aria-valuenow", String(Math.round(playerHealth.current)));
+            healthBarRootRef.current.setAttribute("aria-valuemax", String(Math.round(playerHealth.max)));
+            if (healthBarLabelRef.current) {
+              healthBarLabelRef.current.textContent = `${Math.round(playerHealth.current)}/${Math.round(playerHealth.max)}`;
+            }
           }
         };
         tickerCallbackRef.current = onTick;
@@ -546,6 +603,26 @@ export function PreviewApp() {
         </div>
       )}
       <canvas ref={canvasRef} className="fg-preview-app__surface" />
+      <div className="fg-preview-app__hud">
+        <div
+          className="fg-preview-app__health-bar"
+          role="progressbar"
+          aria-label="Health"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={100}
+          ref={healthBarRootRef}
+        >
+          <div className="fg-preview-app__health-bar-fill" ref={healthBarFillRef} />
+        </div>
+        <span className="fg-preview-app__health-bar-label" ref={healthBarLabelRef}>
+          100/100
+        </span>
+        <div className="fg-preview-app__hud-item-slot" aria-label={`Coins collected: ${coinCount}`}>
+          <span className="fg-preview-app__hud-item-icon" aria-hidden="true" />
+          <span className="fg-preview-app__hud-item-count">{coinCount}</span>
+        </div>
+      </div>
       {bubble && (
         <div className="fg-preview-app__dialogue" role="status">
           <span className="fg-preview-app__dialogue-speaker">{bubble.speaker}</span>

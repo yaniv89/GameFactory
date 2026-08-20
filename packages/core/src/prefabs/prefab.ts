@@ -1,7 +1,7 @@
-import type { Animator, Collider, Health, Interactable, PlayerControlled, Sprite, Velocity } from "../components/core";
+import type { Animator, Collider, Health, Interactable, Pickup, PlayerControlled, Sprite, Velocity } from "../components/core";
 import type { EntityId } from "../ecs/entity";
 import type { World } from "../ecs/world";
-import { COLLIDER_SHAPE_BOX } from "../physics/aabb";
+import { COLLIDER_SHAPE_BOX, COLLIDER_SHAPE_CIRCLE } from "../physics/aabb";
 
 /**
  * A named, fixed-shape default bundle of component values — the
@@ -43,6 +43,7 @@ export interface Prefab {
     readonly playerControlled?: Partial<PlayerControlled>;
     readonly interactable?: Partial<Interactable>;
     readonly health?: Partial<Health>;
+    readonly pickup?: Partial<Pickup>;
   };
 }
 
@@ -65,8 +66,20 @@ export const PLAYER_START_PREFAB: Prefab = {
     sprite: { frame: 0, anchorX: 0.5, anchorY: 0.5, tint: 0xffffff, opacity: 1 },
     animator: {},
     velocity: { vx: 0, vy: 0, maxSpeed: 140, friction: 0 },
-    collider: { shape: 1, width: 0, height: 0, offsetX: 0, offsetY: 0, isTrigger: 0, layer: 0 },
+    // A real (non-zero) radius, unlike before H1e: tile-grid movement
+    // collision (`createPlayerMovementSystem`'s own doc comment) never
+    // read this collider, so its width/height sat at 0 harmlessly, but
+    // `createPickupSystem`'s AABB overlap test needs a genuine hit area to
+    // detect walking over a dropped item.
+    collider: { shape: COLLIDER_SHAPE_CIRCLE, width: 20, height: 20, offsetX: 0, offsetY: 0, isTrigger: 0, layer: 0 },
     playerControlled: { inputMapId: 0 },
+    // Real, live ECS state the HUD health bar reads every tick — not a
+    // fake/decorative number. Nothing in this vertical slice damages the
+    // player yet (no enemy AI exists before I1), the same stated,
+    // presently-unexercised-but-genuinely-wired gap `ENEMY_PREFAB`'s own
+    // `velocity.maxSpeed: 0` doc comment already accepts for the enemy's
+    // own movement.
+    health: { current: 100, max: 100, invulnerableUntil: 0, flashUntil: 0 },
   },
 };
 
@@ -103,10 +116,35 @@ export const ENEMY_PREFAB: Prefab = {
   },
 };
 
+/** H1e's only defined item, referenced by `COIN_PICKUP_PREFAB.components.pickup.itemId` and (out of band, per `PickupSchema`'s own doc comment) by the editor preview's HUD slot counter. */
+export const COIN_ITEM_ID = 1;
+
+/**
+ * H1e's world item — spawned by the editor preview at a killed enemy's own
+ * position (`combat:death`'s payload), not player-authored, the same
+ * "not sourced from scene placements yet" gap `ENEMY_PREFAB`'s own doc
+ * comment already states for the enemy itself. `collider.isTrigger: 1`
+ * marks it as a non-solid overlap target — `createPickupSystem` tests
+ * overlap the same narrow-phase way `createMeleeAttackSystem` tests a
+ * swing, but nothing needs this collider to block movement the way
+ * `ENEMY_PREFAB`'s own (non-trigger) collider does.
+ */
+export const COIN_PICKUP_PREFAB: Prefab = {
+  id: "coin-pickup",
+  label: "Coin",
+  spriteAssetKey: "coin",
+  components: {
+    sprite: { frame: 0, anchorX: 0.5, anchorY: 0.5, tint: 0xffffff, opacity: 1 },
+    collider: { shape: COLLIDER_SHAPE_CIRCLE, width: 16, height: 16, offsetX: 0, offsetY: 0, isTrigger: 1, layer: 0 },
+    pickup: { itemId: COIN_ITEM_ID, amount: 1 },
+  },
+};
+
 const PREFAB_REGISTRY: Readonly<Record<string, Prefab>> = {
   [PLAYER_START_PREFAB.id]: PLAYER_START_PREFAB,
   [NPC_PREFAB.id]: NPC_PREFAB,
   [ENEMY_PREFAB.id]: ENEMY_PREFAB,
+  [COIN_PICKUP_PREFAB.id]: COIN_PICKUP_PREFAB,
 };
 
 /**
@@ -161,5 +199,6 @@ export function spawnFromPrefab(
   if (c.animator) initial.Animator = { ...c.animator };
   if (c.interactable) initial.Interactable = { ...c.interactable };
   if (c.health) initial.Health = { ...c.health };
+  if (c.pickup) initial.Pickup = { ...c.pickup };
   return world.create(initial);
 }

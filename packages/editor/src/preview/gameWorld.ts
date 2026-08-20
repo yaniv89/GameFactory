@@ -1,4 +1,5 @@
 import {
+  COIN_PICKUP_PREFAB,
   ENEMY_PREFAB,
   NPC_PREFAB,
   PLAYER_START_PREFAB,
@@ -21,11 +22,13 @@ import {
 export const PLAYER_ASSET_ID = 1;
 export const NPC_ASSET_ID = 2;
 export const ENEMY_ASSET_ID = 3;
+export const COIN_ASSET_ID = 4;
 
 const SPRITE_ASSET_IDS: Readonly<Record<string, number>> = {
   player: PLAYER_ASSET_ID,
   npc: NPC_ASSET_ID,
   enemy: ENEMY_ASSET_ID,
+  coin: COIN_ASSET_ID,
 };
 
 function resolveSpriteAssetId(spriteAssetKey: string): number {
@@ -54,6 +57,16 @@ export function spawnNpcMarker(world: World, worldX: number, worldY: number): En
  */
 export function spawnEnemy(world: World, worldX: number, worldY: number): EntityId {
   return spawnFromPrefab(world, ENEMY_PREFAB, worldX, worldY, resolveSpriteAssetId);
+}
+
+/**
+ * H1e's item drop — spawned at a killed enemy's own last position
+ * (`combat:death`'s payload, in `PreviewApp.tsx`), not player-authored,
+ * the same "not sourced from scene placements" shape `spawnEnemy`'s own
+ * doc comment already states for the enemy itself.
+ */
+export function spawnCoinPickup(world: World, worldX: number, worldY: number): EntityId {
+  return spawnFromPrefab(world, COIN_PICKUP_PREFAB, worldX, worldY, resolveSpriteAssetId);
 }
 
 /** Currently-held movement keys, WASD and arrows both accepted. Owned by PreviewApp's keydown/keyup listeners; read here each tick. */

@@ -23,4 +23,5 @@ export * from "./systems/meleeAttack";
 export * from "./systems/knockbackPhysics";
 export * from "./systems/hitFlash";
 export * from "./systems/floatingText";
+export * from "./systems/pickup";
 export * from "./save/serialize";

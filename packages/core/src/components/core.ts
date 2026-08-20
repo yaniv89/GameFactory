@@ -124,6 +124,23 @@ export const FloatingTextSchema = {
 } as const satisfies ComponentSchema;
 export type FloatingText = ComponentValue<typeof FloatingTextSchema>;
 
+/**
+ * H1e's world item — a standalone entity marking itself collectible on
+ * contact with a `PlayerControlled` entity (`createPickupSystem` queries by
+ * this component's mere presence, the same "presence is the tag" pattern
+ * `Health`/`PlayerControlled` already establish). `itemId` is a numeric
+ * placeholder tag, not yet backed by a real item-definition table (I1's
+ * job) — today the only producer (`COIN_PICKUP_PREFAB`) and the only
+ * consumer (the editor preview's HUD slot counter) agree on what `1` means
+ * out of band, exactly the same "no real registry yet" honesty
+ * `Sprite.assetId`'s own doc comment already accepts for sprites.
+ */
+export const PickupSchema = {
+  itemId: "i32",
+  amount: "i32",
+} as const satisfies ComponentSchema;
+export type Pickup = ComponentValue<typeof PickupSchema>;
+
 export interface CoreComponents {
   readonly Transform: ReturnType<World["defineComponent"]>;
   readonly Sprite: ReturnType<World["defineComponent"]>;
@@ -134,6 +151,7 @@ export interface CoreComponents {
   readonly Interactable: ReturnType<World["defineComponent"]>;
   readonly Health: ReturnType<World["defineComponent"]>;
   readonly FloatingText: ReturnType<World["defineComponent"]>;
+  readonly Pickup: ReturnType<World["defineComponent"]>;
 }
 
 /** Registers every core component against `world`. Call once, at world construction. */
@@ -196,6 +214,10 @@ export function registerCoreComponents(world: World): CoreComponents {
       value: 0,
       age: 0,
       ttl: 0.8,
+    }),
+    Pickup: world.defineComponent("Pickup", PickupSchema, {
+      itemId: -1,
+      amount: 0,
     }),
   };
 }

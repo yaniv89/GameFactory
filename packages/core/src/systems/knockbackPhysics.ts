@@ -12,15 +12,22 @@ export interface KnockbackPhysicsSystemOptions {
 
 /**
  * Integrates `Velocity` into `Transform`, with exponential friction decay
- * (`Velocity.friction`, 1/seconds), for every entity carrying `[Transform,
- * Velocity, Health]` — today, only `ENEMY_PREFAB` entities (`Health`'s
- * presence, not a separate tag, is the query filter — see that schema's
- * own doc comment). Deliberately not a general-purpose movement system:
- * the player's own `createPlayerMovementSystem` (editor-preview/player
- * packages) already integrates the player straight from held-key input,
- * and running both over the same entity would double-apply displacement —
- * `Health` is exactly what keeps this system from ever matching the
- * player, since the player prefab has no `Health` component (yet).
+ * (`Velocity.friction`, 1/seconds), for every non-player entity carrying
+ * `[Transform, Velocity, Health]` — today, `ENEMY_PREFAB` entities
+ * (`Health`'s presence, not a separate tag, is the query filter — see that
+ * schema's own doc comment). Deliberately not a general-purpose movement
+ * system: the player's own `createPlayerMovementSystem` (editor-preview/
+ * player packages) already integrates the player straight from held-key
+ * input, and running both over the same entity would double-apply
+ * displacement.
+ *
+ * Since H1e gave `PLAYER_START_PREFAB` its own `Health` (for the HUD
+ * health bar), `Health`'s presence alone can no longer be the exclusion —
+ * the player now legitimately has one. The explicit `PlayerControlled`
+ * check below is what keeps this system from ever matching the player;
+ * `knockbackPhysics.test.ts` covers both the historical "player has no
+ * Health" shape and the current "player has Health but is still excluded"
+ * shape so this guard can't silently regress either way.
  *
  * Deliberately does not resolve collision against walls/tiles: a knocked-
  * back entity can be shoved through a wall in this slice. A stated,
@@ -37,6 +44,7 @@ export function createKnockbackPhysicsSystem(options: KnockbackPhysicsSystemOpti
     query: ["Transform", "Velocity", "Health"],
     run: (ctx, entities: Query) => {
       entities.forEach((entity) => {
+        if (world.has(entity, "PlayerControlled")) return;
         const transform = world.get<typeof TransformSchema>(entity, "Transform");
         const velocity = world.get<typeof VelocitySchema>(entity, "Velocity");
         if (!transform || !velocity) return;

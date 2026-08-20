@@ -84,4 +84,26 @@ describe("createKnockbackPhysicsSystem", () => {
     expect(world.get(player, "Transform")).toMatchObject({ x: 10, y: 10 });
     expect(world.get(player, "Velocity")).toMatchObject({ vx: -999, vy: -999 });
   });
+
+  it("still excludes the player even though PLAYER_START_PREFAB now carries Health too (H1e's HUD health bar) — PlayerControlled is the real guard, not Health's absence", () => {
+    const world = makeWorld();
+    const player = world.create({
+      Transform: { x: 10, y: 10 },
+      Velocity: { vx: -999, vy: -999, maxSpeed: 140, friction: 0 },
+      PlayerControlled: { inputMapId: 0 },
+      Health: { current: 100, max: 100 },
+    });
+    world.flush();
+
+    const scheduler = new Scheduler(world);
+    scheduler.addSystem(createKnockbackPhysicsSystem({ world }));
+    scheduler.tick(FIXED_STEP_MS);
+
+    // If this ever regressed, the player would silently get double-moved
+    // every tick (once by createPlayerMovementSystem, once by this system
+    // integrating the same Velocity) and could be shoved through walls,
+    // since this system deliberately skips tile collision.
+    expect(world.get(player, "Transform")).toMatchObject({ x: 10, y: 10 });
+    expect(world.get(player, "Velocity")).toMatchObject({ vx: -999, vy: -999 });
+  });
 });

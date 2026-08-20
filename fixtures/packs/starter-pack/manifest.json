@@ -24,5 +24,11 @@
       "goblin": "characters/goblin_walk.png"
     }
   },
+  "props": {
+    "container": { "src": "props/container.png", "anchor": { "x": 46, "y": 96 } },
+    "market-stall": { "src": "props/market-stall.png", "anchor": { "x": 45, "y": 96 } },
+    "treasure-chest": { "src": "props/treasure-chest.png", "anchor": { "x": 43, "y": 96 } },
+    "dungeon-door": { "src": "props/dungeon-door.png", "anchor": { "x": 38, "y": 96 } }
+  },
   "locales": ["en"]
 }

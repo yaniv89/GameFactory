@@ -82,6 +82,42 @@ describe("fixtures/packs/starter-pack characters", () => {
   });
 });
 
+describe("fixtures/packs/starter-pack props (docs/adr/0014, L5)", () => {
+  const dir = join(REPO_ROOT, "fixtures/packs/starter-pack");
+
+  it("every declared prop is a real, valid PNG on disk at the declared path", () => {
+    const result = readManifest(dir);
+    expect(result.ok).toBe(true);
+    const props = result.manifest!.props;
+    expect(props).toBeDefined();
+    expect(Object.keys(props!)).toEqual(["container", "market-stall", "treasure-chest", "dungeon-door"]);
+    for (const [id, prop] of Object.entries(props!)) {
+      const assetPath = join(dir, prop.src);
+      expect(existsSync(assetPath), `prop '${id}' declares '${prop.src}' but no file exists there`).toBe(true);
+      const bytes = readFileSync(assetPath);
+      expect(bytes.subarray(0, 8).equals(PNG_SIGNATURE), `prop '${id}' is not a valid PNG`).toBe(true);
+    }
+  });
+
+  it("every declared prop's anchor sits within its own image bounds", () => {
+    // The anchor is a pixel coordinate (ArtPackAnchor's own doc comment,
+    // manifest.ts) into the specific image it's declared on — a point
+    // outside the image's own bounds could never be a real ground-contact
+    // point, only a transcription mistake made while writing the manifest.
+    const result = readManifest(dir);
+    const props = result.manifest!.props!;
+    for (const [id, prop] of Object.entries(props)) {
+      const bytes = readFileSync(join(dir, prop.src));
+      const width = bytes.readUInt32BE(16);
+      const height = bytes.readUInt32BE(20);
+      expect(prop.anchor.x, `prop '${id}' anchor.x`).toBeGreaterThanOrEqual(0);
+      expect(prop.anchor.x, `prop '${id}' anchor.x`).toBeLessThanOrEqual(width);
+      expect(prop.anchor.y, `prop '${id}' anchor.y`).toBeGreaterThanOrEqual(0);
+      expect(prop.anchor.y, `prop '${id}' anchor.y`).toBeLessThanOrEqual(height);
+    }
+  });
+});
+
 describe("diffPackSwap on the two real fixture packs", () => {
   it("starter-pack -> scifi-pack: grass/dirt match, water fails, tile size warns", () => {
     const source = readManifest(join(REPO_ROOT, "fixtures/packs/starter-pack"));
@@ -113,6 +149,11 @@ describe("diffPackSwap on the two real fixture packs", () => {
         message: "1 animation has no equivalent: 'walk'",
         detail: "These will be skipped until remapped.",
       },
+      {
+        severity: "fail",
+        message: "4 props have no equivalent: 'container', 'market-stall', 'treasure-chest', 'dungeon-door'",
+        detail: "These will render as placeholders until remapped.",
+      },
     ]);
     expect(result.missingTerrains).toEqual(["water"]);
     expect(result.targetTerrains).toEqual(["dirt", "grass"]);
@@ -142,6 +183,11 @@ describe("diffPackSwap on the two real fixture packs", () => {
         severity: "fail",
         message: "1 animation has no equivalent: 'walk'",
         detail: "These will be skipped until remapped.",
+      },
+      {
+        severity: "fail",
+        message: "4 props have no equivalent: 'container', 'market-stall', 'treasure-chest', 'dungeon-door'",
+        detail: "These will render as placeholders until remapped.",
       },
     ]);
     expect(result.missingTerrains).toEqual(["water"]);

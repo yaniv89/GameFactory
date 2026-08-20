@@ -21,6 +21,7 @@
 // 1.1 guardrail 2, no exceptions).
 import "pixi.js/unsafe-eval";
 
+export * from "./autotile";
 export * from "./camera";
 export * from "./tileGrid";
 export * from "./entityDiff";

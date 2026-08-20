@@ -7,6 +7,8 @@ export interface TileSpriteLike {
   position: { x: number; y: number };
   visible: boolean;
   texture?: unknown;
+  /** H1g's multi-layer support: a ground layer and a decoration layer sharing one container need a stable draw order (ground below decoration below entities) that survives live repaints in any cell order — the same `zIndex`-based approach `SpriteLike`/`TextLike` already use for Y-depth sorting, not insertion order, which a live-painted layer can't rely on. Optional: a caller with only one tile layer (every existing one, before H1g) never needs to set it. */
+  zIndex?: number;
 }
 
 export interface TilemapLayerOptions<S extends TileSpriteLike> {
@@ -17,8 +19,22 @@ export interface TilemapLayerOptions<S extends TileSpriteLike> {
   tiles: ArrayLike<number>;
   container: ContainerLike<S>;
   createTileSprite(): S;
-  /** Resolves a tile id to whatever `S.texture` expects (e.g. a Pixi Texture cut from the tileset atlas). Return undefined if the id can't be resolved yet — the pack may still be loading — leaving that cell undrawn until a later `setTile`/rebuild. */
-  resolveTileTexture(tileId: number): unknown | undefined;
+  /**
+   * Resolves a tile id to whatever `S.texture` expects (e.g. a Pixi
+   * Texture cut from the tileset atlas). Return undefined if the id
+   * can't be resolved yet — the pack may still be loading — leaving that
+   * cell undrawn until a later `setTile`/rebuild. `x`/`y` (H1g) are the
+   * cell's own grid coordinates, always available even though most
+   * callers ignore them (a fixed-per-id resolver, e.g. `tilePalette.ts`'s
+   * flat color swatches, is still a valid 1-argument implementation of
+   * this 3-argument type — TypeScript allows a callback with fewer
+   * parameters than its declared type) — a caller doing real autotiling
+   * (H1g's Wall variant selection) is the one case that actually needs
+   * them, to look at the live grid's own neighbor cells.
+   */
+  resolveTileTexture(tileId: number, x: number, y: number): unknown | undefined;
+  /** Every sprite this layer creates gets this same `zIndex` (default 0) — see `TileSpriteLike.zIndex`'s own doc comment. */
+  zIndex?: number;
 }
 
 /**
@@ -42,10 +58,11 @@ export class TilemapLayer<S extends TileSpriteLike> {
   private readonly spritesByIndex = new Map<number, S>();
   private readonly container: ContainerLike<S>;
   private readonly createTileSprite: () => S;
-  private resolveTileTexture: (tileId: number) => unknown | undefined;
+  private readonly zIndex: number | undefined;
+  private resolveTileTexture: (tileId: number, x: number, y: number) => unknown | undefined;
 
   constructor(options: TilemapLayerOptions<S>) {
-    const { gridWidth, gridHeight, tileSize, tiles, container, createTileSprite, resolveTileTexture } = options;
+    const { gridWidth, gridHeight, tileSize, tiles, container, createTileSprite, resolveTileTexture, zIndex } = options;
     if (tiles.length !== gridWidth * gridHeight) {
       throw new Error(
         `TilemapLayer: tile data length ${tiles.length} does not match the ${gridWidth}x${gridHeight} grid (expected ${gridWidth * gridHeight})`,
@@ -59,6 +76,7 @@ export class TilemapLayer<S extends TileSpriteLike> {
     this.container = container;
     this.createTileSprite = createTileSprite;
     this.resolveTileTexture = resolveTileTexture;
+    this.zIndex = zIndex;
 
     for (let index = 0; index < this.tiles.length; index++) {
       this.placeTile(index, this.tiles[index]!);
@@ -67,6 +85,7 @@ export class TilemapLayer<S extends TileSpriteLike> {
 
   private placeTile(index: number, tileId: number): void {
     const existing = this.spritesByIndex.get(index);
+    const { x, y } = tileCoordsFromIndex(index, this.gridWidth);
 
     if (tileId === EMPTY_TILE_ID) {
       if (existing) {
@@ -76,15 +95,15 @@ export class TilemapLayer<S extends TileSpriteLike> {
       return;
     }
 
-    const texture = this.resolveTileTexture(tileId);
+    const texture = this.resolveTileTexture(tileId, x, y);
     if (texture === undefined) return;
 
     let sprite = existing;
     if (!sprite) {
-      const { x, y } = tileCoordsFromIndex(index, this.gridWidth);
       sprite = this.createTileSprite();
       sprite.position.x = x * this.tileSize;
       sprite.position.y = y * this.tileSize;
+      if (this.zIndex !== undefined) sprite.zIndex = this.zIndex;
       this.spritesByIndex.set(index, sprite);
       this.container.addChild(sprite);
     }
@@ -102,10 +121,11 @@ export class TilemapLayer<S extends TileSpriteLike> {
    * cell that was never drawn, but there's no undrawn state to fall back
    * to for one that already has a sprite on screen.
    */
-  refreshTextures(resolveTileTexture: (tileId: number) => unknown | undefined): void {
+  refreshTextures(resolveTileTexture: (tileId: number, x: number, y: number) => unknown | undefined): void {
     this.resolveTileTexture = resolveTileTexture;
     for (const [index, sprite] of this.spritesByIndex) {
-      const texture = resolveTileTexture(this.tiles[index]!);
+      const { x, y } = tileCoordsFromIndex(index, this.gridWidth);
+      const texture = resolveTileTexture(this.tiles[index]!, x, y);
       if (texture !== undefined) sprite.texture = texture;
     }
   }

@@ -5,6 +5,7 @@ class FakeTileSprite implements TileSpriteLike {
   position = { x: 0, y: 0 };
   visible = false;
   texture: unknown;
+  zIndex?: number;
 }
 
 class FakeContainer {
@@ -277,6 +278,85 @@ describe("TilemapLayer", () => {
 
     expect(visibleXs.sort((a, b) => a - b)).toEqual([32, 64]);
     expect(hiddenXs.sort((a, b) => a - b)).toEqual([0, 96]);
+  });
+
+  it("passes each cell's own grid coordinates to resolveTileTexture — H1g's autotiling needs its own neighbor cells, not just its id", () => {
+    const container = new FakeContainer();
+    const seen: Array<[number, number, number]> = [];
+    new TilemapLayer({
+      gridWidth: 2,
+      gridHeight: 2,
+      tileSize: 32,
+      tiles: [1, 1, 1, 1],
+      container,
+      createTileSprite: () => new FakeTileSprite(),
+      resolveTileTexture: (tileId, x, y) => {
+        seen.push([tileId, x, y]);
+        return TEXTURE_FOR_TILE_1;
+      },
+    });
+
+    expect(seen.sort()).toEqual(
+      [
+        [1, 0, 0],
+        [1, 1, 0],
+        [1, 0, 1],
+        [1, 1, 1],
+      ].sort(),
+    );
+  });
+
+  it("setTile re-resolves with the cell's own coordinates too, not just at construction", () => {
+    const container = new FakeContainer();
+    const seen: Array<[number, number]> = [];
+    const layer = new TilemapLayer({
+      gridWidth: 2,
+      gridHeight: 1,
+      tileSize: 32,
+      tiles: [0, 1],
+      container,
+      createTileSprite: () => new FakeTileSprite(),
+      resolveTileTexture: (tileId, x, y) => {
+        seen.push([x, y]);
+        return tileId === 0 ? undefined : TEXTURE_FOR_TILE_1;
+      },
+    });
+    seen.length = 0; // clear the construction-time calls, only care about setTile's own call below
+
+    layer.setTile(0, 0, 2);
+
+    expect(seen).toContainEqual([0, 0]);
+  });
+
+  it("every sprite this layer creates gets the layer's own zIndex — H1g's ground/decoration draw-order guarantee", () => {
+    const container = new FakeContainer();
+    new TilemapLayer({
+      gridWidth: 2,
+      gridHeight: 1,
+      tileSize: 32,
+      tiles: [1, 1],
+      container,
+      createTileSprite: () => new FakeTileSprite(),
+      resolveTileTexture,
+      zIndex: -2,
+    });
+
+    expect(container.children.every((s) => s.zIndex === -2)).toBe(true);
+  });
+
+  it("leaves zIndex unset (undefined) when the layer option is omitted — a single-layer caller's existing behavior is unchanged", () => {
+    const container = new FakeContainer();
+    new TilemapLayer({
+      gridWidth: 1,
+      gridHeight: 1,
+      tileSize: 32,
+      tiles: [1],
+      container,
+      createTileSprite: () => new FakeTileSprite(),
+      resolveTileTexture,
+    });
+
+    expect(container.children[0]!.zIndex).toBeUndefined();
   });
 
   it("cull's margin widens which sprites stay visible", () => {

@@ -24,6 +24,7 @@ import {
   Camera,
   RenderHost,
   TilemapLayer,
+  computeAutotileBitmask,
   createSpriteSyncSystem,
   createTextSyncSystem,
   createTransformSnapshotSystem,
@@ -35,9 +36,10 @@ import { buildPackAwareCharacterTextures, type CharacterFrameSet } from "../canv
 import { buildEntityTextures } from "../canvas/entityMarkers";
 import { GRID_HEIGHT, GRID_WIDTH, TILE_SIZE } from "../canvas/gridConstants";
 import { loadActivePackContext } from "../canvas/packTiles";
-import { WALL_TILE_ID, buildPaletteTextures } from "../canvas/tilePalette";
+import { WALL_TILE_ID, buildAutotileWallTextures, buildPaletteTextures } from "../canvas/tilePalette";
 import type { EntityPlacement } from "../store/projectStore";
 import { fitZoom as fitZoomOf, followCamera as followCameraOf, followZoom as followZoomOf } from "./cameraFollow";
+import { buildDecorationTextures, computeDecorationTiles } from "./decorationTiles";
 import { createModuleRuntime } from "./directModuleHost";
 import { createPreviewAudio, type PreviewAudio } from "./previewAudio";
 import {
@@ -95,12 +97,37 @@ const DEATH_BURST_COLOR = 0x5d964d; // goblin skin (gensprite_h1.py's GOBLIN pal
 /** H1f's footstep cadence — world units of real player travel between footstep cues, not a fixed timer, so a step lands at the same point in the walk cycle regardless of frame rate. Close to a walk-cycle stride at TILE_SIZE's own scale. */
 const FOOTSTEP_STRIDE_DISTANCE = 26;
 
+/**
+ * H1g's multi-layer draw order. Both are large negative numbers so they
+ * sort strictly below *every* entity/floating-text sprite (whose own
+ * `zIndex` is `Transform.y`, always well above 0 for anything on this
+ * map) regardless of insertion order — the ground layer receives live
+ * repaints from SceneCanvas at any time, so relying on "ground sprites
+ * were all added before decoration sprites" would silently break the
+ * moment a *new* ground tile is painted into a previously-empty cell
+ * after the decoration layer already has sprites on screen.
+ */
+const GROUND_LAYER_Z_INDEX = -3;
+const DECORATION_LAYER_Z_INDEX = -2;
+
 type PreviewStatus = "loading" | "ready" | "error";
 
 interface RenderRig {
   readonly host: RenderHost;
   readonly camera: Camera;
+  /** The ground layer — real, player-painted tile ids, autotiled where the id is Wall (see `GROUND_LAYER_Z_INDEX`'s own doc comment). */
   readonly layer: TilemapLayer<Sprite>;
+  /** H1g's second tilemap layer — see `decorationTiles.ts`'s own doc comment for what drives it and why it isn't player-authored yet. */
+  readonly decorationLayer: TilemapLayer<Sprite>;
+  /**
+   * The ground layer's own live tile ids, mutated in place (never
+   * reassigned) — the same array `layer`'s `resolveTileTexture` closure
+   * reads to compute a Wall cell's own autotile bitmask. Exposed here so
+   * the scene-message effect (a separate `useEffect`, no access to the
+   * boot effect's own local variables) can keep it in sync with
+   * `layer.setTile` calls and force wall-neighbor sprite refreshes.
+   */
+  readonly groundTiles: number[];
 }
 
 /** The always-on ECS world: player + NPC render/movement entities. Created once at boot and never recreated — recreating it would reset the player's position on every tile paint or entity edit. */
@@ -245,16 +272,50 @@ export function PreviewApp() {
         camera.applyTo(host.worldContainer);
 
         const paletteTextures = buildPaletteTextures(host.app.renderer, TILE_SIZE);
+        const wallTextures = buildAutotileWallTextures(host.app.renderer, TILE_SIZE);
+        const decorationTextures = buildDecorationTextures(host.app.renderer, TILE_SIZE);
+
+        // Owned separately from the TilemapLayer's own internal copy: a
+        // resolveTileTexture closure needs to read the *live* grid to
+        // compute a Wall cell's own autotile bitmask, but that closure is
+        // invoked from inside `new TilemapLayer(...)` itself (once per
+        // initially-non-empty cell) — referencing the `layer` binding
+        // there would hit its own not-yet-initialized value. Since every
+        // cell starts empty (below) this particular ordering hazard can't
+        // actually fire yet, but keeping an explicit, independently-owned
+        // buffer instead of relying on that is the honest fix, not a
+        // fragile coincidence of today's boot order.
+        const groundTiles = new Array<number>(GRID_WIDTH * GRID_HEIGHT).fill(0);
+
+        const resolveGroundTileTexture = (tileId: number, x: number, y: number): Texture | undefined => {
+          if (tileId === WALL_TILE_ID) {
+            const bitmask = computeAutotileBitmask(groundTiles, x, y, GRID_WIDTH, GRID_HEIGHT, WALL_TILE_ID);
+            return wallTextures.get(bitmask);
+          }
+          return paletteTextures.get(tileId);
+        };
+
         const layer = new TilemapLayer<Sprite>({
+          gridWidth: GRID_WIDTH,
+          gridHeight: GRID_HEIGHT,
+          tileSize: TILE_SIZE,
+          tiles: groundTiles,
+          container: host.worldContainer,
+          createTileSprite: () => new Sprite(),
+          resolveTileTexture: resolveGroundTileTexture,
+          zIndex: GROUND_LAYER_Z_INDEX,
+        });
+        const decorationLayer = new TilemapLayer<Sprite>({
           gridWidth: GRID_WIDTH,
           gridHeight: GRID_HEIGHT,
           tileSize: TILE_SIZE,
           tiles: new Array(GRID_WIDTH * GRID_HEIGHT).fill(0),
           container: host.worldContainer,
           createTileSprite: () => new Sprite(),
-          resolveTileTexture: (tileId) => paletteTextures.get(tileId),
+          resolveTileTexture: (tileId) => decorationTextures.get(tileId),
+          zIndex: DECORATION_LAYER_Z_INDEX,
         });
-        rigRef.current = { host, camera, layer };
+        rigRef.current = { host, camera, layer, decorationLayer, groundTiles };
 
         const isWalkable = (worldX: number, worldY: number): boolean => {
           const tileX = Math.floor(worldX / TILE_SIZE);
@@ -409,7 +470,9 @@ export function PreviewApp() {
             camera.zoom = followZoom(vw, vh);
             followCamera(camera, playerTransform.x, playerTransform.y);
             camera.applyTo(host.worldContainer);
-            layer.cull(camera.visibleWorldBounds(TILE_SIZE));
+            const visibleBounds = camera.visibleWorldBounds(TILE_SIZE);
+            layer.cull(visibleBounds);
+            decorationLayer.cull(visibleBounds);
           }
 
           // H1f's footstep cadence: real distance traveled this tick, not
@@ -458,6 +521,8 @@ export function PreviewApp() {
             host,
             camera,
             layer,
+            decorationLayer,
+            groundTiles,
             gameWorld: gameWorldRef.current,
           };
         }
@@ -509,7 +574,9 @@ export function PreviewApp() {
         rig.camera.y = (GRID_HEIGHT * TILE_SIZE) / 2;
       }
       rig.camera.applyTo(rig.host.worldContainer);
-      rig.layer.cull(rig.camera.visibleWorldBounds(TILE_SIZE));
+      const visibleBounds = rig.camera.visibleWorldBounds(TILE_SIZE);
+      rig.layer.cull(visibleBounds);
+      rig.decorationLayer.cull(visibleBounds);
     });
     observer.observe(container);
     return () => observer.disconnect();
@@ -561,11 +628,39 @@ export function PreviewApp() {
           });
       }
 
+      // H1g: `rig.groundTiles` is kept in lockstep with `rig.layer`'s own
+      // internal copy (mutated here, not just handed to `setTile`) since
+      // it's what `resolveGroundTileTexture`'s closure (in the boot
+      // effect) reads to compute a Wall cell's own live autotile bitmask.
+      let anyGroundChange = false;
       for (let y = 0; y < GRID_HEIGHT; y++) {
         for (let x = 0; x < GRID_WIDTH; x++) {
-          const tileId = tiles[y * GRID_WIDTH + x]!;
-          if (rig.layer.getTile(x, y) !== tileId) rig.layer.setTile(x, y, tileId);
+          const index = y * GRID_WIDTH + x;
+          const tileId = tiles[index]!;
+          const previousTileId = rig.groundTiles[index];
+          if (previousTileId === tileId) continue;
+
+          anyGroundChange = true;
+          const wallRelevant = previousTileId === WALL_TILE_ID || tileId === WALL_TILE_ID;
+          rig.groundTiles[index] = tileId;
+          rig.layer.setTile(x, y, tileId);
+
+          if (wallRelevant) {
+            // A wall's own autotile texture depends on its neighbors, so
+            // this change can also change up to 4 already-placed
+            // neighbors' own textures — re-`setTile`ing each with its
+            // own (unchanged) id forces a texture recompute against the
+            // now-updated grid without altering what's actually painted
+            // there.
+            if (y > 0) rig.layer.setTile(x, y - 1, rig.groundTiles[index - GRID_WIDTH]!);
+            if (y < GRID_HEIGHT - 1) rig.layer.setTile(x, y + 1, rig.groundTiles[index + GRID_WIDTH]!);
+            if (x > 0) rig.layer.setTile(x - 1, y, rig.groundTiles[index - 1]!);
+            if (x < GRID_WIDTH - 1) rig.layer.setTile(x + 1, y, rig.groundTiles[index + 1]!);
+          }
         }
+      }
+      if (anyGroundChange) {
+        rig.decorationLayer.setTiles(computeDecorationTiles(rig.groundTiles, GRID_WIDTH, GRID_HEIGHT));
       }
 
       reconcileEntities(gameWorld, entities);

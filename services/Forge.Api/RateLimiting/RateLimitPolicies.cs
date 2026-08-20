@@ -108,4 +108,16 @@ public static class RateLimitPolicies
     /// via the list/get endpoints).
     /// </summary>
     public static readonly RateLimitPolicy AssetUpload = new(Limit: 20, Window: TimeSpan.FromMinutes(1));
+
+    /// <summary>
+    /// AI art-generation specifically (docs/adr/0016), user-keyed and the
+    /// tightest of any per-minute-scale policy here: each call is a real,
+    /// metered external API cost (unlike every other policy above, which
+    /// bounds Forge's own compute/storage), so the request-rate limiter
+    /// is deliberately conservative. It's also only the *first* of two
+    /// independent controls on that cost — docs/adr/0016 Decision 6's
+    /// live per-workspace-per-day budget check is the second, and bounds
+    /// total volume rather than burst rate.
+    /// </summary>
+    public static readonly RateLimitPolicy ArtGeneration = new(Limit: 10, Window: TimeSpan.FromHours(1));
 }

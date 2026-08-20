@@ -118,6 +118,31 @@ public static class DependencyInjection
     }
 
     /// <summary>
+    /// docs/adr/0016 — "describe it" AI-assisted art generation.
+    /// <c>services.AddHttpClient&lt;GeminiArtGenerationClient&gt;()</c> is
+    /// this codebase's first <see cref="HttpClient"/> consumer — the
+    /// typed-client registration (not a bare <c>new HttpClient()</c>) is
+    /// the standard ASP.NET Core answer to socket exhaustion under
+    /// concurrent load, the same "design for N replicas, no per-request
+    /// resource that should be pooled" reasoning CLAUDE.md Section 1.5
+    /// already applies elsewhere.
+    /// </summary>
+    public static IServiceCollection AddForgeArtGeneration(this IServiceCollection services, IConfiguration configuration)
+    {
+        var apiKey = configuration["ArtGeneration:GeminiApiKey"]
+            ?? throw new InvalidOperationException("Missing ArtGeneration:GeminiApiKey configuration.");
+        var textModel = configuration["ArtGeneration:TextModel"]
+            ?? throw new InvalidOperationException("Missing ArtGeneration:TextModel configuration.");
+        var imageModel = configuration["ArtGeneration:ImageModel"]
+            ?? throw new InvalidOperationException("Missing ArtGeneration:ImageModel configuration.");
+
+        services.AddSingleton(new ArtGeneration.GeminiArtGenerationOptions { ApiKey = apiKey, TextModel = textModel, ImageModel = imageModel });
+        services.AddHttpClient<ArtGeneration.IArtGenerationClient, ArtGeneration.GeminiArtGenerationClient>();
+
+        return services;
+    }
+
+    /// <summary>
     /// M7 Phase 7: Play Services (docs/SPEC.md Section 17) — anonymous
     /// player identity's <see cref="PlayTokenService"/>/<see cref="PlayTokenAuthenticationHandler"/>,
     /// and the Azure Table Storage client backing cloud saves,

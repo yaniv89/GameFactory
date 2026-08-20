@@ -21,6 +21,7 @@
 // physically separate host, Forge.Play (C4), neither of which exists yet.
 using Forge.Api;
 using Forge.Api.Authorization;
+using Forge.Api.Features.ArtGeneration;
 using Forge.Api.Features.Assets;
 using Forge.Api.Features.Auth;
 using Forge.Api.Features.Billing;
@@ -51,6 +52,7 @@ builder.Services.AddForgeBundleStorage(builder.Configuration);
 builder.Services.AddForgeAssetStorage(builder.Configuration);
 builder.Services.AddForgeRealtime(builder.Configuration);
 builder.Services.AddForgePlayServices(builder.Configuration);
+builder.Services.AddForgeArtGeneration(builder.Configuration);
 
 var app = builder.Build();
 
@@ -125,6 +127,7 @@ app.MapRegistryEndpoints();
 app.MapCollabHub();
 app.MapMarketplaceEndpoints();
 app.MapPlayEndpoints();
+app.MapArtGenerationEndpoints();
 
 await OpenIddictSeeding.SeedAsync(app);
 

@@ -185,6 +185,19 @@ public sealed class CrossTenantAuthorizationTests : IClassFixture<ForgeWebApplic
 
         yield return new object[] { "GetAssetContent (workspace:read)", (Func<SharedState, HttpRequestMessage>)(s =>
             new HttpRequestMessage(HttpMethod.Get, $"/api/v1/workspaces/{s.Owner.WorkspaceId}/assets/content/fixture.png")) };
+
+        // docs/adr/0016: the same combined workspace:write + workspace:pro
+        // policy shape as CreateBuild's own case above, keyed on
+        // workspaceId directly (both routes carry one) rather than a
+        // resolved-through-project-id route value.
+        yield return new object[] { "CreateGenerationRequest (workspace:write + workspace:pro)", (Func<SharedState, HttpRequestMessage>)(s =>
+            new HttpRequestMessage(HttpMethod.Post, $"/api/v1/workspaces/{s.Owner.WorkspaceId}/projects/{s.ProjectId}/art-generation")
+            {
+                Content = JsonContent.Create(new { userPrompt = "a mossy stone tile", category = "tile" }),
+            }) };
+
+        yield return new object[] { "ConfirmGenerationRequest (workspace:write + workspace:pro)", (Func<SharedState, HttpRequestMessage>)(s =>
+            new HttpRequestMessage(HttpMethod.Post, $"/api/v1/workspaces/{s.Owner.WorkspaceId}/projects/{s.ProjectId}/art-generation/{Guid.NewGuid()}/confirm")) };
     }
 
     [Theory]

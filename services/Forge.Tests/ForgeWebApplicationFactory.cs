@@ -176,6 +176,9 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
     /// <summary>Same story as <see cref="BillingClient"/>, for M7 Phase 4's marketplace Connect/purchase flow.</summary>
     public FakeStripeMarketplaceClient MarketplaceClient { get; } = new();
 
+    /// <summary>Same story as <see cref="BillingClient"/>, for docs/adr/0016's AI art generation.</summary>
+    public FakeArtGenerationClient ArtGenerationClient { get; } = new();
+
     public async Task InitializeAsync() => await Task.WhenAll(_postgres.StartAsync(), _redis.StartAsync(), _azurite.StartAsync());
 
     async Task IAsyncLifetime.DisposeAsync() => await Task.WhenAll(
@@ -193,6 +196,9 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
 
             services.RemoveAll<IStripeMarketplaceClient>();
             services.AddSingleton<IStripeMarketplaceClient>(MarketplaceClient);
+
+            services.RemoveAll<Forge.Infrastructure.ArtGeneration.IArtGenerationClient>();
+            services.AddSingleton<Forge.Infrastructure.ArtGeneration.IArtGenerationClient>(ArtGenerationClient);
 
             var connectionString = _postgres.GetConnectionString();
             services.RemoveAll<DbContextOptions<ForgeDbContext>>();

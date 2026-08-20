@@ -85,6 +85,11 @@ public sealed class ForgeDbContext(DbContextOptions<ForgeDbContext> options)
     /// <summary>docs/adr/0012 — untrusted, workspace-scoped image uploads. See <see cref="Domain.Entities.Asset"/>'s own doc comment for what's trimmed from Section 6.2's version and why.</summary>
     public DbSet<Asset> Assets => Set<Asset>();
 
+    /// <summary>docs/adr/0016 — "describe it" AI-assisted art generation requests. See <see cref="Domain.Entities.GenerationRequest"/>'s own doc comment.</summary>
+    public DbSet<GenerationRequest> GenerationRequests => Set<GenerationRequest>();
+
+    public DbSet<GenerationVariation> GenerationVariations => Set<GenerationVariation>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder); // Identity's own AspNetUsers/AspNetRoles/etc. tables.

@@ -14,7 +14,7 @@ import {
   spawnFromPrefab,
   type Prefab,
 } from "../src/prefabs/prefab";
-import { MOUNT_NO_RIDER } from "../src/components/core";
+import { EQUIPMENT_NO_WEAPON, MOUNT_NO_RIDER } from "../src/components/core";
 
 function makeWorld() {
   const world = new World();
@@ -74,6 +74,8 @@ describe("spawnFromPrefab", () => {
     expect(world.get(entity, "Animator")).toMatchObject({ clipId: -1, playing: 0, speed: 1, loop: 1, elapsed: 0, facing: 0 });
     // H1e: a real, full Health the HUD health bar reads live.
     expect(world.get(entity, "Health")).toMatchObject({ current: 100, max: 100, invulnerableUntil: 0, flashUntil: 0 });
+    // I1c: a real wearer, starting bare-handed.
+    expect(world.get(entity, "Equipment")).toMatchObject({ weaponEntity: EQUIPMENT_NO_WEAPON });
     // NPC_PREFAB declares no Interactable component — neither should PLAYER_START_PREFAB spawn one.
     expect(world.has(entity, "Interactable")).toBe(false);
   });

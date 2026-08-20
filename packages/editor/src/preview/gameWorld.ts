@@ -25,6 +25,15 @@ export const NPC_ASSET_ID = 2;
 export const ENEMY_ASSET_ID = 3;
 export const COIN_ASSET_ID = 4;
 export const MOUNT_ASSET_ID = 5;
+/**
+ * I1c's wielded-weapon visual — unlike the others, never resolved through
+ * `SPRITE_ASSET_IDS`/`spawnFromPrefab`: the weapon entity isn't a prefab
+ * (`createEquipmentSystem` creates/destroys it directly on equip/unequip),
+ * so this is just the plain numeric `Sprite.assetId` handed to that
+ * system's own `weaponAssetId` option, the same way `ENEMY_ASSET_ID` etc.
+ * are already plain constants known ahead of time.
+ */
+export const WEAPON_ASSET_ID = 6;
 
 const SPRITE_ASSET_IDS: Readonly<Record<string, number>> = {
   player: PLAYER_ASSET_ID,

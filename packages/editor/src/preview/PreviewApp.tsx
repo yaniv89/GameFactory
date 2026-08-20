@@ -3,6 +3,7 @@ import {
   MOUNT_PREFAB,
   createCharacterAnimationSystem,
   createEnemyAiSystem,
+  createEquipmentSystem,
   createFloatingTextSystem,
   createHitFlashSystem,
   createKnockbackPhysicsSystem,
@@ -36,7 +37,7 @@ import {
 import { Graphics, Sprite, Text, type Texture } from "pixi.js";
 import { useEffect, useRef, useState } from "react";
 import { buildPackAwareCharacterTextures, type CharacterFrameSet } from "../canvas/characterTextures";
-import { buildEntityTextures } from "../canvas/entityMarkers";
+import { buildEntityTextures, WEAPON_MARKER_TEXTURE_KEY } from "../canvas/entityMarkers";
 import { GRID_HEIGHT, GRID_WIDTH, TILE_SIZE } from "../canvas/gridConstants";
 import { loadActivePackContext } from "../canvas/packTiles";
 import { WALL_TILE_ID, buildAutotileWallTextures, buildPaletteTextures } from "../canvas/tilePalette";
@@ -52,6 +53,7 @@ import {
   MOUNT_ASSET_ID,
   NPC_ASSET_ID,
   PLAYER_ASSET_ID,
+  WEAPON_ASSET_ID,
   createPlayerMovementSystem,
   spawnCoinPickup,
   spawnEnemy,
@@ -80,6 +82,11 @@ const DEMO_ENEMY_TILE = { x: 13, y: 8 };
 
 /** I1b's fixed demo mount spawn — same "not sourced from scene placements yet" gap `spawnMount`'s own doc comment states. Tile (5, 8): same walkable row as `DEMO_ENEMY_TILE`, well clear of it and of the map's own edges. */
 const DEMO_MOUNT_TILE = { x: 5, y: 8 };
+
+/** I1c's equip/unequip toggle — a dedicated key, not folded into "E": that key is already a context-sensitive interact chain (NPC dialogue, then mount/dismount), whereas equipping is a loadout choice about the wearer's own state, not a nearby world object. */
+const EQUIP_TOGGLE_KEY = "r";
+/** World-units distance the wielded-weapon visual renders in front of the wearer, along facing — inside MELEE_REACH (below) so it visibly reads as "the thing about to swing," not floating out past the hitbox. */
+const WEAPON_OFFSET = 16;
 
 /** H1c's melee-swing tuning — one designed unit, not scattered magic numbers at each call site. */
 const MELEE_ATTACK_KEY = " "; // Space — KeyboardEvent.key for the spacebar.
@@ -242,6 +249,8 @@ export function PreviewApp() {
   const attackRequestedRef = useRef(false);
   /** I1b's mount/dismount request: set true on an "E" press that found no NPC dialogue target in range, consumed (and cleared) by `createMountSystem`'s own `consumeMountRequest` — the same "own the input state" edge shape `attackRequestedRef` already establishes. */
   const mountRequestedRef = useRef(false);
+  /** I1c's equip/unequip request: set true on an `EQUIP_TOGGLE_KEY` press, consumed (and cleared) by `createEquipmentSystem`'s own `consumeEquipRequest` — the same edge shape `attackRequestedRef`/`mountRequestedRef` already establish. */
+  const equipRequestedRef = useRef(false);
   const bubbleTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lifecycleRef = useRef<Promise<void>>(Promise.resolve());
   const tickerCallbackRef = useRef<((ticker: { deltaMS: number }) => void) | null>(null);
@@ -411,6 +420,18 @@ export function PreviewApp() {
           }),
         );
         scheduler.addSystem(createCharacterAnimationSystem({ world, frameCount: WALK_FRAME_COUNT, fps: WALK_FPS }));
+        scheduler.addSystem(
+          createEquipmentSystem({
+            world,
+            consumeEquipRequest: () => {
+              const requested = equipRequestedRef.current;
+              equipRequestedRef.current = false;
+              return requested;
+            },
+            weaponAssetId: WEAPON_ASSET_ID,
+            weaponOffset: WEAPON_OFFSET,
+          }),
+        );
         scheduler.addSystem(createHitFlashSystem({ world }));
         scheduler.addSystem(createFloatingTextSystem({ world }));
         scheduler.addSystem(createPickupSystem({ world, events: pickupEvents }));
@@ -427,6 +448,7 @@ export function PreviewApp() {
               if (animatedFrame) return animatedFrame;
               if (assetId === COIN_ASSET_ID) return entityTextures.get(COIN_PICKUP_PREFAB.id);
               if (assetId === MOUNT_ASSET_ID) return entityTextures.get(MOUNT_PREFAB.id);
+              if (assetId === WEAPON_ASSET_ID) return entityTextures.get(WEAPON_MARKER_TEXTURE_KEY);
               return entityTextures.get(assetId === PLAYER_ASSET_ID ? "player-start" : "npc");
             },
           }),
@@ -761,7 +783,8 @@ export function PreviewApp() {
     };
   }, []);
 
-  // "E" to interact with the nearest NPC in range, Space to swing.
+  // "E" to interact with the nearest NPC in range (or mount/dismount if
+  // none is), Space to swing, "R" to equip/unequip the wielded weapon.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       // H1f: the first real keypress the preview already requires for
@@ -773,6 +796,10 @@ export function PreviewApp() {
         event.preventDefault(); // stop the page from scrolling on Space, the same way a real game would capture it
         attackRequestedRef.current = true;
         previewAudioRef.current?.playSwing(); // the whoosh plays on every real swing attempt, hit or miss — matches a real game's weapon sound
+        return;
+      }
+      if (event.key.toLowerCase() === EQUIP_TOGGLE_KEY) {
+        equipRequestedRef.current = true;
         return;
       }
       if (event.key.toLowerCase() !== "e") return;

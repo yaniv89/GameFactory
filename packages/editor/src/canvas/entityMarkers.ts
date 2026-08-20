@@ -16,6 +16,10 @@ export const NPC_MARKER_COLOR = 0xd162c9; // magenta
 export const COIN_MARKER_COLOR = 0xe0c14c;
 /** I1b's rideable mount — a saddle-brown distinct from every other marker/tile color and, per CLAUDE.md 5.1, well clear of `--accent-running`'s amber. */
 export const MOUNT_MARKER_COLOR = 0x8a5a3b;
+/** I1c's wielded-weapon visual — a cool steel-blue distinct from every other marker/tile color, well clear of `--accent-running`'s amber. */
+export const WEAPON_MARKER_COLOR = 0xb8c4cc;
+/** Texture map key for the wielded-weapon marker — not a `Prefab.id` (the weapon entity isn't a prefab; `createEquipmentSystem` creates/destroys it directly), so this is its own plain string constant instead. */
+export const WEAPON_MARKER_TEXTURE_KEY = "weapon";
 
 /** Keyed by `EntityPlacement.prefabId` — not a closed union, per docs/adr/0015-entity-prefab-component-model.md. */
 export function buildEntityTextures(renderer: Renderer, tileSize: number): Map<string, Texture> {
@@ -44,6 +48,21 @@ export function buildEntityTextures(renderer: Renderer, tileSize: number): Map<s
     .fill(MOUNT_MARKER_COLOR);
   textures.set(MOUNT_PREFAB.id, renderer.generateTexture(mount));
   mount.destroy();
+
+  // A thin elongated blade, not a circle or a square — its own shape
+  // reads as "held object" and makes createEquipmentSystem's own
+  // per-tick rotation (pointing along the wearer's facing) visible at a
+  // glance, the same "shape carries meaning too" reasoning the mount's
+  // own rounded square already establishes. Drawn symmetric around the
+  // local origin so `renderer.generateTexture`'s own bounding-box trim
+  // keeps the sprite's anchor(0.5, 0.5) centered on the shape, the same
+  // as every other marker here.
+  const bladeLength = tileSize * 0.8;
+  const bladeWidth = tileSize * 0.16;
+  const weapon = new Graphics().roundRect(-bladeLength / 2, -bladeWidth / 2, bladeLength, bladeWidth, bladeWidth * 0.4).fill(WEAPON_MARKER_COLOR);
+  const weaponTexture = renderer.generateTexture(weapon);
+  weapon.destroy();
+  textures.set(WEAPON_MARKER_TEXTURE_KEY, weaponTexture);
 
   return textures;
 }

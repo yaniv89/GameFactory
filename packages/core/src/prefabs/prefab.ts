@@ -1,4 +1,18 @@
-import { MOUNT_NO_RIDER, type Animator, type Collider, type EnemyAi, type Health, type Interactable, type Mount, type Pickup, type PlayerControlled, type Sprite, type Velocity } from "../components/core";
+import {
+  EQUIPMENT_NO_WEAPON,
+  MOUNT_NO_RIDER,
+  type Animator,
+  type Collider,
+  type EnemyAi,
+  type Equipment,
+  type Health,
+  type Interactable,
+  type Mount,
+  type Pickup,
+  type PlayerControlled,
+  type Sprite,
+  type Velocity,
+} from "../components/core";
 import type { EntityId } from "../ecs/entity";
 import type { World } from "../ecs/world";
 import { COLLIDER_SHAPE_BOX, COLLIDER_SHAPE_CIRCLE } from "../physics/aabb";
@@ -64,6 +78,15 @@ export interface Prefab {
      * genuinely differs on.
      */
     readonly mount?: Partial<Mount>;
+    /**
+     * `weaponEntity` is never taken from here — `spawnFromPrefab` always
+     * sets it to `EQUIPMENT_NO_WEAPON` (a freshly spawned wearer starts
+     * bare-handed; the visual weapon entity `createEquipmentSystem` later
+     * creates on equip has no prefab of its own). Declaring `equipment: {}`
+     * on a prefab is only what makes it a wearer at all — the same
+     * "presence is the tag" shape `enemyAi`/`mount` already establish.
+     */
+    readonly equipment?: Partial<Equipment>;
   };
 }
 
@@ -100,6 +123,9 @@ export const PLAYER_START_PREFAB: Prefab = {
     // `velocity.maxSpeed: 0` doc comment already accepts for the enemy's
     // own movement.
     health: { current: 100, max: 100, invulnerableUntil: 0, flashUntil: 0 },
+    // I1c: a real wearer, starting bare-handed — see this field's own doc
+    // comment on `Prefab.components.equipment`.
+    equipment: {},
   },
 };
 
@@ -252,6 +278,11 @@ export function spawnFromPrefab(
     // riderEntity/riderBaseMaxSpeed always start unridden — see this
     // field's own doc comment on `Prefab.components.mount`.
     initial.Mount = { riderEntity: MOUNT_NO_RIDER, range: 40, mountedMaxSpeed: 0, riderBaseMaxSpeed: 0, ...c.mount };
+  }
+  if (c.equipment) {
+    // weaponEntity always starts bare-handed — see this field's own doc
+    // comment on `Prefab.components.equipment`.
+    initial.Equipment = { weaponEntity: EQUIPMENT_NO_WEAPON, ...c.equipment };
   }
   return world.create(initial);
 }

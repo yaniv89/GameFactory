@@ -195,6 +195,26 @@ export const MountSchema = {
 } as const satisfies ComponentSchema;
 export type Mount = ComponentValue<typeof MountSchema>;
 
+/** `Equipment.weaponEntity` sentinel meaning "nothing wielded" — same `u32`-max-value reasoning as `MOUNT_NO_RIDER`'s own doc comment. */
+export const EQUIPMENT_NO_WEAPON = 0xffffffff;
+
+/**
+ * I1c's wielded-weapon state — presence marks an entity as able to equip
+ * something (today, only `PLAYER_START_PREFAB`). `weaponEntity` is the
+ * live visual entity `createEquipmentSystem` creates on equip and
+ * destroys on unequip (`EQUIPMENT_NO_WEAPON` when bare-handed) — not a
+ * reference into a real inventory, which doesn't exist yet (I1e's job);
+ * this is a stated, honest scope boundary, not an oversight. Equipping
+ * affects only the wielded-weapon *visual* today — `createMeleeAttackSystem`
+ * itself is not gated on it, so a bare-handed swing still connects,
+ * matching every already-shipped combat spec's own assumption; real
+ * weapon-damage/reach itemization is later I1 work, not this slice.
+ */
+export const EquipmentSchema = {
+  weaponEntity: "u32",
+} as const satisfies ComponentSchema;
+export type Equipment = ComponentValue<typeof EquipmentSchema>;
+
 export interface CoreComponents {
   readonly Transform: ReturnType<World["defineComponent"]>;
   readonly Sprite: ReturnType<World["defineComponent"]>;
@@ -208,6 +228,7 @@ export interface CoreComponents {
   readonly Pickup: ReturnType<World["defineComponent"]>;
   readonly EnemyAi: ReturnType<World["defineComponent"]>;
   readonly Mount: ReturnType<World["defineComponent"]>;
+  readonly Equipment: ReturnType<World["defineComponent"]>;
 }
 
 /** Registers every core component against `world`. Call once, at world construction. */
@@ -287,6 +308,9 @@ export function registerCoreComponents(world: World): CoreComponents {
       range: 40,
       mountedMaxSpeed: 260,
       riderBaseMaxSpeed: 0,
+    }),
+    Equipment: world.defineComponent("Equipment", EquipmentSchema, {
+      weaponEntity: EQUIPMENT_NO_WEAPON,
     }),
   };
 }

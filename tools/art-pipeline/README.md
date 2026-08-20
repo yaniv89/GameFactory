@@ -72,3 +72,36 @@ python3 sprite_strip_slicer.py animation path/to/spark-source.png path/to/spark.
 ```bash
 python3 -m unittest tools/art-pipeline/test_sprite_strip_slicer -v
 ```
+
+## `character_sheet_extract.py` — L4-adjacent, `characters.sheets`
+
+Turns one raw, magenta-keyed 4-direction character/creature sheet into a
+pack-ready `characters.sheets` PNG at the pack's own `grid.spriteSize`
+cell size (128x192 for every fixture pack today: 4 walk-cycle frames x 4
+directions x 32x48 per cell). Distinct from `sprite_strip_slicer.py`: a
+character sheet is a real *grid* (not a single row), and its cell size is
+fixed by the manifest rather than left at whatever a tight crop produces.
+
+Real `fixtures/raw-art/` sheets in this batch turned out not to reliably
+divide into an even 4-row grid, and none reliably generated a genuine
+east-facing row (confirmed by direct visual inspection of more than one
+sheet — see the module's own docstring for the full account). Use
+`--auto-bands` for real sources: it locates the actual content rows by
+scanning for background gaps instead of assuming an even division, and
+always builds east as a horizontal mirror of west rather than trusting a
+3rd/4th detected band to be a genuine distinct pose.
+
+```bash
+# Real source photos — auto-detects rows, mirrors west into east.
+python3 character_sheet_extract.py --auto-bands path/to/hero-source.png path/to/hero_walk.png
+
+# A source that's already a clean, even 4x4 grid (mostly useful for
+# synthetic/test fixtures).
+python3 character_sheet_extract.py path/to/sheet.png path/to/out.png
+```
+
+### Tests
+
+```bash
+python3 -m unittest tools/art-pipeline/test_character_sheet_extract -v
+```

@@ -64,6 +64,27 @@ export interface InstalledModuleEntry {
   readonly marketplace?: { readonly version: string; readonly bundleUrl: string; readonly bundleSha256Hex: string };
 }
 
+/**
+ * What a brand-new project starts with. `@forge/dialogue` and
+ * `@forge/inventory` are first-party modules Forge itself ships — there is
+ * no marketplace listing or "install" affordance for either yet in the
+ * Modules panel — and the M4 exit criterion ("a first-time user builds a
+ * walkable two-room map with a talking NPC in under 10 minutes, unaided")
+ * depends on authoring dialogue on an NPC working without a detour through
+ * module management first. Presence in `installedModules` is still the
+ * real, load-bearing flag it always was: a creator who explicitly
+ * uninstalls either (`uninstallModule`) gets exactly what that implies —
+ * the live preview stops running it (`PreviewApp.tsx`'s own
+ * `installedModules`-gated wiring), and `toExportProjectInput` refuses to
+ * export a scene that still authors dialogue without the module installed
+ * rather than silently dropping it (issue #123: preview and export must
+ * agree on what "installed" means, not just export).
+ */
+export const DEFAULT_INSTALLED_MODULES: Record<string, InstalledModuleEntry> = {
+  "@forge/dialogue": { config: {} },
+  "@forge/inventory": { config: {} },
+};
+
 /** docs/SPEC.md Section 7.3's `activePack`/`packOverrides`/`packTerrainRemap`; see `packages/editor/src/store/projectStore.ts` for the full field-by-field rationale — unchanged by the move. */
 export interface ProjectDocument {
   scenes: SceneSummary[];
@@ -115,10 +136,20 @@ function migrateEntityPlacement(entity: LegacyEntityPlacement): EntityPlacement 
  * Fills in any field a partial/foreign document is missing — used both by
  * the editor's own `persist` rehydration and to normalize a document
  * fetched from `GetDocumentEndpoint` (can be `undefined` entirely, or an
- * older schema version than this build expects). Moved here unchanged.
+ * older schema version than this build expects). Moved here unchanged,
+ * except for one addition: `document === undefined` (the whole document,
+ * not just one field of it missing) is the one case genuinely
+ * distinguishable from "an existing document that happens to have no
+ * installed modules" — that's what a brand-new project with no revisions
+ * yet looks like, and only that case gets `DEFAULT_INSTALLED_MODULES`. An
+ * existing document that was legitimately saved with an empty
+ * `installedModules` (or an older-format document simply missing that one
+ * field while the rest of it is real, already-authored content) still
+ * normalizes to `{}`, exactly as before — this migration only fills in
+ * missing *shape*, never edits what an existing document actually decided.
  */
 export function migrateDocument(document: Partial<ProjectDocument> | undefined): ProjectDocument {
-  const installedModules = document?.installedModules ?? {};
+  const installedModules = document?.installedModules ?? (document === undefined ? DEFAULT_INSTALLED_MODULES : {});
   return {
     scenes: (document?.scenes ?? []).map((scene) => ({
       ...scene,

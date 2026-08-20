@@ -57,6 +57,17 @@ export function PreviewPanel() {
   // scene-tab/"active scene" concept yet (Phase 7's documented gap).
   const entities = useProjectStore((state) => state.document.scenes[0]?.entities);
   const activePack = useProjectStore((state) => state.document.activePack);
+  // issue #123: the real, live install list — not a snapshot taken once at
+  // boot. Re-sent on every `forge:preview:scene` message (the same
+  // cadence `tiles`/`entities` already use), so uninstalling a module from
+  // the Modules panel takes effect in the running preview immediately,
+  // the same tick it would in a fresh export. Selects the `immer`-managed
+  // object itself, not `Object.keys(...)` of it — the latter would return
+  // a fresh array (and so a changed reference) on every store update
+  // whether or not `installedModules` actually changed, over-firing the
+  // scene-send effect below; `Object.keys` is computed inline there
+  // instead, only when this reference has genuinely changed.
+  const installedModules = useProjectStore((state) => state.document.installedModules);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent): void => {
@@ -90,6 +101,7 @@ export function PreviewPanel() {
       type: "forge:preview:scene",
       tiles,
       entities: entities ?? [],
+      installedModules: Object.keys(installedModules),
       ...(activePack !== undefined ? { activePack } : {}),
       ...(devSaveRef.current ? { devSave: devSaveRef.current } : {}),
     };
@@ -105,7 +117,7 @@ export function PreviewPanel() {
     // general, false positive for this specific, structurally-safe case.
     // nosemgrep: javascript.browser.security.wildcard-postmessage-configuration.wildcard-postmessage-configuration
     iframeRef.current?.contentWindow?.postMessage(message, "*");
-  }, [status, tiles, entities, activePack]);
+  }, [status, tiles, entities, activePack, installedModules]);
 
   return (
     <div className="fg-preview-panel">

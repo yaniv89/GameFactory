@@ -51,6 +51,9 @@ describe("toExportProjectInput", () => {
 
   it("maps scenes and entities, carrying dialogue only when present", () => {
     const document = baseDocument({
+      // @forge/dialogue must be installed for an entity with dialogue authored
+      // to survive export — see the "refuses to export ... dialogue" tests below.
+      installedModules: { "@forge/dialogue": { config: {} } },
       scenes: [
         {
           id: "village",
@@ -193,5 +196,63 @@ describe("toExportProjectInput", () => {
     });
     const result = toExportProjectInput(document, { projectId: "p1", resolveModuleVersion, resolveEngineVersion });
     expect(result.installedModules).toEqual([]);
+  });
+
+  // issue #123: the editor's own live preview used to run @forge/dialogue
+  // regardless of install status, so a creator could author dialogue, see
+  // it work in preview, and get a silently broken (no-op) interaction on
+  // export instead — this refuses the export outright with a clear,
+  // actionable error rather than reproducing that silence.
+  it("refuses to export a scene with dialogue authored when @forge/dialogue isn't installed", () => {
+    const document = baseDocument({
+      scenes: [
+        {
+          id: "village",
+          name: "Village",
+          tiles: emptyTiles(),
+          entities: [{ id: "npc-1", prefabId: "npc", tileX: 5, tileY: 5, dialogue: { speaker: "Elder", text: "Welcome." } }],
+        },
+      ],
+    });
+    expect(() => toExportProjectInput(document, { projectId: "p1", resolveModuleVersion, resolveEngineVersion })).toThrow(
+      /scene "Village" has an entity with dialogue authored.*"@forge\/dialogue" is not installed/,
+    );
+  });
+
+  it("does not refuse a scene with no dialogue authored, even when @forge/dialogue isn't installed", () => {
+    const document = baseDocument({
+      scenes: [{ id: "village", name: "Village", entities: [{ id: "npc-1", prefabId: "npc", tileX: 5, tileY: 5 }], tiles: emptyTiles() }],
+    });
+    expect(() => toExportProjectInput(document, { projectId: "p1", resolveModuleVersion, resolveEngineVersion })).not.toThrow();
+  });
+
+  it("does not refuse a scene with dialogue authored once @forge/dialogue is installed", () => {
+    const document = baseDocument({
+      installedModules: { "@forge/dialogue": { config: {} } },
+      scenes: [
+        {
+          id: "village",
+          name: "Village",
+          tiles: emptyTiles(),
+          entities: [{ id: "npc-1", prefabId: "npc", tileX: 5, tileY: 5, dialogue: { speaker: "Elder", text: "Welcome." } }],
+        },
+      ],
+    });
+    expect(() => toExportProjectInput(document, { projectId: "p1", resolveModuleVersion, resolveEngineVersion })).not.toThrow();
+  });
+
+  it("checks every scene, not just the start scene, for un-installed dialogue", () => {
+    const document = baseDocument({
+      scenes: [
+        { id: "village", name: "Village", entities: [], tiles: emptyTiles() },
+        {
+          id: "cave",
+          name: "Cave",
+          tiles: emptyTiles(),
+          entities: [{ id: "npc-1", prefabId: "npc", tileX: 5, tileY: 5, dialogue: { speaker: "Hermit", text: "Go away." } }],
+        },
+      ],
+    });
+    expect(() => toExportProjectInput(document, { projectId: "p1", resolveModuleVersion, resolveEngineVersion })).toThrow(/scene "Cave"/);
   });
 });

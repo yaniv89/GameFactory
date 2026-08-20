@@ -90,6 +90,26 @@ describe("isPreviewSceneMessage", () => {
     const devSave = { player: { Transform: { x: "not-a-number" } }, inventory: {}, savedAt: "now" };
     expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], devSave })).toBe(false);
   });
+
+  // issue #123
+  it("accepts a message with no installedModules field", () => {
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [] })).toBe(true);
+  });
+
+  it("accepts a message with a well-formed installedModules array", () => {
+    expect(
+      isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], installedModules: ["@forge/dialogue", "@forge/inventory"] }),
+    ).toBe(true);
+  });
+
+  it("accepts a message with an empty installedModules array", () => {
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], installedModules: [] })).toBe(true);
+  });
+
+  it("rejects a message whose installedModules is not an array of strings", () => {
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], installedModules: [42] })).toBe(false);
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], installedModules: "@forge/dialogue" })).toBe(false);
+  });
 });
 
 describe("isPreviewToEditorMessage", () => {

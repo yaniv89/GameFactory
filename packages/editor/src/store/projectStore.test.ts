@@ -1,3 +1,4 @@
+import { DEFAULT_INSTALLED_MODULES } from "@forge/project-export";
 import { beforeEach, describe, expect, it } from "vitest";
 import { migratePersistedProjectState, selectCanRedo, selectCanUndo, useProjectStore } from "./projectStore";
 
@@ -579,7 +580,10 @@ describe("migratePersistedProjectState", () => {
     const migrated = migratePersistedProjectState(undefined);
     expect(migrated.document).toEqual({
       scenes: [],
-      installedModules: {},
+      // A genuinely missing persisted state (nothing in localStorage yet)
+      // is what a brand-new project's very first boot looks like — see
+      // DEFAULT_INSTALLED_MODULES' own doc comment (documentTypes.ts).
+      installedModules: DEFAULT_INSTALLED_MODULES,
       activePack: undefined,
       packOverrides: {},
       packTerrainRemap: {},

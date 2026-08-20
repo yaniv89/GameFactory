@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emptyTiles, migrateDocument } from "../src/documentTypes.js";
+import { DEFAULT_INSTALLED_MODULES, emptyTiles, migrateDocument } from "../src/documentTypes.js";
 
 describe("migrateDocument", () => {
   it("wraps a pre-InstalledModuleEntry flat config record as { config }", () => {
@@ -61,8 +61,13 @@ describe("migrateDocument", () => {
     expect(migrated.installedModules).toEqual({});
   });
 
-  it("defaults installedModules to {} when the whole document is missing it", () => {
+  it("defaults installedModules to DEFAULT_INSTALLED_MODULES (dialogue + inventory) when the whole document is missing — a genuinely brand-new project", () => {
     const migrated = migrateDocument(undefined);
+    expect(migrated.installedModules).toEqual(DEFAULT_INSTALLED_MODULES);
+  });
+
+  it("does NOT apply DEFAULT_INSTALLED_MODULES when a real (if incomplete) document merely omits the field — an existing project's own {} is left alone, not silently edited", () => {
+    const migrated = migrateDocument({ scenes: [] });
     expect(migrated.installedModules).toEqual({});
   });
 

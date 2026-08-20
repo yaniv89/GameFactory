@@ -335,6 +335,17 @@ export function PreviewApp() {
   const inventoryRuntimeRef = useRef<ReturnType<typeof createModuleRuntime> | null>(null);
   /** Guards `inventoryRuntime.restoreStorage` (and the paired `setCoinCount`) to the one `devSave` this preview ever restores from — a later `forge:preview:scene` message repeating the same `devSave` (harmless on the wire, see that field's own doc comment) must not re-clobber inventory state the player has since genuinely changed. */
   const devPreviewInventoryRestoredRef = useRef(false);
+  /**
+   * issue #123: whether `"@forge/inventory"` is actually in
+   * `ProjectDocument.installedModules`, kept current by the scene-message
+   * effect and read by the boot effect's `pickup:collected` handler
+   * (a *different* effect, hence a ref rather than a plain variable —
+   * `inventoryRuntimeRef`'s own doc comment states the same reason).
+   * Starts `false`, not `true`: nothing should reach the module before the
+   * first real scene message says it's actually installed, the same
+   * "off until proven on" default a security-relevant flag should have.
+   */
+  const inventoryInstalledRef = useRef(false);
   /** Populated asynchronously once a `forge:preview:scene` message names an `activePack` — read every tick by the sprite-sync `resolveTexture` closure below, which is wired once at boot before any pack has necessarily loaded. Empty map (not undefined) so a lookup miss and "still loading" look identical: fall back to the placeholder marker either way. */
   const characterTexturesRef = useRef<Map<string, CharacterFrameSet>>(new Map());
   /** The `activePack` name this preview has already loaded (or attempted to) — guards against re-fetching the same pack's manifest on every scene message (tile paints fire these constantly) and against a stale, slower-to-resolve fetch clobbering a newer one. */
@@ -604,6 +615,15 @@ export function PreviewApp() {
         });
         pickupEvents.on("pickup:collected", (payload) => {
           audio.playPickup();
+          // issue #123: a pickup is a core (`@forge/core`) mechanic, not a
+          // module one — the item visibly disappears either way (that
+          // part of H1e's design doesn't depend on any module) — but
+          // *booking* it into a real inventory does, and must not happen
+          // when the creator has genuinely uninstalled `@forge/inventory`,
+          // the same way `forge export` wouldn't wire this event up at
+          // all in that case (`gameLogic.ts`'s own module-gated bridge
+          // wiring).
+          if (!inventoryInstalledRef.current) return;
           const itemKey = ITEM_KEY_FOR_ID[payload.itemId];
           if (!itemKey) {
             console.warn(`[forge:preview] picked up an item with no known inventory key (Pickup.itemId ${payload.itemId}) — dropped, not added to inventory.`);
@@ -862,7 +882,8 @@ export function PreviewApp() {
       const rig = rigRef.current;
       const gameWorld = gameWorldRef.current;
       if (!rig || !gameWorld) return;
-      const { tiles, entities, activePack, devSave } = event.data;
+      const { tiles, entities, activePack, devSave, installedModules = [] } = event.data;
+      inventoryInstalledRef.current = installedModules.includes("@forge/inventory");
 
       // I1f: the one place a restore actually lands — see
       // `PreviewSceneMessage.devSave`'s own doc comment (protocol.ts) for
@@ -949,11 +970,20 @@ export function PreviewApp() {
         const items = inventoryRuntimeRef.current?.ctx.storage.get<Record<string, number>>(storageKey(gameWorld.playerEntity));
         setCoinCount(items?.coin ?? 0);
       }
-      dialogueRef.current = rebuildDialogueRuntime(entities, (payload) => {
-        clearTimeout(bubbleTimeoutRef.current);
-        setBubble({ speaker: payload.speaker, text: payload.text });
-        bubbleTimeoutRef.current = setTimeout(() => setBubble(null), DIALOGUE_BUBBLE_MS);
-      });
+      // issue #123: mirrors `toExportProjectInput`'s own refusal to export
+      // authored dialogue without `@forge/dialogue` installed — an
+      // uninstalled dialogue module means no dialogue runtime here either,
+      // so interact ("E") finds nothing to say (the `if (dialogue)` guard
+      // right below this effect already handles a `null` `dialogueRef`
+      // safely; it always has, for the brief window before the first
+      // scene message ever arrives).
+      dialogueRef.current = installedModules.includes("@forge/dialogue")
+        ? rebuildDialogueRuntime(entities, (payload) => {
+            clearTimeout(bubbleTimeoutRef.current);
+            setBubble({ speaker: payload.speaker, text: payload.text });
+            bubbleTimeoutRef.current = setTimeout(() => setBubble(null), DIALOGUE_BUBBLE_MS);
+          })
+        : null;
     };
     window.addEventListener("message", onMessage);
     return () => {

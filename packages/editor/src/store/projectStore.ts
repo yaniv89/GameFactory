@@ -297,7 +297,13 @@ export const migrateDocument = migrateDocumentShape;
 export const useProjectStore = create<ProjectStoreState>()(
   persist(
     immer((set) => ({
-      document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {} },
+      // migrateDocumentShape(undefined) — not a hand-rolled empty-shape
+      // literal — so a brand-new local project picks up
+      // DEFAULT_INSTALLED_MODULES the exact same way a brand-new backend
+      // project does (projectSyncStore.ts's own `migrateDocument(envelope?.document)`
+      // call, `envelope?.document` genuinely `undefined` for a project
+      // with no revisions yet).
+      document: migrateDocumentShape(undefined),
       past: [],
       future: [],
       checkpoints: [],

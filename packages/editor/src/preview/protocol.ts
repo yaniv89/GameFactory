@@ -24,6 +24,20 @@ export interface PreviewSceneMessage {
   /** `ProjectDocument.activePack` — undefined when no Art Pack is installed. The preview resolves real character/tile art against this itself (`characterTextures.ts`/`packTiles.ts`); a pack name a client sends is still just a hint like any other field here, never trusted beyond "which pack to fetch and validate." */
   readonly activePack?: string;
   /**
+   * `Object.keys(ProjectDocument.installedModules)` — issue #123: the live
+   * preview used to run `@forge/dialogue`/`@forge/inventory`
+   * unconditionally regardless of install status, while `forge export`
+   * (`toExportProjectInput.ts`) only ever included a module actually
+   * present here. A creator who uninstalled dialogue would see it keep
+   * working in preview and then silently vanish on export — this field is
+   * what lets `PreviewApp.tsx` check the same real flag export already
+   * does, so both sides agree on what "installed" means. Optional (like
+   * `activePack`/`devSave` above) purely for wire-shape leniency — an
+   * absent field means "nothing installed" (`PreviewApp.tsx` treats
+   * `undefined` the same as `[]`), not "don't enforce this."
+   */
+  readonly installedModules?: readonly string[];
+  /**
    * I1f: the last dev-preview save this browser has, if any —
    * `PreviewPanel.tsx` reads it once (`localStorage`, its own real
    * origin) and hands it to the preview here, since the sandboxed iframe
@@ -82,13 +96,16 @@ function isValidEntity(value: unknown): value is EntityPlacement {
 
 export function isPreviewSceneMessage(data: unknown): data is PreviewSceneMessage {
   if (typeof data !== "object" || data === null) return false;
-  const candidate = data as { type?: unknown; tiles?: unknown; entities?: unknown; activePack?: unknown; devSave?: unknown };
+  const candidate = data as { type?: unknown; tiles?: unknown; entities?: unknown; activePack?: unknown; devSave?: unknown; installedModules?: unknown };
   if (candidate.type !== "forge:preview:scene") return false;
   if (!Array.isArray(candidate.tiles) || candidate.tiles.length !== EXPECTED_TILE_COUNT) return false;
   if (!candidate.tiles.every((tile) => typeof tile === "number" && Number.isFinite(tile))) return false;
   if (!Array.isArray(candidate.entities)) return false;
   if (candidate.activePack !== undefined && typeof candidate.activePack !== "string") return false;
   if (candidate.devSave !== undefined && !isValidDevPreviewSave(candidate.devSave)) return false;
+  if (candidate.installedModules !== undefined) {
+    if (!Array.isArray(candidate.installedModules) || !candidate.installedModules.every((name) => typeof name === "string")) return false;
+  }
   return candidate.entities.every(isValidEntity);
 }
 

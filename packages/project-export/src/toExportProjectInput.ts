@@ -58,6 +58,28 @@ export function toExportProjectInput(document: ProjectDocument, options: ToExpor
     throw new Error(`toExportProjectInput: startSceneId "${startSceneId}" does not match any scene in this project.`);
   }
 
+  // issue #123: the editor's own live preview used to run
+  // `@forge/dialogue` unconditionally, regardless of install status
+  // (`PreviewApp.tsx`, fixed alongside this) — a creator could author an
+  // NPC's dialogue, see it work in preview, and get a silently broken
+  // interaction on export, since this function has only ever included a
+  // module actually present in `installedModules`. Preview is fixed to
+  // agree with this rule now; this check catches every other way a
+  // document could still reach export in that state (an older document
+  // authored before that fix shipped, a hand-edited fixture, dialogue
+  // authored and then the module explicitly uninstalled afterward) with a
+  // clear, actionable error instead of a build that plays but never talks.
+  if (!("@forge/dialogue" in document.installedModules)) {
+    for (const scene of document.scenes) {
+      const entityWithDialogue = scene.entities.find((entity) => entity.dialogue);
+      if (entityWithDialogue) {
+        throw new Error(
+          `toExportProjectInput: scene "${scene.name}" has an entity with dialogue authored ("${entityWithDialogue.dialogue!.speaker}: ${entityWithDialogue.dialogue!.text}"), but "@forge/dialogue" is not installed for this project. Install it from the Modules panel, or remove the dialogue from this entity, before exporting.`,
+        );
+      }
+    }
+  }
+
   const scenes: PlayerScene[] = document.scenes.map((scene) => ({
     id: scene.id,
     name: scene.name,

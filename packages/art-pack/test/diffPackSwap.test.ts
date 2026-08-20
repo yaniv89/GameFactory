@@ -189,3 +189,79 @@ describe("diffPackSwap", () => {
     expect(result.targetTerrains).toEqual(["dirt", "grass", "water"]);
   });
 });
+
+/** `sourceManifest()` minus `characters`/`tilesets` content — a base for tests that only care about the five new categories, so their own OK/FAIL findings aren't mixed in with terrain/character-sheet ones. */
+function newCategoriesBaseManifest(): ArtPackManifest {
+  const { characters: _characters, ...withoutCharacters } = sourceManifest();
+  return { ...withoutCharacters, tilesets: {} };
+}
+
+describe("diffPackSwap: docs/adr/0014's five new asset categories", () => {
+  it("reports OK for vehicles/wagons/weapons/vfx/props that all map by id in the target", () => {
+    // Two entries per category, matching the rest of this suite's own
+    // convention of testing the "matched" path with a plural count
+    // (diffTerrains/diffCharacterSheets' OK messages are never
+    // grammar-conjugated for a singular count either — this sidesteps
+    // that pre-existing, unrelated wrinkle rather than asserting on it).
+    const source: ArtPackManifest = {
+      ...newCategoriesBaseManifest(),
+      vehicles: { cart: { src: "vehicles/cart.png", anchor: { x: 32, y: 60 } }, wagon: { src: "vehicles/wagon.png", anchor: { x: 32, y: 60 } } },
+      wagons: { mule: { src: "wagons/mule.png", anchor: { x: 16, y: 32 } }, ox: { src: "wagons/ox.png", anchor: { x: 16, y: 32 } } },
+      weapons: { sword: { src: "weapons/sword.png", anchor: { x: 4, y: 28 } }, axe: { src: "weapons/axe.png", anchor: { x: 4, y: 28 } } },
+      vfx: {
+        spark: { src: "vfx/spark.png", frameCount: 5, fps: 12, anchor: { x: 16, y: 16 } },
+        smoke: { src: "vfx/smoke.png", frameCount: 6, fps: 10, anchor: { x: 16, y: 16 } },
+      },
+      props: { barrel: { src: "props/barrel.png", anchor: { x: 16, y: 30 } }, crate: { src: "props/crate.png", anchor: { x: 16, y: 30 } } },
+    };
+    const target: ArtPackManifest = {
+      ...source,
+      name: "@moonlit/scifi-pack",
+      // Same ids, different asset content — diffPackSwap matches by id, not by src/anchor equality.
+      vehicles: { cart: { src: "vehicles/cart-v2.png", anchor: { x: 30, y: 58 } }, wagon: { src: "vehicles/wagon-v2.png", anchor: { x: 30, y: 58 } } },
+    };
+
+    const result = diffPackSwap(source, target);
+
+    expect(result.hasFailures).toBe(false);
+    expect(result.findings).toEqual([
+      { severity: "ok", message: "2 vehicles map by id" },
+      { severity: "ok", message: "2 wagons map by id" },
+      { severity: "ok", message: "2 weapons map by id" },
+      { severity: "ok", message: "2 VFX effects map by id" },
+      { severity: "ok", message: "2 props map by id" },
+    ]);
+  });
+
+  it("reports FAIL for each category with no equivalent id in the target", () => {
+    const source: ArtPackManifest = {
+      ...newCategoriesBaseManifest(),
+      vehicles: { cart: { src: "vehicles/cart.png", anchor: { x: 32, y: 60 } } },
+      wagons: { mule: { src: "wagons/mule.png", anchor: { x: 16, y: 32 } } },
+      weapons: { sword: { src: "weapons/sword.png", anchor: { x: 4, y: 28 } } },
+      vfx: { spark: { src: "vfx/spark.png", frameCount: 5, fps: 12, anchor: { x: 16, y: 16 } } },
+      props: { barrel: { src: "props/barrel.png", anchor: { x: 16, y: 30 } } },
+    };
+    const target: ArtPackManifest = { ...newCategoriesBaseManifest(), name: "@moonlit/scifi-pack" };
+
+    const result = diffPackSwap(source, target);
+
+    expect(result.hasFailures).toBe(true);
+    expect(result.findings).toEqual([
+      { severity: "fail", message: "1 vehicle has no equivalent: 'cart'", detail: "These will render as placeholders until remapped." },
+      { severity: "fail", message: "1 wagon has no equivalent: 'mule'", detail: "These will render as placeholders until remapped." },
+      { severity: "fail", message: "1 weapon has no equivalent: 'sword'", detail: "These will render as placeholders until remapped." },
+      { severity: "fail", message: "1 VFX effect has no equivalent: 'spark'", detail: "These will render as placeholders until remapped." },
+      { severity: "fail", message: "1 prop has no equivalent: 'barrel'", detail: "These will render as placeholders until remapped." },
+    ]);
+  });
+
+  it("skips a category entirely when the source declares none of it, even if the target does", () => {
+    const source = sourceManifest();
+    const target: ArtPackManifest = { ...sourceManifest(), props: { barrel: { src: "props/barrel.png", anchor: { x: 16, y: 30 } } } };
+
+    const result = diffPackSwap(source, target);
+
+    expect(result.findings.some((f) => f.message.includes("prop"))).toBe(false);
+  });
+});

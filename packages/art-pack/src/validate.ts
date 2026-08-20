@@ -1,4 +1,5 @@
 import type {
+  ArtPackAnchor,
   ArtPackAnimation,
   ArtPackAttribution,
   ArtPackAudio,
@@ -7,9 +8,14 @@ import type {
   ArtPackCharacterTemplate,
   ArtPackGrid,
   ArtPackManifest,
+  ArtPackProp,
   ArtPackTileset,
   ArtPackUi,
   ArtPackUiFont,
+  ArtPackVehicle,
+  ArtPackVfx,
+  ArtPackWagon,
+  ArtPackWeapon,
 } from "./manifest";
 
 export interface ArtPackValidationResult {
@@ -115,6 +121,28 @@ export function validateArtPackManifest(data: unknown): ArtPackValidationResult 
     attribution = validateAttribution(data["attribution"], addError);
   }
 
+  // docs/adr/0014's five new, all-optional asset categories.
+  let vehicles: Readonly<Record<string, ArtPackVehicle>> | undefined;
+  if ("vehicles" in data && data["vehicles"] !== undefined) {
+    vehicles = validateVehicles(data["vehicles"], addError);
+  }
+  let wagons: Readonly<Record<string, ArtPackWagon>> | undefined;
+  if ("wagons" in data && data["wagons"] !== undefined) {
+    wagons = validateWagons(data["wagons"], addError);
+  }
+  let weapons: Readonly<Record<string, ArtPackWeapon>> | undefined;
+  if ("weapons" in data && data["weapons"] !== undefined) {
+    weapons = validateWeapons(data["weapons"], addError);
+  }
+  let vfx: Readonly<Record<string, ArtPackVfx>> | undefined;
+  if ("vfx" in data && data["vfx"] !== undefined) {
+    vfx = validateVfx(data["vfx"], addError);
+  }
+  let props: Readonly<Record<string, ArtPackProp>> | undefined;
+  if ("props" in data && data["props"] !== undefined) {
+    props = validateProps(data["props"], addError);
+  }
+
   if (Object.keys(errors).length > 0) {
     return { ok: false, errors };
   }
@@ -140,6 +168,11 @@ export function validateArtPackManifest(data: unknown): ArtPackValidationResult 
       ...(ui !== undefined ? { ui } : {}),
       ...(audio !== undefined ? { audio } : {}),
       ...(attribution !== undefined ? { attribution } : {}),
+      ...(vehicles !== undefined ? { vehicles } : {}),
+      ...(wagons !== undefined ? { wagons } : {}),
+      ...(weapons !== undefined ? { weapons } : {}),
+      ...(vfx !== undefined ? { vfx } : {}),
+      ...(props !== undefined ? { props } : {}),
     },
   };
 }
@@ -361,6 +394,110 @@ function validateAttribution(value: unknown, addError: (field: string, message: 
     return undefined;
   }
   return { required: value["required"], text: value["text"] };
+}
+
+function validateAnchor(value: unknown, field: string, addError: (field: string, message: string) => void): ArtPackAnchor | undefined {
+  if (!isRecord(value) || typeof value["x"] !== "number" || typeof value["y"] !== "number") {
+    addError(field, "Required and must be an object with numeric x/y.");
+    return undefined;
+  }
+  return { x: value["x"], y: value["y"] };
+}
+
+/**
+ * Shared body for the four docs/adr/0014 categories whose shape is
+ * exactly `{ src, anchor }` (`vehicles`, `wagons`, `weapons`, `props`) —
+ * `vfx` alone has extra fields (`frameCount`/`fps`) and gets its own
+ * `validateVfx`, below, matching each category's own entry shape rather
+ * than forcing a fifth field-less variant through this helper. Mirrors
+ * `validateTilesets`' existing shape (loop entries, per-field `addError`,
+ * only include a validated entry in the output, return `undefined` on any
+ * failure), same as the ADR's decision 4 states for all five.
+ */
+function validateSrcAnchorCategory(
+  categoryLabel: string,
+  value: unknown,
+  addError: (field: string, message: string) => void,
+): Readonly<Record<string, { src: string; anchor: ArtPackAnchor }>> | undefined {
+  if (!isRecord(value) || Object.keys(value).length === 0) {
+    addError(categoryLabel, "Must be a non-empty object.");
+    return undefined;
+  }
+  const result: Record<string, { src: string; anchor: ArtPackAnchor }> = {};
+  let ok = true;
+  for (const [id, entry] of Object.entries(value)) {
+    const field = `${categoryLabel}.${id}`;
+    if (!isRecord(entry)) {
+      addError(field, "Must be an object.");
+      ok = false;
+      continue;
+    }
+    const src = entry["src"];
+    if (typeof src !== "string" || src.length === 0) {
+      addError(`${field}.src`, "Required.");
+      ok = false;
+    }
+    const anchor = validateAnchor(entry["anchor"], `${field}.anchor`, addError);
+    if (anchor === undefined) ok = false;
+    if (typeof src === "string" && src.length > 0 && anchor !== undefined) {
+      result[id] = { src, anchor };
+    }
+  }
+  return ok ? result : undefined;
+}
+
+function validateVehicles(value: unknown, addError: (field: string, message: string) => void): Readonly<Record<string, ArtPackVehicle>> | undefined {
+  return validateSrcAnchorCategory("vehicles", value, addError);
+}
+
+function validateWagons(value: unknown, addError: (field: string, message: string) => void): Readonly<Record<string, ArtPackWagon>> | undefined {
+  return validateSrcAnchorCategory("wagons", value, addError);
+}
+
+function validateWeapons(value: unknown, addError: (field: string, message: string) => void): Readonly<Record<string, ArtPackWeapon>> | undefined {
+  return validateSrcAnchorCategory("weapons", value, addError);
+}
+
+function validateProps(value: unknown, addError: (field: string, message: string) => void): Readonly<Record<string, ArtPackProp>> | undefined {
+  return validateSrcAnchorCategory("props", value, addError);
+}
+
+function validateVfx(value: unknown, addError: (field: string, message: string) => void): Readonly<Record<string, ArtPackVfx>> | undefined {
+  if (!isRecord(value) || Object.keys(value).length === 0) {
+    addError("vfx", "Must be a non-empty object.");
+    return undefined;
+  }
+  const result: Record<string, ArtPackVfx> = {};
+  let ok = true;
+  for (const [id, entry] of Object.entries(value)) {
+    const field = `vfx.${id}`;
+    if (!isRecord(entry)) {
+      addError(field, "Must be an object.");
+      ok = false;
+      continue;
+    }
+    const src = entry["src"];
+    if (typeof src !== "string" || src.length === 0) {
+      addError(`${field}.src`, "Required.");
+      ok = false;
+    }
+    const frameCount = entry["frameCount"];
+    if (!isPositiveInteger(frameCount)) {
+      addError(`${field}.frameCount`, "Required and must be a positive integer.");
+      ok = false;
+    }
+    const fps = entry["fps"];
+    if (!isPositiveNumber(fps)) {
+      addError(`${field}.fps`, "Required and must be a positive number.");
+      ok = false;
+    }
+    const anchor = validateAnchor(entry["anchor"], `${field}.anchor`, addError);
+    if (anchor === undefined) ok = false;
+    if (typeof src === "string" && src.length > 0 && isPositiveInteger(frameCount) && isPositiveNumber(fps) && anchor !== undefined) {
+      result[id] = { src, frameCount, fps, anchor };
+    }
+  }
+  return ok ? result : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

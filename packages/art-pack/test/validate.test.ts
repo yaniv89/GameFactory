@@ -164,3 +164,101 @@ describe("validateArtPackManifest: rejects malformed input", () => {
     expect(Object.keys(result.errors).length).toBeGreaterThan(3);
   });
 });
+
+describe("validateArtPackManifest: docs/adr/0014's five new asset categories", () => {
+  it("accepts a manifest declaring all five, and omits all five from a manifest declaring none", () => {
+    const manifest = validManifest() as Record<string, unknown>;
+    const withNewCategories = {
+      ...manifest,
+      vehicles: { cart: { src: "vehicles/cart.png", anchor: { x: 32, y: 60 } } },
+      wagons: { mule: { src: "wagons/mule.png", anchor: { x: 16, y: 32 } } },
+      weapons: { sword: { src: "weapons/sword.png", anchor: { x: 4, y: 28 } } },
+      vfx: { spark: { src: "vfx/spark.png", frameCount: 5, fps: 12, anchor: { x: 16, y: 16 } } },
+      props: { barrel: { src: "props/barrel.png", anchor: { x: 16, y: 30 } } },
+    };
+    const result = validateArtPackManifest(withNewCategories);
+    expect(result.ok).toBe(true);
+    expect(result.manifest?.vehicles).toEqual({ cart: { src: "vehicles/cart.png", anchor: { x: 32, y: 60 } } });
+    expect(result.manifest?.wagons).toEqual({ mule: { src: "wagons/mule.png", anchor: { x: 16, y: 32 } } });
+    expect(result.manifest?.weapons).toEqual({ sword: { src: "weapons/sword.png", anchor: { x: 4, y: 28 } } });
+    expect(result.manifest?.vfx).toEqual({ spark: { src: "vfx/spark.png", frameCount: 5, fps: 12, anchor: { x: 16, y: 16 } } });
+    expect(result.manifest?.props).toEqual({ barrel: { src: "props/barrel.png", anchor: { x: 16, y: 30 } } });
+
+    const withoutNewCategories = validateArtPackManifest(manifest);
+    expect(withoutNewCategories.ok).toBe(true);
+    expect(withoutNewCategories.manifest?.vehicles).toBeUndefined();
+    expect(withoutNewCategories.manifest?.wagons).toBeUndefined();
+    expect(withoutNewCategories.manifest?.weapons).toBeUndefined();
+    expect(withoutNewCategories.manifest?.vfx).toBeUndefined();
+    expect(withoutNewCategories.manifest?.props).toBeUndefined();
+  });
+
+  it.each(["vehicles", "wagons", "weapons", "props"] as const)("rejects an empty %s object", (category) => {
+    const result = validateArtPackManifest({ ...(validManifest() as object), [category]: {} });
+    expect(result.ok).toBe(false);
+    expect(result.errors[category]).toBeDefined();
+  });
+
+  it.each(["vehicles", "wagons", "weapons", "props"] as const)("rejects a %s entry missing src", (category) => {
+    const result = validateArtPackManifest({ ...(validManifest() as object), [category]: { a: { anchor: { x: 0, y: 0 } } } });
+    expect(result.ok).toBe(false);
+    expect(result.errors[`${category}.a.src`]).toBeDefined();
+  });
+
+  it.each(["vehicles", "wagons", "weapons", "props"] as const)("rejects a %s entry missing anchor", (category) => {
+    const result = validateArtPackManifest({ ...(validManifest() as object), [category]: { a: { src: "a.png" } } });
+    expect(result.ok).toBe(false);
+    expect(result.errors[`${category}.a.anchor`]).toBeDefined();
+  });
+
+  it.each(["vehicles", "wagons", "weapons", "props"] as const)("rejects a %s entry with a non-numeric anchor field", (category) => {
+    const result = validateArtPackManifest({ ...(validManifest() as object), [category]: { a: { src: "a.png", anchor: { x: "0", y: 0 } } } });
+    expect(result.ok).toBe(false);
+    expect(result.errors[`${category}.a.anchor`]).toBeDefined();
+  });
+
+  it("rejects an empty vfx object", () => {
+    const result = validateArtPackManifest({ ...(validManifest() as object), vfx: {} });
+    expect(result.ok).toBe(false);
+    expect(result.errors["vfx"]).toBeDefined();
+  });
+
+  it("rejects a vfx entry missing frameCount", () => {
+    const result = validateArtPackManifest({ ...(validManifest() as object), vfx: { spark: { src: "spark.png", fps: 12, anchor: { x: 0, y: 0 } } } });
+    expect(result.ok).toBe(false);
+    expect(result.errors["vfx.spark.frameCount"]).toBeDefined();
+  });
+
+  it("rejects a vfx entry with a non-positive frameCount", () => {
+    const result = validateArtPackManifest({
+      ...(validManifest() as object),
+      vfx: { spark: { src: "spark.png", frameCount: 0, fps: 12, anchor: { x: 0, y: 0 } } },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors["vfx.spark.frameCount"]).toBeDefined();
+  });
+
+  it("rejects a vfx entry missing fps", () => {
+    const result = validateArtPackManifest({
+      ...(validManifest() as object),
+      vfx: { spark: { src: "spark.png", frameCount: 5, anchor: { x: 0, y: 0 } } },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors["vfx.spark.fps"]).toBeDefined();
+  });
+
+  it("rejects a vfx entry missing anchor", () => {
+    const result = validateArtPackManifest({ ...(validManifest() as object), vfx: { spark: { src: "spark.png", frameCount: 5, fps: 12 } } });
+    expect(result.ok).toBe(false);
+    expect(result.errors["vfx.spark.anchor"]).toBeDefined();
+  });
+
+  it("collects errors across multiple entries in the same category rather than stopping at the first", () => {
+    const result = validateArtPackManifest({
+      ...(validManifest() as object),
+      props: { barrel: { src: "barrel.png", anchor: { x: 0, y: 0 } }, crate: { anchor: { x: 0, y: 0 } } },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors["props.crate.src"]).toBeDefined();
+  });
+});

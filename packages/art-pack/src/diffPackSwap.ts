@@ -61,6 +61,14 @@ export function diffPackSwap(source: ArtPackManifest, target: ArtPackManifest): 
   diffCharacterSheets(source, target, findings);
   diffAnimations(source, target, findings);
 
+  // docs/adr/0014's five new keyed asset categories — one generic helper
+  // (decision 5), not five near-duplicates of diffCharacterSheets.
+  diffKeyedCategory("vehicle", source.vehicles, target.vehicles, findings);
+  diffKeyedCategory("wagon", source.wagons, target.wagons, findings);
+  diffKeyedCategory("weapon", source.weapons, target.weapons, findings);
+  diffKeyedCategory("VFX effect", source.vfx, target.vfx, findings);
+  diffKeyedCategory("prop", source.props, target.props, findings);
+
   return {
     findings,
     hasFailures: findings.some((f) => f.severity === "fail"),
@@ -133,6 +141,39 @@ function diffAnimations(source: ArtPackManifest, target: ArtPackManifest, findin
       severity: "fail",
       message: `${missing.length} ${pluralize(missing.length, "animation")} ${conjugate(missing.length, "have")} no equivalent: ${quoteList(missing)}`,
       detail: "These will be skipped until remapped.",
+    });
+  }
+}
+
+/**
+ * docs/adr/0014 decision 5's shared diff body for the five new
+ * `vehicles`/`wagons`/`weapons`/`vfx`/`props` categories — each is a flat
+ * keyed record (`Record<id, ...>`), matched by key presence exactly like
+ * `diffCharacterSheets` matches character sheets by role. `undefined`
+ * (the whole category isn't declared by `source`) and an empty object are
+ * both "nothing to compare," the same short-circuit `diffCharacterSheets`
+ * uses for a source with no character sheets at all.
+ */
+function diffKeyedCategory(
+  categoryLabel: string,
+  source: Readonly<Record<string, unknown>> | undefined,
+  target: Readonly<Record<string, unknown>> | undefined,
+  findings: PackSwapFinding[],
+): void {
+  const sourceIds = source ? Object.keys(source) : [];
+  if (sourceIds.length === 0) return;
+  const targetIds = new Set(target ? Object.keys(target) : []);
+  const matched = sourceIds.filter((id) => targetIds.has(id));
+  const missing = sourceIds.filter((id) => !targetIds.has(id));
+
+  if (matched.length > 0) {
+    findings.push({ severity: "ok", message: `${matched.length} ${pluralize(matched.length, categoryLabel)} map by id` });
+  }
+  if (missing.length > 0) {
+    findings.push({
+      severity: "fail",
+      message: `${missing.length} ${pluralize(missing.length, categoryLabel)} ${conjugate(missing.length, "have")} no equivalent: ${quoteList(missing)}`,
+      detail: "These will render as placeholders until remapped.",
     });
   }
 }

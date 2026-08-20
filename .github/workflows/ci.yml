@@ -290,20 +290,39 @@ jobs:
       # and ScanOrchestratorTests spawn the real, built
       # packages/runtime-host smoke-run CLI as a subprocess — not a fake
       # standing in for the cross-language boundary that gate actually
-      # has. Only @forge/runtime-host and its own dependency closure are
-      # built here (pnpm's `...` "package plus dependencies" selector,
-      # same reasoning as tools/bench/check-bundle-size.mjs's own use of
-      # it) — this job has no need for the editor, Storybook, or any
-      # other JS workspace member the js-build-test job already covers.
+      # has. Same story for docs/adr/0010's BuildRunnerTests/
+      # BuildOrchestratorTests (Forge.Functions.Build, C3): they spawn the
+      # real, compiled `forge` CLI (packages/cli) as a subprocess too, so
+      # its closure is built here as well — the "forge..." filter is a
+      # package name, not a directory (packages/cli/package.json's
+      # "name" field is literally "forge", not "@forge/cli"). Only these
+      # two packages and their own dependency closures are built
+      # here (pnpm's `...` "package plus dependencies" selector, same
+      # reasoning as tools/bench/check-bundle-size.mjs's own use of it) —
+      # this job has no need for the editor, Storybook, or any other JS
+      # workspace member the js-build-test job already covers.
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter "@forge/runtime-host..." run build
+      - run: pnpm --filter "@forge/runtime-host..." --filter "forge..." run build
       - run: dotnet restore Forge.sln
       - run: dotnet build Forge.sln --no-restore --configuration Release
+
+      # docs/adr/0010 C4's own E2E proof (PublishedBuildE2ETests) drives
+      # a real Chromium via Microsoft.Playwright — this runner has no
+      # pre-installed browser cache the way this session's own sandbox
+      # does (PlaywrightBrowserResolver's own remarks), so it needs a
+      # real install here. playwright.ps1 is generated into the build
+      # output by Microsoft.Playwright's own MSBuild targets, hence
+      # after the build step above, not before. --with-deps also
+      # installs the system libraries Chromium needs, matching the JS
+      # side's own `playwright install --with-deps` steps elsewhere in
+      # this workflow.
+      - name: Install Playwright's Chromium for the .NET test project
+        run: pwsh services/Forge.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
 
       - name: Security gate — vulnerable NuGet packages
         run: |
@@ -436,8 +455,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Same reasoning as editor-browser-tests above: the editor's dev
       # server resolves its workspace dependencies against their compiled
-      # dist/ output.
-      - run: pnpm --filter "forge-editor^..." run build
+      # dist/ output. The second filter is a separate concern: docs/adr/0009's
+      # exportProjectDocument.spec.ts spawns the real `forge` CLI
+      # (packages/cli) as a subprocess of its compiled dist/index.js — that's
+      # not an import edge, so it's invisible to "forge-editor^..." and needs
+      # its own closure built explicitly, or the spec fails in CI with
+      # "Cannot find module" despite passing locally (where a full `pnpm -r
+      # run build` had already been run by hand).
+      - run: pnpm --filter "forge-editor^..." --filter "forge..." run build
       - run: dotnet restore Forge.sln
       - run: dotnet build services/Forge.Api/Forge.Api.csproj --no-restore --configuration Release
 

@@ -65,6 +65,23 @@ describe.each([
   });
 });
 
+describe("fixtures/packs/starter-pack characters", () => {
+  const dir = join(REPO_ROOT, "fixtures/packs/starter-pack");
+
+  it("every declared character sheet is a real, valid PNG on disk at the declared path", () => {
+    const result = readManifest(dir);
+    expect(result.ok).toBe(true);
+    const characters = result.manifest!.characters;
+    expect(characters).toBeDefined();
+    for (const [role, sheetPath] of Object.entries(characters!.sheets)) {
+      const assetPath = join(dir, sheetPath);
+      expect(existsSync(assetPath), `character sheet '${role}' declares '${sheetPath}' but no file exists there`).toBe(true);
+      const bytes = readFileSync(assetPath);
+      expect(bytes.subarray(0, 8).equals(PNG_SIGNATURE), `character sheet '${role}' is not a valid PNG`).toBe(true);
+    }
+  });
+});
+
 describe("diffPackSwap on the two real fixture packs", () => {
   it("starter-pack -> scifi-pack: grass/dirt match, water fails, tile size warns", () => {
     const source = readManifest(join(REPO_ROOT, "fixtures/packs/starter-pack"));
@@ -86,6 +103,16 @@ describe("diffPackSwap on the two real fixture packs", () => {
         message: "Tile size differs (32 -> 16)",
         detail: "Scenes will be rescaled.",
       },
+      {
+        severity: "fail",
+        message: "3 character sheets have no equivalent: 'hero', 'villager', 'goblin'",
+        detail: "These will render as placeholders until remapped.",
+      },
+      {
+        severity: "fail",
+        message: "1 animation has no equivalent: 'walk'",
+        detail: "These will be skipped until remapped.",
+      },
     ]);
     expect(result.missingTerrains).toEqual(["water"]);
     expect(result.targetTerrains).toEqual(["dirt", "grass"]);
@@ -105,6 +132,16 @@ describe("diffPackSwap on the two real fixture packs", () => {
         severity: "fail",
         message: "1 prop has no equivalent: 'water'",
         detail: "These will render as placeholders until remapped.",
+      },
+      {
+        severity: "fail",
+        message: "3 character sheets have no equivalent: 'hero', 'villager', 'goblin'",
+        detail: "These will render as placeholders until remapped.",
+      },
+      {
+        severity: "fail",
+        message: "1 animation has no equivalent: 'walk'",
+        detail: "These will be skipped until remapped.",
       },
     ]);
     expect(result.missingTerrains).toEqual(["water"]);

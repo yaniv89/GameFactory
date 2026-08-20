@@ -9,10 +9,12 @@ import { runExport } from "./commands/export.js";
  * phase actually needs it.
  */
 function printUsage(): void {
-  console.error("Usage: forge export --project <path/to/playerProjectData.json> --out <dir>");
+  console.error(
+    "Usage: forge export (--project <path/to/exportProjectInput.json> | --document <path/to/projectDocument.json>) --out <dir>",
+  );
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
 
   if (command === "export") {
@@ -20,15 +22,20 @@ function main(): void {
       args: rest,
       options: {
         project: { type: "string" },
+        document: { type: "string" },
         out: { type: "string" },
       },
     });
-    if (!values.project || !values.out) {
+    if (!values.out || (!values.project && !values.document) || (values.project && values.document)) {
       printUsage();
       process.exitCode = 1;
       return;
     }
-    runExport({ projectPath: values.project, outDir: values.out });
+    await runExport({
+      ...(values.project ? { projectPath: values.project } : {}),
+      ...(values.document ? { documentPath: values.document } : {}),
+      outDir: values.out,
+    });
     return;
   }
 
@@ -37,4 +44,7 @@ function main(): void {
   process.exitCode = 1;
 }
 
-main();
+main().catch((err: unknown) => {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exitCode = 1;
+});

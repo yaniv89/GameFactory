@@ -1,3 +1,4 @@
+import { isPrefabId } from "@forge/core";
 import { GRID_HEIGHT, GRID_WIDTH } from "../canvas/gridConstants";
 import type { EntityPlacement } from "../store/projectStore";
 
@@ -19,6 +20,8 @@ export interface PreviewSceneMessage {
   readonly type: "forge:preview:scene";
   readonly tiles: readonly number[];
   readonly entities: readonly EntityPlacement[];
+  /** `ProjectDocument.activePack` — undefined when no Art Pack is installed. The preview resolves real character/tile art against this itself (`characterTextures.ts`/`packTiles.ts`); a pack name a client sends is still just a hint like any other field here, never trusted beyond "which pack to fetch and validate." */
+  readonly activePack?: string;
 }
 
 export interface PreviewReadyMessage {
@@ -42,7 +45,7 @@ function isValidEntity(value: unknown): value is EntityPlacement {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Record<string, unknown>;
   if (typeof candidate.id !== "string") return false;
-  if (candidate.kind !== "player-start" && candidate.kind !== "npc") return false;
+  if (!isPrefabId(candidate.prefabId)) return false;
   if (typeof candidate.tileX !== "number" || !Number.isFinite(candidate.tileX)) return false;
   if (typeof candidate.tileY !== "number" || !Number.isFinite(candidate.tileY)) return false;
   if (candidate.dialogue !== undefined) {
@@ -55,11 +58,12 @@ function isValidEntity(value: unknown): value is EntityPlacement {
 
 export function isPreviewSceneMessage(data: unknown): data is PreviewSceneMessage {
   if (typeof data !== "object" || data === null) return false;
-  const candidate = data as { type?: unknown; tiles?: unknown; entities?: unknown };
+  const candidate = data as { type?: unknown; tiles?: unknown; entities?: unknown; activePack?: unknown };
   if (candidate.type !== "forge:preview:scene") return false;
   if (!Array.isArray(candidate.tiles) || candidate.tiles.length !== EXPECTED_TILE_COUNT) return false;
   if (!candidate.tiles.every((tile) => typeof tile === "number" && Number.isFinite(tile))) return false;
   if (!Array.isArray(candidate.entities)) return false;
+  if (candidate.activePack !== undefined && typeof candidate.activePack !== "string") return false;
   return candidate.entities.every(isValidEntity);
 }
 

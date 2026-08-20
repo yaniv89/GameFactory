@@ -41,7 +41,7 @@ Forge executes untrusted third-party code in players' browsers and processes unt
 | T3 | Malicious module escapes into the **editor** origin | CWE-79 | Critical | Origin separation, declarative editor UI |
 | T4 | Supply chain: compromised author account publishes a bad version | CWE-506 | Critical | Mandatory 2FA, scoped tokens, 24h propagation delay |
 | T5 | Module consumes unbounded CPU or memory | CWE-400 | High | QuickJS interrupt handler, WASM memory cap |
-| T6 | Crafted asset exploits an image or audio decoder | CWE-787 | High | Isolated worker, re-encode never pass-through, resource caps |
+| T6 | Crafted asset exploits an image or audio decoder | CWE-787 | High | Isolated worker (`Forge.Functions.Assets`, a process distinct from `Forge.Api`), decode via a fully-managed (no native/unmanaged code) image library, re-encode never pass-through, declared-dimension cap checked before full decode, resource caps — see `docs/adr/0012` |
 | T7 | Stored XSS via dialogue text, item names, project descriptions | CWE-79 | High | Text nodes only, sanitizing AST for rich text |
 | T8 | IDOR on project, asset, or build endpoints | CWE-639 | High | Server-side authorization on every request, no client-supplied scope |
 | T9 | SSRF via module manifest URLs or asset import-by-URL | CWE-918 | High | No server-side fetch of user URLs. Ever |
@@ -79,6 +79,9 @@ Distinct from the other threats in that the attacker may simply be organic growt
 
 ### 3.8 Account signup and login surface (T17)
 `/api/v1/auth/signup`, `/connect/token`, `/api/v1/auth/password/forgot`, and `/api/v1/auth/resend-verification` are the only unauthenticated endpoints in the API and the newest trust boundary in the system — anyone on the internet can call them, not just an existing token holder. Rate limiting applies per-IP and per-account-identifier (CLAUDE.md Section 4.8), signup/forgot-password responses never reveal whether an email address is already registered, and verification/reset tokens are single-use and short-lived (Section 23.3). This boundary did not exist before Section 23 and is recorded here per the living-document rule at the top of this file.
+
+### 3.9 Untrusted asset pipeline (T6)
+`docs/adr/0012` is the concrete architecture: `Forge.Api` accepts uploaded bytes (base64, size-capped, quota-checked against `workspaces.storage_quota_mb`) and moves them, undecoded, to a private `assets-quarantine` blob container — it never opens them as an image. `Forge.Functions.Assets` (a distinct process, zero network egress, fresh invocation per job) does the only decode: a header-only dimension pre-check before any full decode, then a full decode/re-encode using SixLabors.ImageSharp, a fully-managed .NET image library with no native/unmanaged code in its decode path — the deliberate answer to CWE-787 for this specific threat, since a managed runtime cannot have an out-of-bounds *write* the way a native codec can. The bytes a player's browser ever receives are the re-encoded output ImageSharp produced from decoded pixel data, uploaded to a **separate public** blob container — never the originally-uploaded bytes, and never served with the client's declared (attacker-controlled) MIME type. `image/svg+xml` is rejected outright at upload, not processed as a raster format: SVG is inline-executable markup and accepting it as an image would reopen T7's CWE-79 hole through a different input path. v1 covers images only (PNG/JPEG/WebP) — audio and font processing are named, deferred future work, not silently out of scope.
 
 ## 4. CI security gates enforcing this model
 

@@ -35,6 +35,12 @@ public sealed class Package
     public User? Author { get; set; }
 
     public ICollection<PackageVersion> Versions { get; set; } = new List<PackageVersion>();
+
+    /// <summary>F1 — docs/SPEC.md Section 16.2's ratings/reviews subsystem. See <see cref="Review"/>'s own doc comment.</summary>
+    public ICollection<Review> Reviews { get; set; } = new List<Review>();
+
+    /// <summary>The minimal issue tracker backing <see cref="Marketplace.ListingQualitySignals.SupportResponsivenessHours"/>. See <see cref="PackageIssue"/>'s own doc comment.</summary>
+    public ICollection<PackageIssue> Issues { get; set; } = new List<PackageIssue>();
 }
 
 /// <summary>The closed set of <see cref="Package.Kind"/> values.</summary>

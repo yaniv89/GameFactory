@@ -40,6 +40,8 @@ export const AnimatorSchema = {
   speed: "f32",
   loop: "bool",
   elapsed: "f32",
+  /** Facing direction, row index into a directional sprite sheet: 0=south, 1=west, 2=east, 3=north. Holds its last value while idle (Velocity magnitude ~0) — see `createCharacterAnimationSystem`. */
+  facing: "u8",
 } as const satisfies ComponentSchema;
 export type Animator = ComponentValue<typeof AnimatorSchema>;
 
@@ -84,6 +86,61 @@ export const InteractableSchema = {
 } as const satisfies ComponentSchema;
 export type Interactable = ComponentValue<typeof InteractableSchema>;
 
+/**
+ * Marks an entity as damageable — H1c's combat slice (`createMeleeAttackSystem`,
+ * `createKnockbackPhysicsSystem`) queries entities by this component's mere
+ * presence rather than a separate "is this an enemy" tag, the same way
+ * `PlayerControlled`'s presence (not a boolean flag on some other
+ * component) already marks the player. `invulnerableUntil`/`flashUntil`
+ * are both `TickContext.elapsed` timestamps (seconds since the world
+ * started, per `TickContext`'s own doc comment) a system compares against
+ * directly — no separate timer/countdown bookkeeping needed.
+ */
+export const HealthSchema = {
+  current: "f32",
+  max: "f32",
+  /** Damage is ignored while `elapsed < invulnerableUntil` — the i-frames a hit grants against being re-hit by the same or an overlapping swing. */
+  invulnerableUntil: "f32",
+  /** The struck sprite tints red while `elapsed < flashUntil` (`createHitFlashSystem`), reverting to its normal tint once elapsed passes it. */
+  flashUntil: "f32",
+} as const satisfies ComponentSchema;
+export type Health = ComponentValue<typeof HealthSchema>;
+
+/**
+ * H1d's floating damage number — a standalone entity `createMeleeAttackSystem`'s
+ * `"combat:hit"` listener spawns (renderer-owned, not `spawnFromPrefab`'d:
+ * there's no player-authored prefab for a transient combat-log popup),
+ * aged and destroyed by `createFloatingTextSystem`, drawn by
+ * `@forge/render-2d`'s `createTextSyncSystem`. `age`/`ttl` are seconds,
+ * not `TickContext.elapsed` timestamps — unlike `Health`'s fields, a
+ * floating number's lifetime is relative to when *it* spawned, not the
+ * world's start.
+ */
+export const FloatingTextSchema = {
+  /** The number to display — always shown with a leading "-" (H1d's only user: damage taken). */
+  value: "f32",
+  age: "f32",
+  ttl: "f32",
+} as const satisfies ComponentSchema;
+export type FloatingText = ComponentValue<typeof FloatingTextSchema>;
+
+/**
+ * H1e's world item — a standalone entity marking itself collectible on
+ * contact with a `PlayerControlled` entity (`createPickupSystem` queries by
+ * this component's mere presence, the same "presence is the tag" pattern
+ * `Health`/`PlayerControlled` already establish). `itemId` is a numeric
+ * placeholder tag, not yet backed by a real item-definition table (I1's
+ * job) — today the only producer (`COIN_PICKUP_PREFAB`) and the only
+ * consumer (the editor preview's HUD slot counter) agree on what `1` means
+ * out of band, exactly the same "no real registry yet" honesty
+ * `Sprite.assetId`'s own doc comment already accepts for sprites.
+ */
+export const PickupSchema = {
+  itemId: "i32",
+  amount: "i32",
+} as const satisfies ComponentSchema;
+export type Pickup = ComponentValue<typeof PickupSchema>;
+
 export interface CoreComponents {
   readonly Transform: ReturnType<World["defineComponent"]>;
   readonly Sprite: ReturnType<World["defineComponent"]>;
@@ -92,6 +149,9 @@ export interface CoreComponents {
   readonly Velocity: ReturnType<World["defineComponent"]>;
   readonly PlayerControlled: ReturnType<World["defineComponent"]>;
   readonly Interactable: ReturnType<World["defineComponent"]>;
+  readonly Health: ReturnType<World["defineComponent"]>;
+  readonly FloatingText: ReturnType<World["defineComponent"]>;
+  readonly Pickup: ReturnType<World["defineComponent"]>;
 }
 
 /** Registers every core component against `world`. Call once, at world construction. */
@@ -119,6 +179,7 @@ export function registerCoreComponents(world: World): CoreComponents {
       speed: 1,
       loop: 1,
       elapsed: 0,
+      facing: 0,
     }),
     Collider: world.defineComponent("Collider", ColliderSchema, {
       shape: 0,
@@ -142,6 +203,21 @@ export function registerCoreComponents(world: World): CoreComponents {
       promptTextId: -1,
       range: 32,
       graphId: -1,
+    }),
+    Health: world.defineComponent("Health", HealthSchema, {
+      current: 0,
+      max: 0,
+      invulnerableUntil: 0,
+      flashUntil: 0,
+    }),
+    FloatingText: world.defineComponent("FloatingText", FloatingTextSchema, {
+      value: 0,
+      age: 0,
+      ttl: 0.8,
+    }),
+    Pickup: world.defineComponent("Pickup", PickupSchema, {
+      itemId: -1,
+      amount: 0,
     }),
   };
 }

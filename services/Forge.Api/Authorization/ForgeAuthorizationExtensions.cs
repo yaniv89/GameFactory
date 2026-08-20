@@ -40,6 +40,13 @@ public static class ForgeAuthorizationExtensions
     /// reaching a billing page is a permission-denied state, not merely a
     /// read-only one. <c>workspace:pro</c> is the plan gate itself
     /// (Section 23.2/23.5) — registered here, consumed starting M6.
+    /// <c>project:pro</c> is the same plan gate keyed on a
+    /// <c>projectId</c> route value instead of <c>workspaceId</c>
+    /// (docs/adr/0010 Decision 3 — the build-creation endpoint has a
+    /// project in its route, not a workspace) — <see cref="WorkspaceResolver"/>
+    /// already resolves <see cref="WorkspaceResourceKind.Project"/>
+    /// generically, so this is new policy registration only, not new
+    /// authorization plumbing.
     /// </summary>
     public static IServiceCollection AddForgeAuthorization(this IServiceCollection services)
     {
@@ -79,6 +86,21 @@ public static class ForgeAuthorizationExtensions
                 .AddAuthenticationSchemes(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)
                 .RequireAuthenticatedUser()
                 .Requirements.Add(new PlanGateRequirement(WorkspaceResourceKind.Workspace, "workspaceId")))
+            .AddPolicy("project:pro", policy => policy
+                .AddAuthenticationSchemes(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)
+                .RequireAuthenticatedUser()
+                .Requirements.Add(new PlanGateRequirement(WorkspaceResourceKind.Project, "projectId")))
+            // docs/adr/0012: DeleteAssetEndpoint's route carries an
+            // assetId, not a workspaceId — the same "keyed on this
+            // resource's own route value, resolved to its workspace"
+            // pattern as project:write, WorkspaceResourceKind.Asset instead
+            // of .Project. Upload/list stay on the existing workspace:write/
+            // workspace:read policies above (their routes already carry a
+            // workspaceId directly).
+            .AddPolicy("asset:write", policy => policy
+                .AddAuthenticationSchemes(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)
+                .RequireAuthenticatedUser()
+                .Requirements.Add(new WorkspaceRoleRequirement(WorkspaceRole.Editor, WorkspaceResourceKind.Asset, "assetId")))
             .AddPolicy(PlayTokenPolicy, policy => policy
                 .AddAuthenticationSchemes(PlayTokenAuthenticationHandler.SchemeName)
                 .RequireAuthenticatedUser());

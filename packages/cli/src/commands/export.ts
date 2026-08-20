@@ -1,36 +1,49 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import type { PlayerInstalledModule, PlayerProjectData } from "@forge/player";
+import type { PlayerProjectData } from "@forge/player";
+import { toExportProjectInput, type ExportInstalledModuleInput, type ExportProjectInput, type ProjectDocument } from "@forge/project-export";
 import { findRepoRoot } from "../repoRoot.js";
 
 const REPO_ROOT = findRepoRoot();
 const PLAYER_DIR = join(REPO_ROOT, "packages/player");
 const ALLOWLIST_PATH = join(REPO_ROOT, "tools/security/licenses.json");
 
-/** One entry of `ExportProjectInput.installedModules` — everything `PlayerInstalledModule` has except `guestBundleSource`, which `runExport` resolves itself (see its own doc comment). */
-type ExportInstalledModuleInput = Omit<PlayerInstalledModule, "guestBundleSource">;
+// ExportProjectInput's canonical definition lives in @forge/project-export
+// (docs/adr/0009) — re-exported here so existing callers of this module
+// that import the type from `packages/cli` keep working.
+export type { ExportProjectInput };
 
 /**
- * What a project file on disk actually declares — `PlayerProjectData`
- * minus each module's `guestBundleSource`. Requiring an author (or a
- * hand-authored fixture) to pre-compute and paste in a module's compiled
- * guest bundle text would be impractical and would silently drift from
- * that module's real source the moment it changed — `runExport` resolves
- * each declared module's own `dist/guest-bundle.js` fresh, every export,
- * the same way a real package-registry-backed resolution would slot in
- * later (M6 Phase 1/2's registry already exists; wiring export to fetch
- * from it instead of node_modules is a separate, future piece — this is
- * the local/workspace-resolved version of the same idea).
+ * What `--document` accepts: the editor's own `ProjectDocument` (the
+ * "Export Project" toolbar button downloads exactly this shape,
+ * unmodified) plus the `projectId` `toExportProjectInput` needs and
+ * `ProjectDocument` itself doesn't carry. This is the real, editor-
+ * authored counterpart to `--project`'s hand-authored `ExportProjectInput`
+ * fixtures (docs/adr/0009) — not docs/SPEC.md Section 7's much larger
+ * on-disk format, see that ADR for why.
  */
-export type ExportProjectInput = Omit<PlayerProjectData, "installedModules"> & {
-  readonly installedModules: readonly ExportInstalledModuleInput[];
-};
+export interface ProjectDocumentExportFile {
+  readonly projectId: string;
+  readonly document: ProjectDocument;
+}
 
 export interface ExportOptions {
-  /** Path to an ExportProjectInput JSON file — see packages/player/src/playerProjectData.ts for the field shapes. Not the editor's own ProjectDocument shape (there is no serializer from that to a file yet; docs/SPEC.md Section 7's full on-disk format is a separate, larger gap — fixtures/projects/* are hand-authored ExportProjectInput files directly, same as this command expects). */
-  readonly projectPath: string;
+  /**
+   * Path to an `ExportProjectInput` JSON file — see
+   * packages/player/src/playerProjectData.ts for the field shapes.
+   * Mutually exclusive with `documentPath`. `fixtures/projects/*` are
+   * hand-authored files in this shape.
+   */
+  readonly projectPath?: string;
+  /**
+   * Path to a `ProjectDocumentExportFile` JSON file — what the editor's
+   * "Export Project" button downloads for a real, in-progress project.
+   * Mutually exclusive with `projectPath`.
+   */
+  readonly documentPath?: string;
   readonly outDir: string;
 }
 
@@ -67,6 +80,21 @@ function validateExportProjectInput(value: unknown, sourcePath: string): asserts
     if (typeof installedModule.config !== "object" || installedModule.config === null) {
       fail(`installed module "${String(installedModule.name)}" is missing a "config" object`);
     }
+    // guestBundleUrl/guestBundleSha256Hex are optional — absent for a
+    // first-party module (resolved from local node_modules instead) —
+    // but always paired when present, since fetchGuestBundle below can
+    // never verify a URL's bytes without the hash to check them against.
+    const hasBundleUrl = installedModule.guestBundleUrl !== undefined;
+    const hasBundleHash = installedModule.guestBundleSha256Hex !== undefined;
+    if (hasBundleUrl !== hasBundleHash) {
+      fail(`installed module "${String(installedModule.name)}" has "guestBundleUrl" without "guestBundleSha256Hex" (or vice versa) — both or neither.`);
+    }
+    if (hasBundleUrl && (typeof installedModule.guestBundleUrl !== "string" || installedModule.guestBundleUrl === "")) {
+      fail(`installed module "${String(installedModule.name)}"'s "guestBundleUrl" must be a non-empty string`);
+    }
+    if (hasBundleHash && (typeof installedModule.guestBundleSha256Hex !== "string" || installedModule.guestBundleSha256Hex === "")) {
+      fail(`installed module "${String(installedModule.name)}"'s "guestBundleSha256Hex" must be a non-empty string`);
+    }
   }
 }
 
@@ -84,13 +112,75 @@ function readModuleGuestBundle(moduleName: string): string {
   return readFileSync(path, "utf8");
 }
 
-function hydrateProjectData(input: ExportProjectInput): PlayerProjectData {
+/** Reads an installed package's own declared version from its `package.json`, resolved from `packages/player`'s `node_modules` — the same place `readModuleGuestBundle` already resolves from, and the "local/workspace-resolved version of a future registry-backed resolution" `ExportProjectInput`'s own doc comment names as the intended migration path (docs/adr/0009 decision 3). */
+function resolvePackageVersion(packageName: string): string {
+  const require = createRequire(join(PLAYER_DIR, "package.json"));
+  let pkgJsonPath: string;
+  try {
+    pkgJsonPath = require.resolve(`${packageName}/package.json`);
+  } catch (err) {
+    throw new Error(
+      `forge export: could not resolve "${packageName}/package.json" — is it installed as a dependency of packages/player? (${err instanceof Error ? err.message : String(err)})`,
+    );
+  }
+  const version = (JSON.parse(readFileSync(pkgJsonPath, "utf8")) as { version?: unknown }).version;
+  if (typeof version !== "string" || version === "") {
+    throw new Error(`forge export: "${pkgJsonPath}" has no valid "version" field.`);
+  }
+  return version;
+}
+
+/**
+ * Fetches a marketplace-installed module's real, published guest bundle
+ * over HTTP and verifies the bytes against the hash published alongside
+ * it — the CLI/build-time equivalent of the Subresource Integrity check
+ * the runtime already gets for browser-side dependency loading
+ * (`DependencyResolver.cs`), since there's no browser SRI mechanism to
+ * lean on here. A hash mismatch is treated as fatal, not a warning: this
+ * bundle is about to be embedded into a build and run inside the sandbox,
+ * so serving stale/tampered bytes from a compromised or misconfigured CDN
+ * must never silently succeed.
+ */
+async function fetchGuestBundle(url: string, expectedSha256Hex: string): Promise<string> {
+  let response: Response;
+  try {
+    response = await fetch(url);
+  } catch (err) {
+    throw new Error(`forge export: could not reach the guest bundle URL "${url}" (${err instanceof Error ? err.message : String(err)}).`);
+  }
+  if (!response.ok) {
+    throw new Error(`forge export: fetching the guest bundle from "${url}" failed with HTTP ${response.status} ${response.statusText}.`);
+  }
+  const bytes = Buffer.from(await response.arrayBuffer());
+  const actualHex = createHash("sha256").update(bytes).digest("hex").toUpperCase();
+  if (actualHex !== expectedSha256Hex.toUpperCase()) {
+    throw new Error(
+      `forge export: the guest bundle fetched from "${url}" does not match its published hash (expected ${expectedSha256Hex}, got ${actualHex}) — refusing to trust it.`,
+    );
+  }
+  return bytes.toString("utf8");
+}
+
+async function resolveGuestBundleSource(installedModule: ExportInstalledModuleInput): Promise<string> {
+  if (installedModule.guestBundleUrl === undefined) return readModuleGuestBundle(installedModule.name);
+  if (!installedModule.guestBundleSha256Hex) {
+    // validateExportProjectInput/toExportProjectInput both guarantee this
+    // pairing — reaching here means a caller of hydrateProjectData bypassed
+    // both, which is a real bug in this module, not a user input problem.
+    throw new Error(`forge export: installed module "${installedModule.name}" has a guestBundleUrl but no guestBundleSha256Hex to verify it against.`);
+  }
+  return fetchGuestBundle(installedModule.guestBundleUrl, installedModule.guestBundleSha256Hex);
+}
+
+async function hydrateProjectData(input: ExportProjectInput): Promise<PlayerProjectData> {
   return {
     ...input,
-    installedModules: input.installedModules.map((installedModule) => ({
-      ...installedModule,
-      guestBundleSource: readModuleGuestBundle(installedModule.name),
-    })),
+    installedModules: await Promise.all(
+      input.installedModules.map(async (installedModule) => ({
+        ...installedModule,
+        guestBundleSource: await resolveGuestBundleSource(installedModule),
+      })),
+    ),
   };
 }
 
@@ -166,10 +256,40 @@ function writeLicensesFile(outDir: string): void {
   writeFileSync(join(outDir, "LICENSES.txt"), lines.join("\n"));
 }
 
-export function runExport(options: ExportOptions): void {
-  const raw: unknown = JSON.parse(readFileSync(options.projectPath, "utf8"));
-  validateExportProjectInput(raw, options.projectPath);
-  const projectData = hydrateProjectData(raw);
+function validateProjectDocumentExportFile(value: unknown, sourcePath: string): asserts value is ProjectDocumentExportFile {
+  const fail = (reason: string): never => {
+    throw new Error(`forge export: "${sourcePath}" is not a valid project-document file — ${reason}`);
+  };
+  if (typeof value !== "object" || value === null) fail("expected a JSON object");
+  const data = value as Record<string, unknown>;
+  if (typeof data.projectId !== "string" || data.projectId === "") fail('"projectId" must be a non-empty string');
+  if (typeof data.document !== "object" || data.document === null) fail('"document" must be an object');
+}
+
+function resolveExportProjectInput(options: ExportOptions): ExportProjectInput {
+  if (options.projectPath && options.documentPath) {
+    throw new Error("forge export: pass exactly one of --project or --document, not both.");
+  }
+  if (options.documentPath) {
+    const raw: unknown = JSON.parse(readFileSync(options.documentPath, "utf8"));
+    validateProjectDocumentExportFile(raw, options.documentPath);
+    return toExportProjectInput(raw.document, {
+      projectId: raw.projectId,
+      resolveModuleVersion: resolvePackageVersion,
+      resolveEngineVersion: () => resolvePackageVersion("@forge/core"),
+    });
+  }
+  if (options.projectPath) {
+    const raw: unknown = JSON.parse(readFileSync(options.projectPath, "utf8"));
+    validateExportProjectInput(raw, options.projectPath);
+    return raw;
+  }
+  throw new Error("forge export: pass one of --project or --document.");
+}
+
+export async function runExport(options: ExportOptions): Promise<void> {
+  const exportProjectInput = resolveExportProjectInput(options);
+  const projectData = await hydrateProjectData(exportProjectInput);
 
   writeGeneratedFiles(projectData);
 

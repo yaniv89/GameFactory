@@ -8,7 +8,8 @@
  */
 export interface PlayerEntityPlacement {
   readonly id: string;
-  readonly kind: "player-start" | "npc";
+  /** References a `Prefab` (`@forge/core`) by id — not a closed union, per docs/adr/0015-entity-prefab-component-model.md. */
+  readonly prefabId: string;
   readonly tileX: number;
   readonly tileY: number;
   /**

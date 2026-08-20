@@ -3,11 +3,16 @@ import { DockviewReact, type DockviewReadyEvent, type IDockviewPanelProps } from
 import "dockview/dist/styles/dockview.css";
 import "./styles/dockview-theme.css";
 import { useState, type FC } from "react";
+import { AssetsLibraryDialogContainer } from "./canvas/AssetsLibraryDialogContainer";
 import { PackSwapDialogContainer } from "./canvas/PackSwapDialogContainer";
 import { SceneCanvas } from "./canvas/SceneCanvas";
 import { useAuthStore } from "./auth/authStore";
 import { PresenceIndicator } from "./collab/PresenceIndicator";
+import { MarketplaceDialogContainer } from "./marketplace/MarketplaceDialogContainer";
+import { buildProjectDocumentExportFile, downloadProjectDocumentExportFile } from "./project/exportProjectDocument";
+import { useMarketplaceStore } from "./project/marketplaceStore";
 import { useProjectSyncStore, type SyncStatus } from "./project/projectSyncStore";
+import { useProjectStore } from "./store/projectStore";
 import { HistoryPanelContainer, InspectorPanelContainer, ModulesPanelContainer, ScenesPanelContainer } from "./shell/DockviewPanels";
 import { PreviewPanel } from "./shell/PreviewPanel";
 import { UndoRedoControls } from "./shell/UndoRedoControls";
@@ -72,8 +77,10 @@ export interface AppProps {
 
 export function App({ projectTitle = "Untitled Project", onCloseProject }: AppProps) {
   const [packSwapOpen, setPackSwapOpen] = useState(false);
+  const [assetsOpen, setAssetsOpen] = useState(false);
   const { projectId, status: syncStatus, error: syncError, conflictActualRevision, saveProject, openProject } = useProjectSyncStore();
   const accessToken = useAuthStore((s) => s.session?.accessToken);
+  const openMarketplace = useMarketplaceStore((state) => state.open);
 
   const statusLabel = SAVE_STATUS_LABEL[syncStatus];
 
@@ -104,11 +111,30 @@ export function App({ projectTitle = "Untitled Project", onCloseProject }: AppPr
         <Button variant="secondary" onClick={() => setPackSwapOpen(true)}>
           Swap Art Pack
         </Button>
+        <Button variant="secondary" onClick={() => setAssetsOpen(true)}>
+          Assets
+        </Button>
+        <Button variant="secondary" onClick={openMarketplace}>
+          Marketplace
+        </Button>
+        {projectId && (
+          <Button
+            variant="secondary"
+            onClick={() => {
+              const file = buildProjectDocumentExportFile(projectId, useProjectStore.getState().document);
+              downloadProjectDocumentExportFile(file, "project.json");
+            }}
+          >
+            Export Project
+          </Button>
+        )}
       </header>
       <div className="fg-app__dock">
         <DockviewReact components={COMPONENTS} onReady={onReady} className="fg-dockview" />
       </div>
       <PackSwapDialogContainer open={packSwapOpen} onClose={() => setPackSwapOpen(false)} />
+      <AssetsLibraryDialogContainer open={assetsOpen} onClose={() => setAssetsOpen(false)} />
+      <MarketplaceDialogContainer />
       <Dialog open={syncStatus === "conflict"} title="This project changed on the server" onClose={() => {}}>
         <p>
           {syncError ?? "Someone else (or another tab) saved a newer revision"}

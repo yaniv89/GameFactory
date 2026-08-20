@@ -3,6 +3,7 @@ using Azure.Storage.Blobs;
 using Forge.Infrastructure.Billing;
 using Forge.Infrastructure.Email;
 using Forge.Infrastructure.Persistence;
+using Forge.Infrastructure.Storage;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR.StackExchangeRedis;
@@ -144,6 +145,24 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
     private readonly AzuriteContainer _azurite = new AzuriteBuilder().WithCommand("--skipApiVersionCheck").Build();
 
     /// <summary>
+    /// The real Azurite container's own connection string, exposed for
+    /// tests that need to construct their own <see cref="BlobContainerClient"/>
+    /// against a container this factory doesn't register in DI itself —
+    /// docs/adr/0010's <c>builds</c> container (<see cref="Forge.Infrastructure.Storage.IBuildBundleStorage"/>)
+    /// is Forge.Functions.Build's own concern, never Forge.Api's, so
+    /// unlike <c>ConnectionStrings:Blob</c>'s "packages" container above
+    /// there's no reason for this host to register a
+    /// <see cref="BlobContainerClient"/> for it — same reasoning
+    /// <see cref="Features.Scan.ScanOrchestratorTests"/>'s own
+    /// <c>BuildOrchestrator</c> helper already applies to constructing a
+    /// <c>SmokeRunGate</c> directly rather than resolving one from DI.
+    /// </summary>
+    public string AzuriteConnectionString => _azurite.GetConnectionString();
+
+    /// <summary>The real Redis container's own connection string — same reasoning as <see cref="AzuriteConnectionString"/>, needed by <c>PlayTestServer</c> to start a real, independently-bound <c>Forge.Play</c> instance for docs/adr/0010's own C4 E2E proof.</summary>
+    public string RedisConnectionString => _redis.GetConnectionString();
+
+    /// <summary>
     /// No real email provider is configured (IEmailSender's own doc
     /// comment) — this captures what LoggingEmailSender would otherwise
     /// only write to a logger, so tests can read the real
@@ -227,6 +246,26 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
                 var container = new BlobContainerClient(blobConnectionString, "packages");
                 container.CreateIfNotExists();
                 return container;
+            });
+
+            // docs/adr/0012: AddForgeAssetStorage doesn't register a bare
+            // BlobContainerClient at all (its own doc comment explains
+            // why — sidestepping the exact landmine the override just
+            // above exists to work around), so there's nothing for
+            // RemoveAll<BlobContainerClient> to catch here. Replace the
+            // IAssetStorage registration directly instead, against the
+            // same real Azurite container as every other Blob-backed
+            // override in this method — asset upload/delete tests
+            // exercise the real quarantine/public two-container split,
+            // not a stand-in.
+            services.RemoveAll<IAssetStorage>();
+            services.AddSingleton<IAssetStorage>(_ =>
+            {
+                var quarantine = new BlobContainerClient(blobConnectionString, "assets-quarantine");
+                quarantine.CreateIfNotExists();
+                var pub = new BlobContainerClient(blobConnectionString, "assets");
+                pub.CreateIfNotExists();
+                return new AzureBlobAssetStorage(quarantine, pub);
             });
 
             // M7 Phase 7: same Azurite container as point 5 above backs

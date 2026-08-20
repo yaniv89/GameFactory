@@ -312,13 +312,13 @@
       "entities": [
         {
           "id": "player",
-          "kind": "player-start",
+          "prefabId": "player-start",
           "tileX": 3,
           "tileY": 11
         },
         {
           "id": "npc-shopkeeper",
-          "kind": "npc",
+          "prefabId": "npc",
           "tileX": 16,
           "tileY": 7,
           "dialogue": {

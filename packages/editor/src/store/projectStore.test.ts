@@ -159,7 +159,7 @@ describe("useProjectStore", () => {
   it("installModule adds the module with its initial config and makes undo available", () => {
     useProjectStore.getState().installModule("@forge/turn-battle", { baseHitChance: 0.9 });
     const state = useProjectStore.getState();
-    expect(state.document.installedModules["@forge/turn-battle"]).toEqual({ baseHitChance: 0.9 });
+    expect(state.document.installedModules["@forge/turn-battle"]).toEqual({ config: { baseHitChance: 0.9 } });
     expect(selectCanUndo(state)).toBe(true);
   });
 
@@ -167,8 +167,30 @@ describe("useProjectStore", () => {
     useProjectStore.getState().installModule("@forge/turn-battle", { baseHitChance: 0.9 });
     useProjectStore.getState().installModule("@forge/turn-battle", { baseHitChance: 0.1 });
     const state = useProjectStore.getState();
-    expect(state.document.installedModules["@forge/turn-battle"]).toEqual({ baseHitChance: 0.9 });
+    expect(state.document.installedModules["@forge/turn-battle"]).toEqual({ config: { baseHitChance: 0.9 } });
     expect(state.past).toHaveLength(1);
+  });
+
+  it("installModule records a marketplace pin (version + bundle URL), preserved across configureModule/undo", () => {
+    useProjectStore
+      .getState()
+      .installModule("@acme/loot-tables", { dropRate: 0.2 }, { version: "1.2.0", bundleUrl: "https://cdn.forge.dev/loot.js", bundleSha256Hex: "abc123" });
+    expect(useProjectStore.getState().document.installedModules["@acme/loot-tables"]).toEqual({
+      config: { dropRate: 0.2 },
+      marketplace: { version: "1.2.0", bundleUrl: "https://cdn.forge.dev/loot.js", bundleSha256Hex: "abc123" },
+    });
+
+    useProjectStore.getState().configureModule("@acme/loot-tables", { dropRate: 0.4 });
+    expect(useProjectStore.getState().document.installedModules["@acme/loot-tables"]).toEqual({
+      config: { dropRate: 0.4 },
+      marketplace: { version: "1.2.0", bundleUrl: "https://cdn.forge.dev/loot.js", bundleSha256Hex: "abc123" },
+    });
+
+    useProjectStore.getState().undo();
+    expect(useProjectStore.getState().document.installedModules["@acme/loot-tables"]).toEqual({
+      config: { dropRate: 0.2 },
+      marketplace: { version: "1.2.0", bundleUrl: "https://cdn.forge.dev/loot.js", bundleSha256Hex: "abc123" },
+    });
   });
 
   it("uninstallModule removes it, and undo restores it with its exact prior config", () => {
@@ -180,7 +202,7 @@ describe("useProjectStore", () => {
 
     useProjectStore.getState().undo();
     expect(useProjectStore.getState().document.installedModules["@forge/turn-battle"]).toEqual({
-      baseHitChance: 0.75,
+      config: { baseHitChance: 0.75 },
     });
   });
 
@@ -202,12 +224,12 @@ describe("useProjectStore", () => {
 
     useProjectStore.getState().configureModule("@forge/turn-battle", { baseHitChance: 0.5 });
     const state = useProjectStore.getState();
-    expect(state.document.installedModules["@forge/turn-battle"]).toEqual({ baseHitChance: 0.5 });
-    expect(state.document.installedModules["@forge/inventory"]).toEqual({ defaultMaxSlots: 20 });
+    expect(state.document.installedModules["@forge/turn-battle"]).toEqual({ config: { baseHitChance: 0.5 } });
+    expect(state.document.installedModules["@forge/inventory"]).toEqual({ config: { defaultMaxSlots: 20 } });
 
     useProjectStore.getState().undo();
     expect(useProjectStore.getState().document.installedModules["@forge/turn-battle"]).toEqual({
-      baseHitChance: 0.9,
+      config: { baseHitChance: 0.9 },
     });
   });
 
@@ -334,7 +356,7 @@ describe("useProjectStore", () => {
 
     useProjectStore.getState().placePlayerStart(sceneId, 3, 4);
     let scene = useProjectStore.getState().document.scenes[0]!;
-    expect(scene.entities).toEqual([{ id: expect.any(String), kind: "player-start", tileX: 3, tileY: 4 }]);
+    expect(scene.entities).toEqual([{ id: expect.any(String), prefabId: "player-start", tileX: 3, tileY: 4 }]);
 
     useProjectStore.getState().undo();
     scene = useProjectStore.getState().document.scenes[0]!;
@@ -365,7 +387,7 @@ describe("useProjectStore", () => {
     const state = useProjectStore.getState();
     const scene = state.document.scenes[0]!;
     expect(scene.entities).toHaveLength(1);
-    expect(scene.entities[0]).toMatchObject({ kind: "npc", tileX: 5, tileY: 5 });
+    expect(scene.entities[0]).toMatchObject({ prefabId: "npc", tileX: 5, tileY: 5 });
     expect(state.selection).toEqual({ kind: "entity", sceneId, entityId: scene.entities[0]!.id });
 
     useProjectStore.getState().undo();
@@ -393,7 +415,7 @@ describe("useProjectStore", () => {
     useProjectStore.getState().undo();
     const restored = useProjectStore.getState().document.scenes[0]!.entities;
     expect(restored).toHaveLength(1);
-    expect(restored[0]).toMatchObject({ id: entityId, kind: "npc", tileX: 5, tileY: 5 });
+    expect(restored[0]).toMatchObject({ id: entityId, prefabId: "npc", tileX: 5, tileY: 5 });
   });
 
   it("removeEntity for a non-existent entity is a no-op", () => {
@@ -454,7 +476,11 @@ describe("migratePersistedProjectState", () => {
     };
     const migrated = migratePersistedProjectState(legacy);
     expect(migrated.document.scenes).toEqual([{ id: "s1", name: "Scene 1", entities: [], tiles: new Array(300).fill(0) }]);
-    expect(migrated.document.installedModules).toEqual(legacy.document.installedModules);
+    // Pre-InstalledModuleEntry (version 4 and earlier) persisted a flat
+    // config record directly — migrateDocument wraps it as { config: ... },
+    // a lossless upgrade since a first-party module re-saved under the old
+    // shape never had a marketplace pin to lose.
+    expect(migrated.document.installedModules).toEqual({ "@forge/inventory": { config: {} } });
     expect(migrated.document.activePack).toBeUndefined();
     expect(migrated.document.packOverrides).toEqual({});
     expect(migrated.document.packTerrainRemap).toEqual({});

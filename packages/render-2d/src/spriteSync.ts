@@ -13,6 +13,8 @@ export interface SpriteLike {
   alpha: number;
   visible: boolean;
   texture?: unknown;
+  /** Read by the container's `sortableChildren` render sort (`RenderHost`) — set from this entity's own interpolated world-space y every tick, the actual Y-depth-sort mechanism for a top-down scene. Optional so a fake in a test that doesn't care about draw order doesn't need to implement it. */
+  zIndex?: number;
 }
 
 export type SpriteContainerLike<S extends SpriteLike> = ContainerLike<S>;
@@ -35,6 +37,9 @@ export interface SpriteSyncOptions<S extends SpriteLike> {
  * - every frame, blends position/rotation between the last fixed step's
  *   snapshot and the current Transform using `ctx.alpha`, and copies the
  *   Sprite component's visual fields (tint, opacity, anchor, texture);
+ * - sets `zIndex` from the sprite's own interpolated y — the Y-depth sort
+ *   for a top-down scene (`RenderHost`'s `sortableChildren` container is
+ *   what actually applies it at draw time);
  * - removes the sprite once the entity stops matching (destroyed, or
  *   either component removed).
  */
@@ -70,6 +75,7 @@ export function createSpriteSyncSystem<S extends SpriteLike>(options: SpriteSync
           sprite.rotation = lerp(prevRotation, transform.rotation, ctx.alpha);
           sprite.scale.x = transform.scaleX;
           sprite.scale.y = transform.scaleY;
+          sprite.zIndex = sprite.position.y;
         }
 
         const spriteData = world.get<typeof SpriteSchema>(entity, "Sprite");

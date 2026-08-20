@@ -5,20 +5,53 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Forge.Functions.Build</RootNamespace>
+    <!-- Required by the Azure Functions Worker SDK build targets below — an isolated-worker Functions app is its own executable host process, not a class library. -->
+    <OutputType>Exe</OutputType>
+    <AzureFunctionsVersion>v4</AzureFunctionsVersion>
   </PropertyGroup>
 
   <!--
-    This becomes an Azure Functions isolated-worker project (Sdk="Microsoft.NET.Sdk"
-    plus Microsoft.NET.Sdk.Functions / Microsoft.Azure.Functions.Worker package
-    references) when the build pipeline (docs/SPEC.md Section 15) is implemented
-    in Milestone M6. Deferred rather than guessed here because this environment
-    has no .NET SDK or Azure Functions Core Tools to verify a restore/build
-    against real package versions — see docs/adr for the decision to keep
-    scaffold-only projects honest about what has and hasn't been verified.
+    docs/adr/0010: this is real as of C3. BuildRunner.cs and
+    BuildScanner.cs (and BuildOrchestrator.cs tying them together) are
+    plain C# with no Azure Functions Worker dependency, so they're fully
+    unit-testable in services/Forge.Tests against a real Postgres
+    Testcontainer, a real Azurite Testcontainer, and the real compiled
+    packages/cli `forge export` CLI as a subprocess — not a fake standing
+    in for the cross-language boundary this worker actually has, the
+    same rigor Forge.Functions.Scan's SmokeRunGate/PendingVersionScanner
+    already established for gate 4.
+
+    The trigger wiring below (Program.cs, BuildQueuedProjectsFunction.cs)
+    is, same as Forge.Functions.Scan's own remarks, the one piece that
+    can't be verified any way other than a real CI build — this repo has
+    no Azure Functions Core Tools / storage emulator wired into its test
+    infrastructure. Everything the timer trigger does beyond DI
+    resolution is one call into BuildOrchestrator.BuildNextAsync, which
+    the real tests already cover.
   -->
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.52.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" Version="4.3.1" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.1.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Forge.Domain\Forge.Domain.csproj" />
+    <ProjectReference Include="..\Forge.Infrastructure\Forge.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="host.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="local.settings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

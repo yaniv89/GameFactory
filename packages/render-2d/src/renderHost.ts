@@ -47,7 +47,13 @@ export class RenderHost {
       autoDensity: false,
     });
 
-    const worldContainer = new Container({ label: "world" });
+    // sortableChildren + per-sprite zIndex (createSpriteSyncSystem sets it
+    // from each entity's own world-space y) is the actual Y-depth sort for
+    // a top-down scene — an entity lower on screen draws in front of one
+    // above it, tiles (never given a zIndex, default 0) always stay
+    // behind every entity. A no-op for a caller that never sets zIndex
+    // (SceneCanvas's own hand-rolled entity markers).
+    const worldContainer = new Container({ label: "world", sortableChildren: true });
     app.stage.addChild(worldContainer);
 
     return new RenderHost(app, worldContainer, /* ownsCanvas */ !options.canvas);

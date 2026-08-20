@@ -182,6 +182,73 @@ public static class DependencyInjection
     }
 
     /// <summary>
+    /// docs/adr/0010 Decision 4: where <c>Forge.Functions.Build</c>
+    /// uploads a build's <c>index.html</c> + <c>meta.json</c>. Deliberately
+    /// its own <see cref="BlobContainerClient"/> singleton, not a second
+    /// caller of <see cref="AddForgeBundleStorage"/> pointed at a
+    /// different container name: that method's own singleton
+    /// registration isn't keyed, so a process calling both this and
+    /// <see cref="AddForgeBundleStorage"/> would silently leave
+    /// <see cref="IPackageBundleStorage"/> and <see cref="IBuildBundleStorage"/>
+    /// resolving whichever <see cref="BlobContainerClient"/> registered
+    /// last. Not a real risk today — only <c>Forge.Functions.Build</c>
+    /// calls this method, and it never calls <see cref="AddForgeBundleStorage"/>
+    /// — but worth stating plainly rather than leaving a landmine an
+    /// unrelated future change could quietly step on.
+    /// </summary>
+    public static IServiceCollection AddForgeBuildBundleStorage(this IServiceCollection services, IConfiguration configuration)
+    {
+        var connectionString = configuration.GetConnectionString("Blob")
+            ?? throw new InvalidOperationException("Missing ConnectionStrings:Blob configuration.");
+        var containerName = configuration["Blob:BuildsContainer"]
+            ?? throw new InvalidOperationException("Missing Blob:BuildsContainer configuration.");
+
+        services.AddSingleton(_ =>
+        {
+            var container = new BlobContainerClient(connectionString, containerName);
+            container.CreateIfNotExists();
+            return container;
+        });
+        services.AddSingleton<IBuildBundleStorage, AzureBlobBuildBundleStorage>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// docs/adr/0012 Decision 6: the two-container Blob layout backing
+    /// <see cref="IAssetStorage"/>. Deliberately does not register either
+    /// <see cref="BlobContainerClient"/> as its own DI singleton the way
+    /// <see cref="AddForgeBundleStorage"/>/<see cref="AddForgeBuildBundleStorage"/>
+    /// do — both containers are private implementation detail of one
+    /// <see cref="AzureBlobAssetStorage"/> instance, constructed directly
+    /// inside this factory delegate, which sidesteps those two methods'
+    /// own documented landmine (an unkeyed <see cref="BlobContainerClient"/>
+    /// registration silently resolving whichever container registered
+    /// last if a process ever called more than one of these methods) by
+    /// construction rather than by convention.
+    /// </summary>
+    public static IServiceCollection AddForgeAssetStorage(this IServiceCollection services, IConfiguration configuration)
+    {
+        var connectionString = configuration.GetConnectionString("Blob")
+            ?? throw new InvalidOperationException("Missing ConnectionStrings:Blob configuration.");
+        var quarantineContainerName = configuration["Blob:AssetsQuarantineContainer"]
+            ?? throw new InvalidOperationException("Missing Blob:AssetsQuarantineContainer configuration.");
+        var publicContainerName = configuration["Blob:AssetsContainer"]
+            ?? throw new InvalidOperationException("Missing Blob:AssetsContainer configuration.");
+
+        services.AddSingleton<IAssetStorage>(_ =>
+        {
+            var quarantine = new BlobContainerClient(connectionString, quarantineContainerName);
+            quarantine.CreateIfNotExists();
+            var pub = new BlobContainerClient(connectionString, publicContainerName);
+            pub.CreateIfNotExists();
+            return new AzureBlobAssetStorage(quarantine, pub);
+        });
+
+        return services;
+    }
+
+    /// <summary>
     /// SignalR itself (M7 Phase 1, docs/SPEC.md Section 13.2's
     /// <c>WS /hubs/collab</c>) plus the Redis backplane, non-negotiable
     /// the moment a second API instance exists (CLAUDE.md Section 1.5

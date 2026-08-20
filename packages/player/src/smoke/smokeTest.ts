@@ -10,7 +10,9 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TransformSchema } from "@forge/core";
+import { JSDOM } from "jsdom";
 import { newQuickJSWASMModuleFromVariant, newVariant, RELEASE_SYNC, type QuickJSWASMModule } from "quickjs-emscripten";
+import { renderDialogueRichText } from "../dialogueRichText.js";
 import { bootGameLogic } from "../gameLogic.js";
 import type { PlayerProjectData } from "../playerProjectData.js";
 import { WALL_TILE_ID } from "../tilePalette.js";
@@ -67,10 +69,10 @@ function buildFixtureProjectData(guestBundleSource: string): PlayerProjectData {
         name: "Test Scene",
         tiles: scene1Tiles,
         entities: [
-          { id: "player", kind: "player-start", tileX: SCENE_1_PLAYER_START.x, tileY: SCENE_1_PLAYER_START.y },
+          { id: "player", prefabId: "player-start", tileX: SCENE_1_PLAYER_START.x, tileY: SCENE_1_PLAYER_START.y },
           {
             id: "npc-1",
-            kind: "npc",
+            prefabId: "npc",
             tileX: SCENE_1_PLAYER_START.x,
             // 4 tiles south = 128 world units — outside gameWorld.ts's
             // INTERACT_RANGE (40) at boot, so "walking into range" is a
@@ -86,10 +88,10 @@ function buildFixtureProjectData(guestBundleSource: string): PlayerProjectData {
         name: "Second Scene",
         tiles: scene2Tiles,
         entities: [
-          { id: "player-2", kind: "player-start", tileX: SCENE_2_PLAYER_START.x, tileY: SCENE_2_PLAYER_START.y },
+          { id: "player-2", prefabId: "player-start", tileX: SCENE_2_PLAYER_START.x, tileY: SCENE_2_PLAYER_START.y },
           {
             id: "npc-2",
-            kind: "npc",
+            prefabId: "npc",
             tileX: SCENE_2_PLAYER_START.x,
             tileY: SCENE_2_PLAYER_START.y + 4,
             dialogue: { speaker: "Merchant", text: "Welcome!" },
@@ -114,7 +116,52 @@ function buildFixtureProjectData(guestBundleSource: string): PlayerProjectData {
   };
 }
 
+/**
+ * docs/adr/0011 D2's own DOM renderer, proven against a real `document`
+ * (jsdom, not a hand-rolled fake) rather than assumed from the parser
+ * tests alone — the load-bearing question here is specifically "does this
+ * package's own DOM-building code produce real `<em>`/`<strong>`/`<code>`/
+ * `<a>` elements and never a markup string," which packages/richtext's
+ * own test suite can't exercise because it has no renderer of its own.
+ */
+function assertDialogueRichTextRendering(): void {
+  const dom = new JSDOM("<!doctype html><div id=\"container\"></div>");
+  const container = dom.window.document.querySelector<HTMLDivElement>("#container")!;
+
+  renderDialogueRichText(container, "Rooms are *two gold* a night — see the **innkeeper** for a `key`.");
+  assert.equal(container.querySelector("em")?.textContent, "two gold", "expected *emphasis* to become a real <em> element");
+  assert.equal(container.querySelector("strong")?.textContent, "innkeeper", "expected **strong** to become a real <strong> element");
+  assert.equal(container.querySelector("code")?.textContent, "key", "expected `code` to become a real <code> element");
+  assert.ok(!container.innerHTML.includes("*"), "expected no literal markup characters to survive into the rendered DOM");
+
+  renderDialogueRichText(container, "Visit [our shop](https://example.com/shop) for supplies.");
+  const link = container.querySelector("a");
+  assert.equal(link?.getAttribute("href"), "https://example.com/shop", "expected an allowlisted-scheme link to become a real <a href>");
+  assert.equal(link?.textContent, "our shop");
+
+  // The security-critical case: a rejected link scheme must degrade to its
+  // own text (docs/adr/0011 Decision 4) and must never become a <script>,
+  // an <a href="javascript:...">, or any other element — proven here by
+  // asserting on the real rendered DOM, not by trusting parseRichText's
+  // own unit tests to imply this renderer wires hrefs through unchanged.
+  renderDialogueRichText(container, "Click [here](javascript:alert(1)) now.");
+  assert.equal(container.querySelector("a"), null, "expected a javascript: link to produce no <a> element at all");
+  assert.equal(container.querySelector("script"), null, "expected no <script> element to ever appear");
+  assert.equal(container.textContent, "Click here now.", "expected the rejected link's own words to survive as plain text");
+
+  // Re-render must fully replace prior content, not append to it — proven
+  // by rendering something with no <em> at all and confirming the earlier
+  // render's <em> is gone.
+  renderDialogueRichText(container, "Plain text only.");
+  assert.equal(container.querySelector("em"), null, "expected renderDialogueRichText to clear previous content, not accumulate it");
+  assert.equal(container.textContent, "Plain text only.");
+
+  console.log("smoke-test: dialogue richtext DOM rendering PASS");
+}
+
 async function main(): Promise<void> {
+  assertDialogueRichTextRendering();
+
   const [wasmModule, guestBundleSource] = await Promise.all([buildWasmModuleFromEmbeddedBytes(), Promise.resolve(readDialogueGuestBundle())]);
   const projectData = buildFixtureProjectData(guestBundleSource);
   const keysHeld = new Set<string>();

@@ -30,6 +30,9 @@ importers:
       '@forge/player':
         specifier: workspace:*
         version: link:../player
+      '@forge/project-export':
+        specifier: workspace:*
+        version: link:../project-export
     devDependencies:
       '@forge/dialogue':
         specifier: workspace:*
@@ -113,9 +116,15 @@ importers:
       '@forge/module-api':
         specifier: workspace:*
         version: link:../module-api
+      '@forge/project-export':
+        specifier: workspace:*
+        version: link:../project-export
       '@forge/render-2d':
         specifier: workspace:*
         version: link:../render-2d
+      '@forge/richtext':
+        specifier: workspace:*
+        version: link:../richtext
       '@microsoft/signalr':
         specifier: ^8.0.7
         version: 8.0.17
@@ -249,6 +258,9 @@ importers:
       '@forge/render-2d':
         specifier: workspace:*
         version: link:../render-2d
+      '@forge/richtext':
+        specifier: workspace:*
+        version: link:../richtext
       '@forge/runtime-host':
         specifier: workspace:*
         version: link:../runtime-host
@@ -271,15 +283,34 @@ importers:
       '@playwright/test':
         specifier: 1.62.0
         version: 1.62.0
+      '@types/jsdom':
+        specifier: ^30.0.0
+        version: 30.0.0
       '@types/node':
         specifier: ^26.1.2
         version: 26.1.2
       esbuild:
         specifier: ^0.25.12
         version: 0.25.12
+      jsdom:
+        specifier: ^30.0.1
+        version: 30.0.1
       vite:
         specifier: ^6.4.3
         version: 6.4.3(@types/node@26.1.2)(lightningcss@1.33.0)
+
+  packages/project-export:
+    dependencies:
+      '@forge/player':
+        specifier: workspace:*
+        version: link:../player
+    devDependencies:
+      '@types/node':
+        specifier: ^26.1.2
+        version: 26.1.2
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@26.1.2)(jsdom@30.0.1)(lightningcss@1.33.0)
 
   packages/render-2d:
     dependencies:
@@ -300,7 +331,11 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@26.1.2)(jsdom@30.0.1)(lightningcss@1.33.0)
 
-  packages/richtext: {}
+  packages/richtext:
+    devDependencies:
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@26.1.2)(jsdom@30.0.1)(lightningcss@1.33.0)
 
   packages/runtime-host:
     dependencies:
@@ -1150,6 +1185,9 @@ packages:
   '@types/estree@1.0.9':
     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
 
+  '@types/jsdom@30.0.0':
+    resolution: {integrity: sha512-uAHGxujGE0cDaKGdK28zgDotFtNA7MKq5DXl8LrfdxdCI8VHcg15oJz+amHTChPNI5JpgEPQWc2xFdrw3em/nQ==}
+
   '@types/mdx@2.0.14':
     resolution: {integrity: sha512-T48PeuJtvLosNTPVhfnIp3i/n3a4g4Bad7YCq5k64D4u7NwDrAotikQ+5+sjtUvBmxCMlbo3dVL+C2dP0rWHzg==}
 
@@ -1169,6 +1207,9 @@ packages:
 
   '@types/resolve@1.20.6':
     resolution: {integrity: sha512-A4STmOXPhMUtHH+S6ymgE2GiBSMqf4oTvcQZMcHzokuTLVYzXTB8ttjcgxOVaAp2lGwEdzZ0J+cRbbeevQj1UQ==}
+
+  '@types/tough-cookie@4.0.5':
+    resolution: {integrity: sha512-/Ad8+nIOV7Rl++6f1BdKxFSMgmoqEoYbHRpPcx3JEfv8VRsQe9Z4mCXeJBzxs7mbHY/XOZZuXlRNfhpVPbs6ZA==}
 
   '@types/uuid@9.0.8':
     resolution: {integrity: sha512-jg+97EGIcY9AGHJJRaaPVgetKDsrTgbRjQ5Msgjh/DQKEFl0DtyRr/VCOyD1T2R1MNeWPK/u7JoGhlDZnKBAfA==}
@@ -2276,6 +2317,9 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
+  undici-types@8.10.0:
+    resolution: {integrity: sha512-ibvdovq3nCFs8Msrd95BW+zUOq+aOVbT+wpHUoPWhztbHEoPc6oof51iFDB6Es8lTKvNvVW9jNSAB8dwrKTMGg==}
+
   undici-types@8.3.0:
     resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
 
@@ -3314,6 +3358,13 @@ snapshots:
 
   '@types/estree@1.0.9': {}
 
+  '@types/jsdom@30.0.0':
+    dependencies:
+      '@types/node': 26.1.2
+      '@types/tough-cookie': 4.0.5
+      parse5: 8.0.1
+      undici-types: 8.10.0
+
   '@types/mdx@2.0.14': {}
 
   '@types/node@26.1.2':
@@ -3332,6 +3383,8 @@ snapshots:
       csstype: 3.2.3
 
   '@types/resolve@1.20.6': {}
+
+  '@types/tough-cookie@4.0.5': {}
 
   '@types/uuid@9.0.8': {}
 
@@ -4402,6 +4455,8 @@ snapshots:
   tslib@2.8.1: {}
 
   typescript@5.9.3: {}
+
+  undici-types@8.10.0: {}
 
   undici-types@8.3.0: {}
 

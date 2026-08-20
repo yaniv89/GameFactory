@@ -111,10 +111,17 @@ test.describe("cross-origin preview bridge, in a real browser", () => {
       // Sample the same grid tile that was painted (the grid's bottom-right
       // corner) — the preview has its own independent camera/layer, fitted
       // to its own panel size, so this is not necessarily the same pixel
-      // as the editor canvas's click point.
+      // as the editor canvas's click point. Offset from the tile's exact
+      // center (not tileSize/2): H1g's decoration layer scatters a small
+      // flower sprite centered on some Grass tiles' own exact center
+      // (deterministically, by grid coordinate — this one happens to get
+      // one), which would otherwise sit on top of the ground-layer pixel
+      // this test means to read. A quarter-tile offset is well outside
+      // that flower's own small radius (`decorationTiles.ts`'s own
+      // `tileSize * 0.12`) but still inside the painted cell.
       const { gridWidth, gridHeight, tileSize } = debug!.layer;
-      const worldX = (gridWidth - 1) * tileSize + tileSize / 2;
-      const worldY = (gridHeight - 1) * tileSize + tileSize / 2;
+      const worldX = (gridWidth - 1) * tileSize + tileSize * 0.2;
+      const worldY = (gridHeight - 1) * tileSize + tileSize * 0.2;
       const screen = debug!.camera.worldToScreen(worldX, worldY);
 
       const canvas = canvasEl as HTMLCanvasElement;

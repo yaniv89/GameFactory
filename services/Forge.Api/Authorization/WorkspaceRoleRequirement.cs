@@ -7,6 +7,7 @@ public enum WorkspaceResourceKind
 {
     Workspace,
     Project,
+    Asset,
 }
 
 /// <summary>

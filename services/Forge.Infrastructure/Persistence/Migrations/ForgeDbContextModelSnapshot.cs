@@ -18,13 +18,188 @@ namespace Forge.Infrastructure.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.29")
+                .HasAnnotation("ProductVersion", "10.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "citext");
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "pg_trgm");
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "pgcrypto");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("Forge.Domain.Entities.Asset", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DeclaredMimeType")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("declared_mime_type");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("text")
+                        .HasColumnName("error_message");
+
+                    b.Property<int?>("Height")
+                        .HasColumnType("integer")
+                        .HasColumnName("height");
+
+                    b.Property<string>("OriginalName")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("original_name");
+
+                    b.Property<string>("ProcessedBlobPath")
+                        .HasColumnType("text")
+                        .HasColumnName("processed_blob_path");
+
+                    b.Property<Guid?>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<string>("QuarantineBlobPath")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("quarantine_blob_path");
+
+                    b.Property<Guid?>("RequestedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requested_by_user_id");
+
+                    b.Property<byte[]>("Sha256")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("sha256");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<int?>("Width")
+                        .HasColumnType("integer")
+                        .HasColumnName("width");
+
+                    b.Property<Guid>("WorkspaceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("workspace_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_assets");
+
+                    b.HasIndex("ProjectId")
+                        .HasDatabaseName("ix_assets_project_id");
+
+                    b.HasIndex("RequestedByUserId")
+                        .HasDatabaseName("ix_assets_requested_by_user_id");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_assets_status");
+
+                    b.HasIndex("WorkspaceId", "CreatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_assets_workspace_created");
+
+                    b.HasIndex("WorkspaceId", "Sha256")
+                        .IsUnique()
+                        .HasDatabaseName("ux_assets_workspace_sha256")
+                        .HasFilter("deleted_at IS NULL");
+
+                    b.ToTable("assets", (string)null);
+                });
+
+            modelBuilder.Entity("Forge.Domain.Entities.Build", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("BundleBlobPath")
+                        .HasColumnType("text")
+                        .HasColumnName("bundle_blob_path");
+
+                    b.Property<byte[]>("BundleSha256")
+                        .HasColumnType("bytea")
+                        .HasColumnName("bundle_sha256");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("text")
+                        .HasColumnName("error_message");
+
+                    b.Property<string>("InlineScriptSha256Base64")
+                        .HasColumnType("text")
+                        .HasColumnName("inline_script_sha256_base64");
+
+                    b.Property<string>("InlineStyleSha256Base64")
+                        .HasColumnType("text")
+                        .HasColumnName("inline_style_sha256_base64");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<Guid?>("RequestedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requested_by_user_id");
+
+                    b.Property<long>("RevisionId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("revision_id");
+
+                    b.Property<long?>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_builds");
+
+                    b.HasIndex("RequestedByUserId")
+                        .HasDatabaseName("ix_builds_requested_by_user_id");
+
+                    b.HasIndex("RevisionId")
+                        .HasDatabaseName("ix_builds_revision_id");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_builds_status");
+
+                    b.HasIndex("ProjectId", "CreatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_builds_project_created");
+
+                    b.ToTable("builds", (string)null);
+                });
 
             modelBuilder.Entity("Forge.Domain.Entities.License", b =>
                 {
@@ -224,6 +399,83 @@ namespace Forge.Infrastructure.Persistence.Migrations
                         .HasName("pk_package_dependencies");
 
                     b.ToTable("package_dependencies", (string)null);
+                });
+
+            modelBuilder.Entity("Forge.Domain.Entities.PackageIssue", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Body")
+                        .HasColumnType("text")
+                        .HasColumnName("body");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("PackageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("package_id");
+
+                    b.Property<Guid?>("ReporterUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reporter_user_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("title");
+
+                    b.HasKey("Id")
+                        .HasName("pk_package_issues");
+
+                    b.HasIndex("ReporterUserId")
+                        .HasDatabaseName("ix_package_issues_reporter_user_id");
+
+                    b.HasIndex("PackageId", "CreatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_package_issues_package_created");
+
+                    b.ToTable("package_issues", (string)null);
+                });
+
+            modelBuilder.Entity("Forge.Domain.Entities.PackageIssueReply", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("AuthorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("author_user_id");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("body");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("IssueId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("issue_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_package_issue_replies");
+
+                    b.HasIndex("AuthorUserId")
+                        .HasDatabaseName("ix_package_issue_replies_author_user_id");
+
+                    b.HasIndex("IssueId", "CreatedAt")
+                        .HasDatabaseName("ix_package_issue_replies_issue_created");
+
+                    b.ToTable("package_issue_replies", (string)null);
                 });
 
             modelBuilder.Entity("Forge.Domain.Entities.PackageVersion", b =>
@@ -542,6 +794,57 @@ namespace Forge.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_purchases_workspace_id_created_at");
 
                     b.ToTable("purchases", (string)null);
+                });
+
+            modelBuilder.Entity("Forge.Domain.Entities.Review", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Body")
+                        .HasColumnType("text")
+                        .HasColumnName("body");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("PackageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("package_id");
+
+                    b.Property<int>("Rating")
+                        .HasColumnType("integer")
+                        .HasColumnName("rating");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_reviews");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_reviews_user_id");
+
+                    b.HasIndex("PackageId", "CreatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_reviews_package_created");
+
+                    b.HasIndex("PackageId", "UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_reviews_package_user");
+
+                    b.ToTable("reviews", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_reviews_rating", "rating BETWEEN 1 AND 5");
+                        });
                 });
 
             modelBuilder.Entity("Forge.Domain.Entities.Subscription", b =>
@@ -1276,6 +1579,63 @@ namespace Forge.Infrastructure.Persistence.Migrations
                     b.ToTable("OpenIddictTokens", (string)null);
                 });
 
+            modelBuilder.Entity("Forge.Domain.Entities.Asset", b =>
+                {
+                    b.HasOne("Forge.Domain.Entities.Project", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_assets_projects_project_id");
+
+                    b.HasOne("Forge.Domain.Entities.User", "RequestedBy")
+                        .WithMany()
+                        .HasForeignKey("RequestedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_assets_domain_users_requested_by_user_id");
+
+                    b.HasOne("Forge.Domain.Entities.Workspace", "Workspace")
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_assets_workspaces_workspace_id");
+
+                    b.Navigation("Project");
+
+                    b.Navigation("RequestedBy");
+
+                    b.Navigation("Workspace");
+                });
+
+            modelBuilder.Entity("Forge.Domain.Entities.Build", b =>
+                {
+                    b.HasOne("Forge.Domain.Entities.Project", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_builds_projects_project_id");
+
+                    b.HasOne("Forge.Domain.Entities.User", "RequestedBy")
+                        .WithMany()
+                        .HasForeignKey("RequestedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_builds_domain_users_requested_by_user_id");
+
+                    b.HasOne("Forge.Domain.Entities.ProjectRevision", "Revision")
+                        .WithMany()
+                        .HasForeignKey("RevisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_builds_project_revisions_revision_id");
+
+                    b.Navigation("Project");
+
+                    b.Navigation("RequestedBy");
+
+                    b.Navigation("Revision");
+                });
+
             modelBuilder.Entity("Forge.Domain.Entities.License", b =>
                 {
                     b.HasOne("Forge.Domain.Entities.Package", "Package")
@@ -1339,6 +1699,46 @@ namespace Forge.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_package_dependencies_package_versions_version_id");
 
                     b.Navigation("Version");
+                });
+
+            modelBuilder.Entity("Forge.Domain.Entities.PackageIssue", b =>
+                {
+                    b.HasOne("Forge.Domain.Entities.Package", "Package")
+                        .WithMany("Issues")
+                        .HasForeignKey("PackageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_package_issues_packages_package_id");
+
+                    b.HasOne("Forge.Domain.Entities.User", "Reporter")
+                        .WithMany()
+                        .HasForeignKey("ReporterUserId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_package_issues_domain_users_reporter_user_id");
+
+                    b.Navigation("Package");
+
+                    b.Navigation("Reporter");
+                });
+
+            modelBuilder.Entity("Forge.Domain.Entities.PackageIssueReply", b =>
+                {
+                    b.HasOne("Forge.Domain.Entities.User", "Author")
+                        .WithMany()
+                        .HasForeignKey("AuthorUserId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_package_issue_replies_domain_users_author_user_id");
+
+                    b.HasOne("Forge.Domain.Entities.PackageIssue", "Issue")
+                        .WithMany("Replies")
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_package_issue_replies_package_issues_issue_id");
+
+                    b.Navigation("Author");
+
+                    b.Navigation("Issue");
                 });
 
             modelBuilder.Entity("Forge.Domain.Entities.PackageVersion", b =>
@@ -1436,6 +1836,26 @@ namespace Forge.Infrastructure.Persistence.Migrations
                     b.Navigation("Package");
 
                     b.Navigation("Workspace");
+                });
+
+            modelBuilder.Entity("Forge.Domain.Entities.Review", b =>
+                {
+                    b.HasOne("Forge.Domain.Entities.Package", "Package")
+                        .WithMany("Reviews")
+                        .HasForeignKey("PackageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_reviews_packages_package_id");
+
+                    b.HasOne("Forge.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_reviews_domain_users_user_id");
+
+                    b.Navigation("Package");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Forge.Domain.Entities.Subscription", b =>
@@ -1557,7 +1977,16 @@ namespace Forge.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Forge.Domain.Entities.Package", b =>
                 {
+                    b.Navigation("Issues");
+
+                    b.Navigation("Reviews");
+
                     b.Navigation("Versions");
+                });
+
+            modelBuilder.Entity("Forge.Domain.Entities.PackageIssue", b =>
+                {
+                    b.Navigation("Replies");
                 });
 
             modelBuilder.Entity("Forge.Domain.Entities.PackageVersion", b =>

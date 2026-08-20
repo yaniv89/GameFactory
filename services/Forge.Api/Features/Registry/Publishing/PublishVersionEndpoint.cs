@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using Forge.Api.Authorization;
-using Forge.Api.RateLimiting;
 using Forge.Domain.Entities;
 using Forge.Infrastructure.Persistence;
 using Forge.Infrastructure.Storage;
@@ -32,9 +31,18 @@ namespace Forge.Api.Features.Registry.Publishing;
 /// <see cref="PackageDetailAndVersionsEndpoint"/> uses for reads (scoped
 /// package names contain a literal slash — see that file's own doc
 /// comment for why a catch-all is required at all). This one doesn't
-/// need that file's dispatch-by-content logic, though: POST only ever
-/// means "publish a version of {name}", so the path is required to end
-/// in a literal "versions" segment and nothing else is accepted.
+/// need that file's dispatch-by-content logic itself, though: POST only
+/// ever means "publish a version of {name}" as far as this class is
+/// concerned, so <see cref="Handle"/> requires the path to end in a
+/// literal "versions" segment and nothing else is accepted.
+///
+/// Does not register its own route. <see cref="Registry.IssuesEndpoint"/>
+/// owns the one <c>POST</c> registration on this template and dispatches
+/// to <see cref="Handle"/> for the <c>versions</c> trailing segment — see
+/// that class's own doc comment for why two <c>MapPost</c> calls on the
+/// identical route template can't coexist (the same ambiguous-route
+/// problem <c>ReviewsEndpoint</c>'s own doc comment already documents for
+/// <c>PUT</c>).
 /// </summary>
 public static class PublishVersionEndpoint
 {
@@ -46,22 +54,7 @@ public static class PublishVersionEndpoint
     // not this endpoint's job.
     private const int MaxBundleBytes = 5 * 1024 * 1024;
 
-    public static IEndpointRouteBuilder MapPublishVersion(this IEndpointRouteBuilder app)
-    {
-        app.MapPost("/api/v1/packages/{*path}", Handle)
-            .RequireAuthorization(ForgeAuthorizationExtensions.BearerPolicy)
-            .WithRateLimit("api", RateLimitKeyStrategy.User, RateLimitPolicies.Api)
-            .WithName("PublishPackageVersion")
-            .Produces<PublishVersionResponse>(StatusCodes.Status201Created)
-            .ProducesValidationProblem()
-            .ProducesProblem(StatusCodes.Status403Forbidden)
-            .ProducesProblem(StatusCodes.Status409Conflict)
-            .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
-            .ProducesProblem(StatusCodes.Status413PayloadTooLarge);
-        return app;
-    }
-
-    private static async Task<IResult> Handle(
+    internal static async Task<IResult> Handle(
         string path,
         PublishVersionRequest req,
         ForgeDbContext db,

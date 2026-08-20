@@ -1,0 +1,82 @@
+.fg-assets-library {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 28rem;
+  max-width: 32rem;
+}
+
+.fg-assets-library__upload {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--line-default);
+}
+
+.fg-assets-library__upload-error {
+  color: var(--accent-destroy);
+  font-size: var(--text-sm);
+  margin: 0;
+}
+
+.fg-assets-library__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 20rem;
+  overflow-y: auto;
+}
+
+.fg-assets-library__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.fg-assets-library__thumbnail {
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-abyss);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.fg-assets-library__thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.fg-assets-library__status-icon {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+}
+
+.fg-assets-library__status-icon--pending,
+.fg-assets-library__status-icon--processing {
+  /* Not --accent-running: that token is reserved exclusively for play
+     mode / a live build (CLAUDE.md Section 5.1) — an asset queued for
+     processing is a caution/in-progress state, not "running." */
+  background: var(--accent-caution);
+}
+
+.fg-assets-library__status-icon--failed {
+  background: var(--accent-destroy);
+}
+
+.fg-assets-library__error-detail {
+  color: var(--accent-destroy);
+  font-size: var(--text-xs);
+  margin: 0;
+}

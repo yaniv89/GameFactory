@@ -17,6 +17,8 @@
   -->
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <!-- 1.62.0, matching @playwright/test's pinned version across every packages/* workspace (CLAUDE.md Section 2.2) — same browser build, same version skew concerns, and PLAYWRIGHT_BROWSERS_PATH/PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD already point this .NET binding at the same pre-installed Chromium the JS side uses, no separate "playwright install" needed. docs/adr/0010's own E2E proof (C4) is the one thing in this project that needs a real browser: WebApplicationFactory's in-memory TestServer can't be navigated to by an external browser process, and this proof specifically needs a real browser enforcing a real per-build CSP, not just an HTTP header string comparison. -->
+    <PackageReference Include="Microsoft.Playwright" Version="1.62.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -40,6 +42,9 @@
     <ProjectReference Include="..\Forge.Infrastructure\Forge.Infrastructure.csproj" />
     <ProjectReference Include="..\Forge.Api\Forge.Api.csproj" />
     <ProjectReference Include="..\Forge.Functions.Scan\Forge.Functions.Scan.csproj" />
+    <ProjectReference Include="..\Forge.Functions.Build\Forge.Functions.Build.csproj" />
+    <ProjectReference Include="..\Forge.Functions.Assets\Forge.Functions.Assets.csproj" />
+    <ProjectReference Include="..\Forge.Play\Forge.Play.csproj" />
   </ItemGroup>
 
 </Project>

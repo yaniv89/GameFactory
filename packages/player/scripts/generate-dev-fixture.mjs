@@ -50,10 +50,10 @@ function buildFixtureProjectData(guestBundleSource) {
         name: "Dev Fixture Scene",
         tiles,
         entities: [
-          { id: "player", kind: "player-start", tileX: playerStartX, tileY: playerStartY },
+          { id: "player", prefabId: "player-start", tileX: playerStartX, tileY: playerStartY },
           {
             id: "npc-1",
-            kind: "npc",
+            prefabId: "npc",
             tileX: playerStartX + 3,
             tileY: playerStartY + 3,
             dialogue: { speaker: "Guard", text: "Halt! ...oh, it's just you. Carry on." },

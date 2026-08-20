@@ -86,6 +86,26 @@ export const InteractableSchema = {
 } as const satisfies ComponentSchema;
 export type Interactable = ComponentValue<typeof InteractableSchema>;
 
+/**
+ * Marks an entity as damageable — H1c's combat slice (`createMeleeAttackSystem`,
+ * `createKnockbackPhysicsSystem`) queries entities by this component's mere
+ * presence rather than a separate "is this an enemy" tag, the same way
+ * `PlayerControlled`'s presence (not a boolean flag on some other
+ * component) already marks the player. `invulnerableUntil`/`flashUntil`
+ * are both `TickContext.elapsed` timestamps (seconds since the world
+ * started, per `TickContext`'s own doc comment) a system compares against
+ * directly — no separate timer/countdown bookkeeping needed.
+ */
+export const HealthSchema = {
+  current: "f32",
+  max: "f32",
+  /** Damage is ignored while `elapsed < invulnerableUntil` — the i-frames a hit grants against being re-hit by the same or an overlapping swing. */
+  invulnerableUntil: "f32",
+  /** The struck sprite tints red while `elapsed < flashUntil` (`createHitFlashSystem`), reverting to its normal tint once elapsed passes it. */
+  flashUntil: "f32",
+} as const satisfies ComponentSchema;
+export type Health = ComponentValue<typeof HealthSchema>;
+
 export interface CoreComponents {
   readonly Transform: ReturnType<World["defineComponent"]>;
   readonly Sprite: ReturnType<World["defineComponent"]>;
@@ -94,6 +114,7 @@ export interface CoreComponents {
   readonly Velocity: ReturnType<World["defineComponent"]>;
   readonly PlayerControlled: ReturnType<World["defineComponent"]>;
   readonly Interactable: ReturnType<World["defineComponent"]>;
+  readonly Health: ReturnType<World["defineComponent"]>;
 }
 
 /** Registers every core component against `world`. Call once, at world construction. */
@@ -145,6 +166,12 @@ export function registerCoreComponents(world: World): CoreComponents {
       promptTextId: -1,
       range: 32,
       graphId: -1,
+    }),
+    Health: world.defineComponent("Health", HealthSchema, {
+      current: 0,
+      max: 0,
+      invulnerableUntil: 0,
+      flashUntil: 0,
     }),
   };
 }

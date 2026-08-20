@@ -1,4 +1,17 @@
-import { createCharacterAnimationSystem, registerCoreComponents, Scheduler, TransformSchema, World, type EntityId } from "@forge/core";
+import {
+  createCharacterAnimationSystem,
+  createHitFlashSystem,
+  createKnockbackPhysicsSystem,
+  createMeleeAttackSystem,
+  registerCoreComponents,
+  EventBusImpl,
+  Scheduler,
+  TransformSchema,
+  World,
+  type EntityId,
+  type EventBus,
+  type MeleeAttackEventMap,
+} from "@forge/core";
 import { dialogueModule } from "@forge/dialogue";
 import { buildDialogueTreesFromEntities } from "@forge/project-export";
 import {
@@ -19,7 +32,16 @@ import { WALL_TILE_ID, buildPaletteTextures } from "../canvas/tilePalette";
 import type { EntityPlacement } from "../store/projectStore";
 import { fitZoom as fitZoomOf, followCamera as followCameraOf, followZoom as followZoomOf } from "./cameraFollow";
 import { createModuleRuntime } from "./directModuleHost";
-import { INTERACT_RANGE, NPC_ASSET_ID, PLAYER_ASSET_ID, createPlayerMovementSystem, spawnNpcMarker, spawnPlayer } from "./gameWorld";
+import {
+  ENEMY_ASSET_ID,
+  INTERACT_RANGE,
+  NPC_ASSET_ID,
+  PLAYER_ASSET_ID,
+  createPlayerMovementSystem,
+  spawnEnemy,
+  spawnNpcMarker,
+  spawnPlayer,
+} from "./gameWorld";
 import { TRUSTED_EDITOR_ORIGIN } from "./origins";
 import { isPreviewSceneMessage } from "./protocol";
 import { RichDialogueText } from "./RichDialogueText";
@@ -29,11 +51,24 @@ import "./PreviewApp.css";
 const ASSET_ID_TO_CHARACTER_ROLE: Readonly<Record<number, string>> = {
   [PLAYER_ASSET_ID]: "hero",
   [NPC_ASSET_ID]: "villager",
+  [ENEMY_ASSET_ID]: "goblin",
 };
 
 /** Every character sheet this repo's own generated art (`gensprite_h1.py`) and `createCharacterAnimationSystem` agree on: a 4-direction, 4-frame walk cycle at 8fps. A pack declaring a different `walk` animation shape is a known limitation, not silently handled — see `characterTextures.ts`'s own doc comment on what a pack can and can't override yet. */
 const WALK_FRAME_COUNT = 4;
 const WALK_FPS = 8;
+
+/** H1c's fixed demo enemy spawn — see `spawnEnemy`'s own doc comment for why this isn't sourced from scene placements yet. Tile (13, 8), a few tiles from a typical player start, well clear of the map's own edges. */
+const DEMO_ENEMY_TILE = { x: 13, y: 8 };
+
+/** H1c's melee-swing tuning — one designed unit, not scattered magic numbers at each call site. */
+const MELEE_ATTACK_KEY = " "; // Space — KeyboardEvent.key for the spacebar.
+const MELEE_REACH = 24;
+const MELEE_SIZE = 22;
+const MELEE_DAMAGE = 10;
+const MELEE_KNOCKBACK_SPEED = 220;
+const MELEE_INVULNERABILITY_SEC = 0.4;
+const MELEE_FLASH_SEC = 0.15;
 
 type PreviewStatus = "loading" | "ready" | "error";
 
@@ -49,6 +84,10 @@ interface GameWorld {
   readonly scheduler: Scheduler;
   playerEntity: EntityId | undefined;
   readonly npcEntitiesByPlacementId: Map<string, EntityId>;
+  /** H1c's fixed demo combat target (`spawnEnemy`'s own doc comment explains why it isn't placement-sourced yet). */
+  readonly enemyEntity: EntityId;
+  /** `createMeleeAttackSystem`'s own event bus — H1d's damage-number/death-particle work is the next thing planned to subscribe to `"combat:hit"` here. */
+  readonly combatEvents: EventBus<MeleeAttackEventMap>;
 }
 
 /** The dialogue module's own world, rebuilt whenever the NPC/dialogue set changes (see the doc comment on the scene-message effect below for why this is a *separate*, disposable world from GameWorld). */
@@ -115,6 +154,8 @@ export function PreviewApp() {
   /** The panel's current pixel size — read by the per-tick camera-follow logic (H1b) so it doesn't need to re-measure the DOM every frame; kept current by the boot effect and the resize observer below. */
   const viewportSizeRef = useRef({ width: 1, height: 1 });
   const keysHeldRef = useRef<Set<string>>(new Set());
+  /** Set true on a Space keydown, consumed (and cleared) by `createMeleeAttackSystem`'s `consumeAttackRequest` — an edge, not "held," so pinning the key down doesn't spam a swing every tick. */
+  const attackRequestedRef = useRef(false);
   const bubbleTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lifecycleRef = useRef<Promise<void>>(Promise.resolve());
   const tickerCallbackRef = useRef<((ticker: { deltaMS: number }) => void) | null>(null);
@@ -181,9 +222,29 @@ export function PreviewApp() {
         const scheduler = new Scheduler(world);
         const snapshots = new TransformSnapshotStore();
         const entityTextures = buildEntityTextures(host.app.renderer, TILE_SIZE);
+        const combatEvents = new EventBusImpl<MeleeAttackEventMap>();
         scheduler.addSystem(createTransformSnapshotSystem(world, snapshots));
         scheduler.addSystem(createPlayerMovementSystem(world, isWalkable, keysHeldRef.current));
+        scheduler.addSystem(
+          createMeleeAttackSystem({
+            world,
+            events: combatEvents,
+            consumeAttackRequest: () => {
+              const requested = attackRequestedRef.current;
+              attackRequestedRef.current = false;
+              return requested;
+            },
+            reach: MELEE_REACH,
+            size: MELEE_SIZE,
+            damage: MELEE_DAMAGE,
+            knockbackSpeed: MELEE_KNOCKBACK_SPEED,
+            invulnerabilitySec: MELEE_INVULNERABILITY_SEC,
+            flashSec: MELEE_FLASH_SEC,
+          }),
+        );
+        scheduler.addSystem(createKnockbackPhysicsSystem({ world }));
         scheduler.addSystem(createCharacterAnimationSystem({ world, frameCount: WALK_FRAME_COUNT, fps: WALK_FPS }));
+        scheduler.addSystem(createHitFlashSystem({ world }));
         scheduler.addSystem(
           createSpriteSyncSystem({
             world,
@@ -199,7 +260,11 @@ export function PreviewApp() {
             },
           }),
         );
-        gameWorldRef.current = { world, scheduler, playerEntity: undefined, npcEntitiesByPlacementId: new Map() };
+        const demoEnemySpawn = tileCenterWorld(DEMO_ENEMY_TILE.x, DEMO_ENEMY_TILE.y);
+        const enemyEntity = spawnEnemy(world, demoEnemySpawn.x, demoEnemySpawn.y);
+        world.flush();
+
+        gameWorldRef.current = { world, scheduler, playerEntity: undefined, npcEntitiesByPlacementId: new Map(), enemyEntity, combatEvents };
 
         const onTick = (ticker: { deltaMS: number }) => {
           scheduler.tick(ticker.deltaMS);
@@ -346,10 +411,15 @@ export function PreviewApp() {
     };
   }, []);
 
-  // "E" to interact with the nearest NPC in range.
+  // "E" to interact with the nearest NPC in range, Space to swing.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       keysHeldRef.current.add(event.key);
+      if (event.key === MELEE_ATTACK_KEY) {
+        event.preventDefault(); // stop the page from scrolling on Space, the same way a real game would capture it
+        attackRequestedRef.current = true;
+        return;
+      }
       if (event.key.toLowerCase() !== "e") return;
       const gameWorld = gameWorldRef.current;
       const dialogue = dialogueRef.current;

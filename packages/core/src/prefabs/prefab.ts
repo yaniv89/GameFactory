@@ -1,6 +1,7 @@
-import type { Animator, Collider, Interactable, PlayerControlled, Sprite, Velocity } from "../components/core";
+import type { Animator, Collider, Health, Interactable, PlayerControlled, Sprite, Velocity } from "../components/core";
 import type { EntityId } from "../ecs/entity";
 import type { World } from "../ecs/world";
+import { COLLIDER_SHAPE_BOX } from "../physics/aabb";
 
 /**
  * A named, fixed-shape default bundle of component values — the
@@ -41,6 +42,7 @@ export interface Prefab {
     readonly velocity?: Partial<Velocity>;
     readonly playerControlled?: Partial<PlayerControlled>;
     readonly interactable?: Partial<Interactable>;
+    readonly health?: Partial<Health>;
   };
 }
 
@@ -78,9 +80,33 @@ export const NPC_PREFAB: Prefab = {
   },
 };
 
+/**
+ * H1c's demo combat target — a stationary, damageable, knockback-able
+ * entity `createMeleeAttackSystem`/`createKnockbackPhysicsSystem` (and
+ * later I1's real AI/wander behavior) act on. `health`'s presence, not a
+ * separate tag component, is what those systems query by (this file's own
+ * doc comment on `HealthSchema` explains why) — `velocity.friction`
+ * is the knockback-recovery decay rate `createKnockbackPhysicsSystem`
+ * reads, `maxSpeed: 0` because nothing drives this entity's own movement
+ * input yet (no AI/wander system exists before I1).
+ */
+export const ENEMY_PREFAB: Prefab = {
+  id: "enemy",
+  label: "Enemy",
+  spriteAssetKey: "enemy",
+  components: {
+    sprite: { frame: 0, anchorX: 0.5, anchorY: 0.5, tint: 0xffffff, opacity: 1 },
+    animator: {},
+    velocity: { vx: 0, vy: 0, maxSpeed: 0, friction: 6 },
+    collider: { shape: COLLIDER_SHAPE_BOX, width: 24, height: 24, offsetX: 0, offsetY: 0, isTrigger: 0, layer: 0 },
+    health: { current: 30, max: 30, invulnerableUntil: 0, flashUntil: 0 },
+  },
+};
+
 const PREFAB_REGISTRY: Readonly<Record<string, Prefab>> = {
   [PLAYER_START_PREFAB.id]: PLAYER_START_PREFAB,
   [NPC_PREFAB.id]: NPC_PREFAB,
+  [ENEMY_PREFAB.id]: ENEMY_PREFAB,
 };
 
 /**
@@ -134,5 +160,6 @@ export function spawnFromPrefab(
   if (c.playerControlled) initial.PlayerControlled = { ...c.playerControlled };
   if (c.animator) initial.Animator = { ...c.animator };
   if (c.interactable) initial.Interactable = { ...c.interactable };
+  if (c.health) initial.Health = { ...c.health };
   return world.create(initial);
 }

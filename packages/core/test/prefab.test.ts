@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { registerCoreComponents } from "../src/components/core";
 import { World } from "../src/ecs/world";
 import {
+  ENEMY_PREFAB,
   NPC_PREFAB,
   PLAYER_START_PREFAB,
   PREFAB_IDS,
@@ -18,13 +19,14 @@ function makeWorld() {
 }
 
 describe("PREFAB_IDS / getPrefab / isPrefabId", () => {
-  it("registers exactly the two first-party prefabs (docs/adr/0015 decision 3)", () => {
-    expect([...PREFAB_IDS].sort()).toEqual(["npc", "player-start"]);
+  it("registers exactly the three first-party prefabs (docs/adr/0015 decision 3; enemy added in H1c)", () => {
+    expect([...PREFAB_IDS].sort()).toEqual(["enemy", "npc", "player-start"]);
   });
 
   it("getPrefab resolves a known id and returns undefined for an unknown one", () => {
     expect(getPrefab("player-start")).toBe(PLAYER_START_PREFAB);
     expect(getPrefab("npc")).toBe(NPC_PREFAB);
+    expect(getPrefab("enemy")).toBe(ENEMY_PREFAB);
     expect(getPrefab("dragon")).toBeUndefined();
   });
 
@@ -78,6 +80,19 @@ describe("spawnFromPrefab", () => {
     expect(world.get(entity, "Animator")).toMatchObject({ clipId: -1, playing: 0, speed: 1, loop: 1, elapsed: 0, facing: 0 });
     expect(world.has(entity, "Velocity")).toBe(false);
     expect(world.has(entity, "Collider")).toBe(false);
+    expect(world.has(entity, "PlayerControlled")).toBe(false);
+  });
+
+  it("spawns ENEMY_PREFAB with a real box Collider, Velocity, and full Health — the H1c combat target shape", () => {
+    const world = makeWorld();
+    const entity = spawnFromPrefab(world, ENEMY_PREFAB, 50, 60, () => 3);
+    world.flush();
+
+    expect(world.get(entity, "Transform")).toMatchObject({ x: 50, y: 60 });
+    expect(world.get(entity, "Sprite")).toMatchObject({ assetId: 3, frame: 0 });
+    expect(world.get(entity, "Velocity")).toMatchObject({ vx: 0, vy: 0, maxSpeed: 0, friction: 6 });
+    expect(world.get(entity, "Collider")).toMatchObject({ shape: 0, width: 24, height: 24, isTrigger: 0 });
+    expect(world.get(entity, "Health")).toMatchObject({ current: 30, max: 30, invulnerableUntil: 0, flashUntil: 0 });
     expect(world.has(entity, "PlayerControlled")).toBe(false);
   });
 

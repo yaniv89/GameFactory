@@ -19,4 +19,7 @@ export * from "./physics/aabb";
 export * from "./physics/spatialHash";
 export * from "./physics/collisionSystem";
 export * from "./systems/characterAnimation";
+export * from "./systems/meleeAttack";
+export * from "./systems/knockbackPhysics";
+export * from "./systems/hitFlash";
 export * from "./save/serialize";

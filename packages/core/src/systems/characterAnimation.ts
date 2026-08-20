@@ -9,6 +9,20 @@ export const FACING_WEST = 1;
 export const FACING_EAST = 2;
 export const FACING_NORTH = 3;
 
+/** The unit world-space direction a `Animator.facing` row points — e.g. what `createMeleeAttackSystem` aims a swing's hitbox along. */
+export function facingToOffset(facing: number): { x: number; y: number } {
+  switch (facing) {
+    case FACING_WEST:
+      return { x: -1, y: 0 };
+    case FACING_EAST:
+      return { x: 1, y: 0 };
+    case FACING_NORTH:
+      return { x: 0, y: -1 };
+    default:
+      return { x: 0, y: 1 }; // FACING_SOUTH, and the fallback for an out-of-range value.
+  }
+}
+
 export interface CharacterAnimationSystemOptions {
   world: World;
   /** Frames per animation row (the walk cycle's column count) — every character sheet this system drives shares one fixed grid, per docs/adr/0014's `characters.template.animations.walk`. */

@@ -1,4 +1,5 @@
 import {
+  ENEMY_PREFAB,
   NPC_PREFAB,
   PLAYER_START_PREFAB,
   TransformSchema,
@@ -19,10 +20,12 @@ import {
  */
 export const PLAYER_ASSET_ID = 1;
 export const NPC_ASSET_ID = 2;
+export const ENEMY_ASSET_ID = 3;
 
 const SPRITE_ASSET_IDS: Readonly<Record<string, number>> = {
   player: PLAYER_ASSET_ID,
   npc: NPC_ASSET_ID,
+  enemy: ENEMY_ASSET_ID,
 };
 
 function resolveSpriteAssetId(spriteAssetKey: string): number {
@@ -38,6 +41,19 @@ export function spawnPlayer(world: World, worldX: number, worldY: number): Entit
 
 export function spawnNpcMarker(world: World, worldX: number, worldY: number): EntityId {
   return spawnFromPrefab(world, NPC_PREFAB, worldX, worldY, resolveSpriteAssetId);
+}
+
+/**
+ * H1c's demo combat target — not sourced from scene placements the way
+ * the player/NPC are (there is no "place an Enemy" authoring tool yet,
+ * a stated, tracked gap — see #139/I1's own combat/AI breadth work), a
+ * single fixed spawn so the melee-attack slice has a real, damageable
+ * thing to hit. `spawnFromPrefab` still does the real work; this is only
+ * "which prefab, which fixed spot," the same shape `spawnPlayer`/
+ * `spawnNpcMarker` already are.
+ */
+export function spawnEnemy(world: World, worldX: number, worldY: number): EntityId {
+  return spawnFromPrefab(world, ENEMY_PREFAB, worldX, worldY, resolveSpriteAssetId);
 }
 
 /** Currently-held movement keys, WASD and arrows both accepted. Owned by PreviewApp's keydown/keyup listeners; read here each tick. */

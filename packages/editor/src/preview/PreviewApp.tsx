@@ -1,4 +1,5 @@
 import {
+  COIN_ITEM_ID,
   COIN_PICKUP_PREFAB,
   MOUNT_PREFAB,
   createCharacterAnimationSystem,
@@ -25,6 +26,7 @@ import {
   type PickupEventMap,
 } from "@forge/core";
 import { dialogueModule } from "@forge/dialogue";
+import { inventoryModule, type InventoryChangedEvent } from "@forge/inventory";
 import { buildDialogueTreesFromEntities } from "@forge/project-export";
 import {
   Camera,
@@ -74,6 +76,20 @@ const ASSET_ID_TO_CHARACTER_ROLE: Readonly<Record<number, string>> = {
   [PLAYER_ASSET_ID]: "hero",
   [NPC_ASSET_ID]: "villager",
   [ENEMY_ASSET_ID]: "goblin",
+};
+
+/**
+ * I1e's item-id bridge: `Pickup.itemId` (@forge/core) is a plain numeric
+ * field — the fixed-shape component schema (docs/adr/0002) has no string
+ * fields — but `@forge/inventory`'s own event API keys items by string,
+ * matching a real item-definition table's natural id shape once one
+ * exists. Until then this is the one place "which numeric Pickup id means
+ * which inventory item key" is decided, the same "no real registry yet,
+ * agreed out of band" honesty `COIN_ITEM_ID`'s own doc comment already
+ * accepts.
+ */
+const ITEM_KEY_FOR_ID: Readonly<Record<number, string>> = {
+  [COIN_ITEM_ID]: "coin",
 };
 
 /** Every character sheet this repo's own generated art (`gensprite_h1.py`) and `createCharacterAnimationSystem` agree on: a 4-direction, 4-frame walk cycle at 8fps. A pack declaring a different `walk` animation shape is a known limitation, not silently handled — see `characterTextures.ts`'s own doc comment on what a pack can and can't override yet. */
@@ -392,6 +408,14 @@ export function PreviewApp() {
         const entityTextures = buildEntityTextures(host.app.renderer, TILE_SIZE);
         const combatEvents = new EventBusImpl<MeleeAttackEventMap>();
         const pickupEvents = new EventBusImpl<PickupEventMap>();
+        // I1e: a real @forge/inventory runtime, created once at boot (not
+        // rebuilt per scene message the way the dialogue runtime is — an
+        // inventory doesn't depend on scene/NPC placements). Unsandboxed,
+        // the same documented exception `createModuleRuntime`'s own doc
+        // comment already states for `@forge/dialogue`: first-party code
+        // Forge itself ships, not a marketplace install.
+        const inventoryRuntime = createModuleRuntime("@forge/inventory", { defaultMaxSlots: 20 });
+        inventoryModule.setup(inventoryRuntime.ctx);
         const audio = createPreviewAudio();
         previewAudioRef.current = audio;
         scheduler.addSystem(createTransformSnapshotSystem(world, snapshots));
@@ -511,7 +535,36 @@ export function PreviewApp() {
         });
         pickupEvents.on("pickup:collected", (payload) => {
           audio.playPickup();
-          setCoinCount((count) => count + payload.amount);
+          const itemKey = ITEM_KEY_FOR_ID[payload.itemId];
+          if (!itemKey) {
+            console.warn(`[forge:preview] picked up an item with no known inventory key (Pickup.itemId ${payload.itemId}) — dropped, not added to inventory.`);
+            return;
+          }
+          // `payload.player` is only ever used here as an opaque storage
+          // key (`inv:<entity>`), never dereferenced structurally against
+          // this runtime's own isolated World — the same cross-world id
+          // reuse `capacityFor`'s own `ctx.world.has(...)` check already
+          // tolerates (falls back to `defaultMaxSlots` since nothing was
+          // ever created with that id in *this* World either).
+          inventoryRuntime.events.emit("inventory:add", { entity: payload.player, itemId: itemKey, qty: payload.amount });
+        });
+        inventoryRuntime.events.on("inventory:changed", (payload) => {
+          // The HUD's single coin slot is still the right-sized UI for a
+          // one-item-type game (a real multi-item panel would be
+          // speculative UI for content that doesn't exist yet) — now
+          // driven by the module's own real running total instead of a
+          // parallel, independently-incremented React counter.
+          const changed = payload as InventoryChangedEvent;
+          if (changed.itemId === "coin") setCoinCount(changed.qty);
+        });
+        inventoryRuntime.events.on("inventory:rejected", (payload) => {
+          // Unreachable in practice today (a single stackable item type
+          // never crosses the slot-count capacity check), but a real
+          // rejection is a legitimate gameplay outcome, not an error to
+          // swallow silently (CLAUDE.md 1.2.11) — logged honestly rather
+          // than building a toast/notification UI for a path nothing can
+          // currently exercise.
+          console.warn("[forge:preview] inventory:add was rejected", payload);
         });
 
         const demoEnemySpawn = tileCenterWorld(DEMO_ENEMY_TILE.x, DEMO_ENEMY_TILE.y);
@@ -610,13 +663,18 @@ export function PreviewApp() {
         window.parent.postMessage({ type: "forge:preview:ready" }, TRUSTED_EDITOR_ORIGIN);
 
         if (import.meta.env.DEV) {
-          (window as unknown as { __forgePreviewDebug?: RenderRig & { gameWorld: GameWorld | null } }).__forgePreviewDebug = {
+          (
+            window as unknown as {
+              __forgePreviewDebug?: RenderRig & { gameWorld: GameWorld | null; inventoryRuntime: typeof inventoryRuntime };
+            }
+          ).__forgePreviewDebug = {
             host,
             camera,
             layer,
             decorationLayer,
             groundTiles,
             gameWorld: gameWorldRef.current,
+            inventoryRuntime,
           };
         }
       } catch (err) {

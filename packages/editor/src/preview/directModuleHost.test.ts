@@ -57,4 +57,20 @@ describe("createModuleRuntime", () => {
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
   });
+
+  it("gives ctx.storage a real, working get/set/delete round trip — not a no-op that silently discards every write", () => {
+    const runtime = createModuleRuntime("@forge/dialogue", { trees: [] });
+    expect(runtime.ctx.storage.get("k")).toBeNull();
+    runtime.ctx.storage.set("k", { a: 1 });
+    expect(runtime.ctx.storage.get("k")).toEqual({ a: 1 });
+    runtime.ctx.storage.delete("k");
+    expect(runtime.ctx.storage.get("k")).toBeNull();
+  });
+
+  it("gives each createModuleRuntime call its own isolated storage", () => {
+    const runtimeA = createModuleRuntime("@forge/dialogue", { trees: [] });
+    const runtimeB = createModuleRuntime("@forge/dialogue", { trees: [] });
+    runtimeA.ctx.storage.set("k", "a");
+    expect(runtimeB.ctx.storage.get("k")).toBeNull();
+  });
 });

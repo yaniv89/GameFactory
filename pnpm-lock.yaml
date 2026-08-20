@@ -113,6 +113,9 @@ importers:
       '@forge/ds':
         specifier: workspace:*
         version: link:../design-system
+      '@forge/inventory':
+        specifier: workspace:*
+        version: link:../modules/inventory
       '@forge/module-api':
         specifier: workspace:*
         version: link:../module-api

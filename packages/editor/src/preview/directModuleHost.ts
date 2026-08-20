@@ -70,11 +70,31 @@ const NOOP_SCENE: SceneApi = {
   transitionTo: () => {},
 };
 
-const NOOP_STORAGE: StorageApi = {
-  get: () => null,
-  set: () => {},
-  delete: () => {},
-};
+/**
+ * A real, in-memory `StorageApi` — one `Map` per `createModuleRuntime`
+ * call, so each module's own runtime gets isolated storage the same way
+ * it gets an isolated `World`. Replaces a former `NOOP_STORAGE` (`get`
+ * always `null`, `set`/`delete` no-ops) that silently discarded every
+ * write: harmless for `@forge/dialogue` (never touches `storage`), but it
+ * would have made `@forge/inventory` (I1e) *look* wired up while never
+ * actually retaining an item — CLAUDE.md 1.1.1's "never write a stub that
+ * returns hardcoded data and present it as working" applies just as much
+ * to a capability object as to a function. This is still not real
+ * persistence across a reload (I1f's job) — only real *within* one boot
+ * of the preview, same lifetime as the `World` it sits next to.
+ */
+function createMemoryStorage(): StorageApi {
+  const store = new Map<string, unknown>();
+  return {
+    get: <T,>(key: string): T | null => (store.has(key) ? (store.get(key) as T) : null),
+    set: <T,>(key: string, value: T): void => {
+      store.set(key, value);
+    },
+    delete: (key: string): void => {
+      store.delete(key);
+    },
+  };
+}
 
 function makeLogger(moduleName: string): Logger {
   const log = (level: "debug" | "info" | "warn" | "error", message: string, data?: Readonly<Record<string, unknown>>) => {
@@ -254,7 +274,7 @@ export function createModuleRuntime(moduleName: string, config: Readonly<Record<
     runInterceptor(point, value) {
       return interceptors.run(point, value, { world });
     },
-    storage: NOOP_STORAGE,
+    storage: createMemoryStorage(),
     log,
   };
 

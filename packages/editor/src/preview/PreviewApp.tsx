@@ -1,7 +1,9 @@
 import {
   COIN_ITEM_ID,
   COIN_PICKUP_PREFAB,
+  EQUIPMENT_NO_WEAPON,
   MOUNT_PREFAB,
+  PLAYER_START_PREFAB,
   createCharacterAnimationSystem,
   createEnemyAiSystem,
   createEquipmentSystem,
@@ -13,6 +15,7 @@ import {
   createPickupSystem,
   createVfxParticleSystem,
   registerCoreComponents,
+  serializeEntity,
   spawnVfxBurst,
   EventBusImpl,
   HealthSchema,
@@ -20,13 +23,14 @@ import {
   TransformSchema,
   VelocitySchema,
   World,
+  type ComponentFieldValues,
   type EntityId,
   type EventBus,
   type MeleeAttackEventMap,
   type PickupEventMap,
 } from "@forge/core";
 import { dialogueModule } from "@forge/dialogue";
-import { inventoryModule, type InventoryChangedEvent } from "@forge/inventory";
+import { inventoryModule, storageKey, type InventoryChangedEvent } from "@forge/inventory";
 import { buildDialogueTreesFromEntities } from "@forge/project-export";
 import {
   Camera,
@@ -49,6 +53,7 @@ import type { EntityPlacement } from "../store/projectStore";
 import { fitZoom as fitZoomOf, followCamera as followCameraOf, followZoom as followZoomOf } from "./cameraFollow";
 import { buildDecorationTextures, computeDecorationTiles } from "./decorationTiles";
 import { createModuleRuntime } from "./directModuleHost";
+import type { DevPreviewSave } from "./devPreviewSave";
 import { createPreviewAudio, type PreviewAudio } from "./previewAudio";
 import {
   COIN_ASSET_ID,
@@ -165,6 +170,45 @@ const IMPACT_SPARK_OPTIONS = {
   particleAssetId: VFX_PARTICLE_ASSET_ID,
 } as const;
 
+/**
+ * I1f's dev-preview autosave interval — a defense-in-depth safety net
+ * alongside the real `beforeunload` save (below): a crashed tab or a
+ * reload that skips `beforeunload` (some browsers, some navigation types)
+ * still loses at most this many seconds of progress rather than the whole
+ * session. Not tunable via a budget-sensitive hot path — this runs once
+ * per interval firing, not per frame.
+ */
+const DEV_PREVIEW_AUTOSAVE_MS = 5_000;
+
+/** `PLAYER_START_PREFAB`'s own base `Velocity.maxSpeed` (@forge/core) — read from the prefab itself rather than a second hardcoded `140`, so this can't silently drift from it. Used by `sanitizeRestoredPlayerComponents` to undo I1b's mount speed boost on restore (see that function's own doc comment). */
+const PLAYER_BASE_MAX_SPEED = PLAYER_START_PREFAB.components.velocity?.maxSpeed ?? 140;
+
+/**
+ * I1f: a dev-preview save captures the player entity's components exactly
+ * as they were (`serializeEntity`, @forge/core) — including any transient
+ * state that only makes sense in relation to a specific *other* entity
+ * this save doesn't restore. Two fields need resetting to their
+ * "unequipped/unmounted" defaults before the saved components are handed
+ * to `world.create()`, or the restored player would be stranded:
+ *
+ * - `Equipment.weaponEntity` would reference a wielded-weapon marker
+ *   entity that is never itself saved/restored (`createEquipmentSystem`
+ *   owns its lifecycle entirely) — left as saved, it would point at an id
+ *   nothing ever creates again.
+ * - `Velocity.maxSpeed` would be `Mount.mountedMaxSpeed` (I1b) if the
+ *   player was riding at save time, but the demo mount fixture always
+ *   respawns fresh and un-ridden (this file's own doc comment on why mount/
+ *   enemy fixtures aren't restored) — with no live `Mount` whose
+ *   `riderEntity` matches this player, `createMountSystem` would have no
+ *   dismount path to bring the speed back down.
+ */
+function sanitizeRestoredPlayerComponents(saved: Readonly<Record<string, ComponentFieldValues>>): Record<string, ComponentFieldValues> {
+  const restored: Record<string, ComponentFieldValues> = { ...saved };
+  if (restored.Velocity) restored.Velocity = { ...restored.Velocity, maxSpeed: PLAYER_BASE_MAX_SPEED };
+  if (restored.Equipment) restored.Equipment = { ...restored.Equipment, weaponEntity: EQUIPMENT_NO_WEAPON };
+  return restored;
+}
+
 /** H1f's footstep cadence — world units of real player travel between footstep cues, not a fixed timer, so a step lands at the same point in the walk cycle regardless of frame rate. Close to a walk-cycle stride at TILE_SIZE's own scale. */
 const FOOTSTEP_STRIDE_DISTANCE = 26;
 
@@ -274,6 +318,23 @@ export function PreviewApp() {
   const rigRef = useRef<RenderRig | null>(null);
   const gameWorldRef = useRef<GameWorld | null>(null);
   const dialogueRef = useRef<DialogueRuntime | null>(null);
+  /**
+   * I1f: the saved player's own components (`devPreviewSave.ts`), read
+   * once at boot — before the first `forge:preview:scene` message (a
+   * *separate* `useEffect` from the boot effect, per `DialogueRuntime`'s
+   * own doc comment on why the two are split) actually spawns the player.
+   * `reconcileEntities` consumes and clears this on the one spawn it ever
+   * performs; `null` (never restored, or already consumed) means "spawn
+   * fresh," the existing pre-I1f behavior.
+   */
+  const devPreviewPlayerRestoreRef = useRef<Readonly<Record<string, ComponentFieldValues>> | null>(null);
+  /** I1f's save trigger — a stable function reference so `window.removeEventListener` in the boot effect's own cleanup actually matches the `addEventListener` call it's undoing. */
+  const devPreviewSaveNowRef = useRef<(() => void) | null>(null);
+  const devPreviewAutosaveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** Set once at boot, read from the *separate* scene-message effect below — the only place a restore (`PreviewSceneMessage.devSave`) actually lands, and the only place `inventoryRuntime` itself was otherwise out of reach from. */
+  const inventoryRuntimeRef = useRef<ReturnType<typeof createModuleRuntime> | null>(null);
+  /** Guards `inventoryRuntime.restoreStorage` (and the paired `setCoinCount`) to the one `devSave` this preview ever restores from — a later `forge:preview:scene` message repeating the same `devSave` (harmless on the wire, see that field's own doc comment) must not re-clobber inventory state the player has since genuinely changed. */
+  const devPreviewInventoryRestoredRef = useRef(false);
   /** Populated asynchronously once a `forge:preview:scene` message names an `activePack` — read every tick by the sprite-sync `resolveTexture` closure below, which is wired once at boot before any pack has necessarily loaded. Empty map (not undefined) so a lookup miss and "still loading" look identical: fall back to the placeholder marker either way. */
   const characterTexturesRef = useRef<Map<string, CharacterFrameSet>>(new Map());
   /** The `activePack` name this preview has already loaded (or attempted to) — guards against re-fetching the same pack's manifest on every scene message (tile paints fire these constantly) and against a stale, slower-to-resolve fetch clobbering a newer one. */
@@ -416,6 +477,14 @@ export function PreviewApp() {
         // Forge itself ships, not a marketplace install.
         const inventoryRuntime = createModuleRuntime("@forge/inventory", { defaultMaxSlots: 20 });
         inventoryModule.setup(inventoryRuntime.ctx);
+        // I1f: reachable from the scene-message effect below, which is
+        // where a restore (if any) actually lands — see
+        // `PreviewSceneMessage.devSave`'s own doc comment (protocol.ts)
+        // for why this can't happen synchronously here at boot: the
+        // sandboxed iframe has no `localStorage` of its own to read, only
+        // whatever the parent hands it over the postMessage bridge, which
+        // hasn't arrived yet at this point in the boot sequence.
+        inventoryRuntimeRef.current = inventoryRuntime;
         const audio = createPreviewAudio();
         previewAudioRef.current = audio;
         scheduler.addSystem(createTransformSnapshotSystem(world, snapshots));
@@ -659,6 +728,34 @@ export function PreviewApp() {
         tickerCallbackRef.current = onTick;
         host.app.ticker.add(onTick);
 
+        // I1f: the real save trigger. `beforeunload` fires on a genuine
+        // page/iframe reload (the case this whole feature exists for); the
+        // interval (DEV_PREVIEW_AUTOSAVE_MS) is a safety net for a crash or
+        // a navigation type that skips it. Both call the exact same
+        // function, so there is one save path, not two to keep in sync.
+        // Silently a no-op before a player exists (nothing to save yet) —
+        // not an error, just "too early," the same shape `onTick`'s own
+        // `playerEntity !== undefined` guards already use throughout.
+        // Posts the save data *out* to the parent rather than writing
+        // `localStorage` directly — this document's own opaque sandbox
+        // origin makes `localStorage` throw (`devPreviewSave.ts`'s own doc
+        // comment); `TRUSTED_EDITOR_ORIGIN` is the same concrete,
+        // known-in-advance target `forge:preview:ready` already posts to.
+        const saveNow = () => {
+          const gameWorld = gameWorldRef.current;
+          if (!gameWorld || gameWorld.playerEntity === undefined) return;
+          if (!gameWorld.world.isAlive(gameWorld.playerEntity)) return;
+          const save: DevPreviewSave = {
+            player: serializeEntity(gameWorld.world, gameWorld.playerEntity),
+            inventory: inventoryRuntime.snapshotStorage(),
+            savedAt: new Date().toISOString(),
+          };
+          window.parent.postMessage({ type: "forge:preview:save", save }, TRUSTED_EDITOR_ORIGIN);
+        };
+        devPreviewSaveNowRef.current = saveNow;
+        window.addEventListener("beforeunload", saveNow);
+        devPreviewAutosaveIntervalRef.current = setInterval(saveNow, DEV_PREVIEW_AUTOSAVE_MS);
+
         setStatus("ready");
         window.parent.postMessage({ type: "forge:preview:ready" }, TRUSTED_EDITOR_ORIGIN);
 
@@ -692,9 +789,17 @@ export function PreviewApp() {
       cancelled = true;
       lifecycleRef.current = bootPromise.then(() => {
         if (tickerCallbackRef.current) rigRef.current?.host.app.ticker.remove(tickerCallbackRef.current);
+        if (devPreviewAutosaveIntervalRef.current !== null) clearInterval(devPreviewAutosaveIntervalRef.current);
+        devPreviewAutosaveIntervalRef.current = null;
+        if (devPreviewSaveNowRef.current) {
+          devPreviewSaveNowRef.current(); // final flush — an unmount (SPA navigation) loses progress just as surely as a reload would without this.
+          window.removeEventListener("beforeunload", devPreviewSaveNowRef.current);
+          devPreviewSaveNowRef.current = null;
+        }
         rigRef.current?.host.destroy();
         rigRef.current = null;
         gameWorldRef.current = null;
+        inventoryRuntimeRef.current = null;
         previewAudioRef.current?.dispose();
         previewAudioRef.current = null;
       });
@@ -757,7 +862,24 @@ export function PreviewApp() {
       const rig = rigRef.current;
       const gameWorld = gameWorldRef.current;
       if (!rig || !gameWorld) return;
-      const { tiles, entities, activePack } = event.data;
+      const { tiles, entities, activePack, devSave } = event.data;
+
+      // I1f: the one place a restore actually lands — see
+      // `PreviewSceneMessage.devSave`'s own doc comment (protocol.ts) for
+      // why this can't happen synchronously at boot, and
+      // `devPreviewInventoryRestoredRef`'s own doc comment for why this is
+      // guarded to fire once. `devPreviewPlayerRestoreRef` is populated
+      // here and consumed by `reconcileEntities`, below, in this same
+      // handler invocation. The HUD coin count isn't set here — the
+      // module's own storage is keyed by the *restored* player entity's
+      // id (`storageKey`, @forge/inventory), which `reconcileEntities`
+      // hasn't assigned yet at this point — see the block right after it.
+      const restoringInventory = devSave && !devPreviewInventoryRestoredRef.current;
+      if (restoringInventory) {
+        devPreviewInventoryRestoredRef.current = true;
+        inventoryRuntimeRef.current?.restoreStorage(devSave.inventory);
+        devPreviewPlayerRestoreRef.current = devSave.player;
+      }
 
       // Fire-and-forget, guarded against duplicate/stale loads: most
       // `forge:preview:scene` messages (every tile paint) repeat the same
@@ -814,7 +936,19 @@ export function PreviewApp() {
         rig.decorationLayer.setTiles(computeDecorationTiles(rig.groundTiles, GRID_WIDTH, GRID_HEIGHT));
       }
 
-      reconcileEntities(gameWorld, entities);
+      reconcileEntities(gameWorld, entities, devPreviewPlayerRestoreRef.current);
+      devPreviewPlayerRestoreRef.current = null; // consumed on its one possible use — see this ref's own doc comment.
+
+      // The other half of restoringInventory, above: now that the
+      // restored player has its (new) entity id, read its own item
+      // stack back out of the just-restored module storage — the same
+      // `storageKey` lookup the module itself uses internally — to drive
+      // the HUD's coin count from real state, not the blind "0" a fresh
+      // spawn would otherwise leave it at.
+      if (restoringInventory && gameWorld.playerEntity !== undefined) {
+        const items = inventoryRuntimeRef.current?.ctx.storage.get<Record<string, number>>(storageKey(gameWorld.playerEntity));
+        setCoinCount(items?.coin ?? 0);
+      }
       dialogueRef.current = rebuildDialogueRuntime(entities, (payload) => {
         clearTimeout(bubbleTimeoutRef.current);
         setBubble({ speaker: payload.speaker, text: payload.text });
@@ -939,13 +1073,29 @@ export function PreviewApp() {
   );
 }
 
-function reconcileEntities(gameWorld: GameWorld, entities: readonly EntityPlacement[]): void {
+/**
+ * I1f: `devPreviewRestore`, when non-null, is the saved player's own
+ * components from a previous boot of this browser (`devPreviewSave.ts`).
+ * The player only ever spawns once per boot (guarded by
+ * `gameWorld.playerEntity === undefined`, same as before I1f) — restoring
+ * takes over that single spawn moment instead of adding a second path,
+ * so there's exactly one place "how does the player entity come into
+ * being" is decided. The scene's own `playerPlacement` tile is still
+ * required to gate *when* this fires (no player-start placement, no
+ * player, restored or not) but its x/y is ignored on a restore — the
+ * saved `Transform` is authoritative for where the player actually was.
+ */
+function reconcileEntities(gameWorld: GameWorld, entities: readonly EntityPlacement[], devPreviewRestore: Readonly<Record<string, ComponentFieldValues>> | null): void {
   const { world, npcEntitiesByPlacementId } = gameWorld;
 
   const playerPlacement = entities.find((entity) => entity.prefabId === "player-start");
   if (playerPlacement && gameWorld.playerEntity === undefined) {
-    const { x, y } = tileCenterWorld(playerPlacement.tileX, playerPlacement.tileY);
-    gameWorld.playerEntity = spawnPlayer(world, x, y);
+    if (devPreviewRestore) {
+      gameWorld.playerEntity = world.create(sanitizeRestoredPlayerComponents(devPreviewRestore));
+    } else {
+      const { x, y } = tileCenterWorld(playerPlacement.tileX, playerPlacement.tileY);
+      gameWorld.playerEntity = spawnPlayer(world, x, y);
+    }
   }
 
   const seenIds = new Set(entities.filter((entity) => entity.prefabId === "npc").map((entity) => entity.id));

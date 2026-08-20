@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useCanvasPreviewStore } from "../canvas/canvasPreviewStore";
+import { loadDevPreview, saveDevPreview, type DevPreviewSave } from "../preview/devPreviewSave";
 import { isPreviewToEditorMessage, type EditorToPreviewMessage } from "../preview/protocol";
 import { useProjectStore } from "../store/projectStore";
 import "./PreviewPanel.css";
@@ -34,6 +35,20 @@ export function PreviewPanel() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [status, setStatus] = useState<PreviewPanelStatus>("loading");
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
+  /**
+   * I1f: this browser's last dev-preview save, if any. `useRef`'s
+   * argument is only ever consulted on the component's first render (the
+   * same "cheap enough to call directly, no lazy-initializer form needed"
+   * shape `useState` reserves a function-argument form for), so
+   * `loadDevPreview()` — one `localStorage.getItem` + `JSON.parse` — runs
+   * once here, not per render. Handed to the preview on the first
+   * `forge:preview:scene` send below, then cleared so it isn't repeated
+   * on every subsequent tile paint. Read here, not inside the sandboxed
+   * iframe: `devPreviewSave.ts`'s own doc comment has the
+   * confirmed-empirically reason (`localStorage` throws from that
+   * document's opaque origin).
+   */
+  const devSaveRef = useRef<DevPreviewSave | null>(loadDevPreview());
   const tiles = useCanvasPreviewStore((state) => state.tiles);
   // Entities are already real projectStore state (unlike tiles, which
   // live inside an imperative TilemapLayer — see canvasPreviewStore's
@@ -51,6 +66,12 @@ export function PreviewPanel() {
       if (event.data.type === "forge:preview:ready") {
         setStatus("ready");
         setErrorMessage(undefined);
+      } else if (event.data.type === "forge:preview:save") {
+        // I1f: the real write side — the preview iframe has no
+        // `localStorage` of its own to write to (its opaque sandbox
+        // origin), so this is the only place a dev-preview save is ever
+        // actually persisted.
+        saveDevPreview(event.data.save);
       } else {
         setStatus("error");
         setErrorMessage(event.data.message);
@@ -65,7 +86,14 @@ export function PreviewPanel() {
   // RenderHost boot.
   useEffect(() => {
     if (status !== "ready" || !tiles) return;
-    const message: EditorToPreviewMessage = { type: "forge:preview:scene", tiles, entities: entities ?? [], ...(activePack !== undefined ? { activePack } : {}) };
+    const message: EditorToPreviewMessage = {
+      type: "forge:preview:scene",
+      tiles,
+      entities: entities ?? [],
+      ...(activePack !== undefined ? { activePack } : {}),
+      ...(devSaveRef.current ? { devSave: devSaveRef.current } : {}),
+    };
+    devSaveRef.current = null; // sent (if there was one) — the preview itself is the source of truth for its own state from here on.
     // "*" is the only valid targetOrigin here, not a lazy default: the
     // iframe is sandbox="allow-scripts" with no allow-same-origin, so its
     // origin is browser-opaque — no literal origin string (including

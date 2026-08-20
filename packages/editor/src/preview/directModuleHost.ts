@@ -56,6 +56,10 @@ interface ModuleRuntime {
   readonly events: EventBusImpl<Record<string, unknown>>;
   readonly interceptors: InterceptorRegistry<InterceptorMap>;
   readonly ctx: SetupContext;
+  /** A plain-object snapshot of everything currently in `ctx.storage` — the same `Record<string, unknown>` shape `runtime-host`'s own `ModuleBridge.snapshotStorage()` returns (`SaveFile.globals[moduleName]`), so a caller building a save (I1f) doesn't need a third shape to reconcile. */
+  readonly snapshotStorage: () => Record<string, unknown>;
+  /** Replaces `ctx.storage`'s entire contents with `data` — the restore half of `snapshotStorage`. Existing keys not present in `data` are cleared, matching `ModuleBridge.restoreStorage`'s own "this is the whole state now" semantics, not a merge. */
+  readonly restoreStorage: (data: Readonly<Record<string, unknown>>) => void;
 }
 
 const NOOP_INPUT: InputSnapshot = {
@@ -83,15 +87,28 @@ const NOOP_SCENE: SceneApi = {
  * persistence across a reload (I1f's job) — only real *within* one boot
  * of the preview, same lifetime as the `World` it sits next to.
  */
-function createMemoryStorage(): StorageApi {
+interface MemoryStorage {
+  readonly api: StorageApi;
+  readonly snapshot: () => Record<string, unknown>;
+  readonly restore: (data: Readonly<Record<string, unknown>>) => void;
+}
+
+function createMemoryStorage(): MemoryStorage {
   const store = new Map<string, unknown>();
   return {
-    get: <T,>(key: string): T | null => (store.has(key) ? (store.get(key) as T) : null),
-    set: <T,>(key: string, value: T): void => {
-      store.set(key, value);
+    api: {
+      get: <T,>(key: string): T | null => (store.has(key) ? (store.get(key) as T) : null),
+      set: <T,>(key: string, value: T): void => {
+        store.set(key, value);
+      },
+      delete: (key: string): void => {
+        store.delete(key);
+      },
     },
-    delete: (key: string): void => {
-      store.delete(key);
+    snapshot: () => Object.fromEntries(store),
+    restore: (data) => {
+      store.clear();
+      for (const [key, value] of Object.entries(data)) store.set(key, value);
     },
   };
 }
@@ -206,6 +223,7 @@ export function createModuleRuntime(moduleName: string, config: Readonly<Record<
   const interceptors = new InterceptorRegistry<InterceptorMap>();
   const directWorld = new DirectWorldApi(world);
   const log = makeLogger(moduleName);
+  const memoryStorage = createMemoryStorage();
 
   const ctx: SetupContext = {
     config,
@@ -274,9 +292,9 @@ export function createModuleRuntime(moduleName: string, config: Readonly<Record<
     runInterceptor(point, value) {
       return interceptors.run(point, value, { world });
     },
-    storage: createMemoryStorage(),
+    storage: memoryStorage.api,
     log,
   };
 
-  return { world, scheduler, events, interceptors, ctx };
+  return { world, scheduler, events, interceptors, ctx, snapshotStorage: memoryStorage.snapshot, restoreStorage: memoryStorage.restore };
 }

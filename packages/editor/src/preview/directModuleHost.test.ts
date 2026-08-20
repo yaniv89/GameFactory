@@ -73,4 +73,25 @@ describe("createModuleRuntime", () => {
     runtimeA.ctx.storage.set("k", "a");
     expect(runtimeB.ctx.storage.get("k")).toBeNull();
   });
+
+  it("snapshotStorage/restoreStorage round-trip real storage state across two separate runtimes (I1f)", () => {
+    const runtimeA = createModuleRuntime("@forge/dialogue", { trees: [] });
+    runtimeA.ctx.storage.set("gold", 42);
+    runtimeA.ctx.storage.set("season", "winter");
+    expect(runtimeA.snapshotStorage()).toEqual({ gold: 42, season: "winter" });
+
+    const runtimeB = createModuleRuntime("@forge/dialogue", { trees: [] });
+    expect(runtimeB.snapshotStorage()).toEqual({});
+    runtimeB.restoreStorage(runtimeA.snapshotStorage());
+    expect(runtimeB.ctx.storage.get("gold")).toBe(42);
+    expect(runtimeB.ctx.storage.get("season")).toBe("winter");
+  });
+
+  it("restoreStorage replaces the whole contents rather than merging", () => {
+    const runtime = createModuleRuntime("@forge/dialogue", { trees: [] });
+    runtime.ctx.storage.set("stale", "value");
+    runtime.restoreStorage({ fresh: "value" });
+    expect(runtime.ctx.storage.get("stale")).toBeNull();
+    expect(runtime.ctx.storage.get("fresh")).toBe("value");
+  });
 });

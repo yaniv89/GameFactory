@@ -1,8 +1,15 @@
 import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useCanvasPreviewStore } from "../canvas/canvasPreviewStore";
+import { loadDevPreview, saveDevPreview, type DevPreviewSave } from "../preview/devPreviewSave";
 import { useProjectStore } from "../store/projectStore";
 import { PreviewPanel } from "./PreviewPanel";
+
+const SAMPLE_SAVE: DevPreviewSave = {
+  player: { Transform: { x: 1, y: 2, rotation: 0, scaleX: 1, scaleY: 1 } },
+  inventory: { coin: 3 },
+  savedAt: "2026-08-20T00:00:00.000Z",
+};
 
 function getIframe(): HTMLIFrameElement {
   return document.querySelector(".fg-preview-panel__frame") as HTMLIFrameElement;
@@ -26,6 +33,7 @@ describe("PreviewPanel", () => {
       checkpoints: [],
       selection: undefined,
     });
+    window.localStorage.clear();
   });
 
   it("shows the loading overlay before the iframe reports ready", () => {
@@ -90,5 +98,42 @@ describe("PreviewPanel", () => {
     render(<PreviewPanel />);
     const iframe = getIframe();
     expect(iframe.getAttribute("sandbox")).toBe("allow-scripts");
+  });
+
+  describe("I1f: dev-preview save/restore bridge", () => {
+    it("includes this browser's last dev-preview save in the first scene message, then omits it from later ones", () => {
+      saveDevPreview(SAMPLE_SAVE);
+      useCanvasPreviewStore.setState({ tiles: [1, 2, 3] });
+
+      render(<PreviewPanel />);
+      const postMessageSpy = vi.spyOn(getIframe().contentWindow as Window, "postMessage");
+      dispatchFromIframe({ type: "forge:preview:ready" });
+
+      expect(postMessageSpy).toHaveBeenNthCalledWith(1, { type: "forge:preview:scene", tiles: [1, 2, 3], entities: [], devSave: SAMPLE_SAVE }, "*");
+
+      act(() => useCanvasPreviewStore.setState({ tiles: [4, 5, 6] }));
+      expect(postMessageSpy).toHaveBeenNthCalledWith(2, { type: "forge:preview:scene", tiles: [4, 5, 6], entities: [] }, "*");
+    });
+
+    it("sends no devSave field when this browser has no dev-preview save", () => {
+      useCanvasPreviewStore.setState({ tiles: [1, 2, 3] });
+      render(<PreviewPanel />);
+      const postMessageSpy = vi.spyOn(getIframe().contentWindow as Window, "postMessage");
+      dispatchFromIframe({ type: "forge:preview:ready" });
+      expect(postMessageSpy).toHaveBeenCalledWith({ type: "forge:preview:scene", tiles: [1, 2, 3], entities: [] }, "*");
+    });
+
+    it("persists a forge:preview:save message from the iframe to this browser's localStorage — the only place the sandboxed preview's save can actually land", () => {
+      render(<PreviewPanel />);
+      expect(loadDevPreview()).toBeNull();
+      dispatchFromIframe({ type: "forge:preview:save", save: SAMPLE_SAVE });
+      expect(loadDevPreview()).toEqual(SAMPLE_SAVE);
+    });
+
+    it("ignores a forge:preview:save whose save payload doesn't structurally match DevPreviewSave", () => {
+      render(<PreviewPanel />);
+      dispatchFromIframe({ type: "forge:preview:save", save: { player: "not-an-object" } });
+      expect(loadDevPreview()).toBeNull();
+    });
   });
 });

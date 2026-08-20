@@ -76,6 +76,20 @@ describe("isPreviewSceneMessage", () => {
   it("rejects a message with a non-string activePack", () => {
     expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], activePack: 42 })).toBe(false);
   });
+
+  it("accepts a message with no devSave field (nothing saved yet)", () => {
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [] })).toBe(true);
+  });
+
+  it("accepts a message with a well-formed devSave", () => {
+    const devSave = { player: { Transform: { x: 1, y: 2 } }, inventory: { coin: 1 }, savedAt: "now" };
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], devSave })).toBe(true);
+  });
+
+  it("rejects a message whose devSave doesn't structurally match DevPreviewSave", () => {
+    const devSave = { player: { Transform: { x: "not-a-number" } }, inventory: {}, savedAt: "now" };
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], devSave })).toBe(false);
+  });
 });
 
 describe("isPreviewToEditorMessage", () => {
@@ -95,5 +109,14 @@ describe("isPreviewToEditorMessage", () => {
     expect(isPreviewToEditorMessage({ type: "forge:preview:scene", tiles: [], entities: [] })).toBe(false);
     expect(isPreviewToEditorMessage(undefined)).toBe(false);
     expect(isPreviewToEditorMessage(42)).toBe(false);
+  });
+
+  it("accepts a save message with a well-formed DevPreviewSave payload", () => {
+    const save = { player: { Transform: { x: 1, y: 2 } }, inventory: { coin: 1 }, savedAt: "now" };
+    expect(isPreviewToEditorMessage({ type: "forge:preview:save", save })).toBe(true);
+  });
+
+  it("rejects a save message whose save payload doesn't structurally match DevPreviewSave", () => {
+    expect(isPreviewToEditorMessage({ type: "forge:preview:save", save: { player: "nope" } })).toBe(false);
   });
 });

@@ -1,6 +1,7 @@
 import { isPrefabId } from "@forge/core";
 import { GRID_HEIGHT, GRID_WIDTH } from "../canvas/gridConstants";
 import type { EntityPlacement } from "../store/projectStore";
+import { isValidDevPreviewSave, type DevPreviewSave } from "./devPreviewSave";
 
 /**
  * The entire wire protocol between the editor (app.forge.dev, in
@@ -22,6 +23,17 @@ export interface PreviewSceneMessage {
   readonly entities: readonly EntityPlacement[];
   /** `ProjectDocument.activePack` — undefined when no Art Pack is installed. The preview resolves real character/tile art against this itself (`characterTextures.ts`/`packTiles.ts`); a pack name a client sends is still just a hint like any other field here, never trusted beyond "which pack to fetch and validate." */
   readonly activePack?: string;
+  /**
+   * I1f: the last dev-preview save this browser has, if any —
+   * `PreviewPanel.tsx` reads it once (`localStorage`, its own real
+   * origin) and hands it to the preview here, since the sandboxed iframe
+   * can't read `localStorage` itself (`devPreviewSave.ts`'s own doc
+   * comment has the confirmed-empirically detail). Sent on the first
+   * `forge:preview:scene` message after boot and consumed once on that
+   * side (`PreviewApp.tsx`) — present on later messages is harmless, just
+   * ignored.
+   */
+  readonly devSave?: DevPreviewSave;
 }
 
 export interface PreviewReadyMessage {
@@ -33,11 +45,23 @@ export interface PreviewErrorMessage {
   readonly message: string;
 }
 
+/**
+ * I1f: the preview's own save trigger (`beforeunload`/periodic/unmount —
+ * `PreviewApp.tsx`'s own doc comment) ships the save data *out* to the
+ * parent, which is the only side of this bridge with a real, storable
+ * origin — see `PreviewSceneMessage.devSave`'s own doc comment for the
+ * reverse direction.
+ */
+export interface PreviewSaveMessage {
+  readonly type: "forge:preview:save";
+  readonly save: DevPreviewSave;
+}
+
 /** Editor -> preview. */
 export type EditorToPreviewMessage = PreviewSceneMessage;
 
 /** Preview -> editor. */
-export type PreviewToEditorMessage = PreviewReadyMessage | PreviewErrorMessage;
+export type PreviewToEditorMessage = PreviewReadyMessage | PreviewErrorMessage | PreviewSaveMessage;
 
 const EXPECTED_TILE_COUNT = GRID_WIDTH * GRID_HEIGHT;
 
@@ -58,19 +82,21 @@ function isValidEntity(value: unknown): value is EntityPlacement {
 
 export function isPreviewSceneMessage(data: unknown): data is PreviewSceneMessage {
   if (typeof data !== "object" || data === null) return false;
-  const candidate = data as { type?: unknown; tiles?: unknown; entities?: unknown; activePack?: unknown };
+  const candidate = data as { type?: unknown; tiles?: unknown; entities?: unknown; activePack?: unknown; devSave?: unknown };
   if (candidate.type !== "forge:preview:scene") return false;
   if (!Array.isArray(candidate.tiles) || candidate.tiles.length !== EXPECTED_TILE_COUNT) return false;
   if (!candidate.tiles.every((tile) => typeof tile === "number" && Number.isFinite(tile))) return false;
   if (!Array.isArray(candidate.entities)) return false;
   if (candidate.activePack !== undefined && typeof candidate.activePack !== "string") return false;
+  if (candidate.devSave !== undefined && !isValidDevPreviewSave(candidate.devSave)) return false;
   return candidate.entities.every(isValidEntity);
 }
 
 export function isPreviewToEditorMessage(data: unknown): data is PreviewToEditorMessage {
   if (typeof data !== "object" || data === null) return false;
-  const candidate = data as { type?: unknown; message?: unknown };
+  const candidate = data as { type?: unknown; message?: unknown; save?: unknown };
   if (candidate.type === "forge:preview:ready") return true;
   if (candidate.type === "forge:preview:error") return typeof candidate.message === "string";
+  if (candidate.type === "forge:preview:save") return isValidDevPreviewSave(candidate.save);
   return false;
 }

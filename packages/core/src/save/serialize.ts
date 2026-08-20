@@ -13,6 +13,26 @@ export interface SavedWorld {
 }
 
 /**
+ * Snapshots a single live entity's component data — the per-entity unit
+ * `serializeWorld` applies to every entity in the world. Exposed on its
+ * own for callers that only ever need one entity's worth of save state
+ * (e.g. the editor's live-preview persisting just the player's own
+ * progress across a reload, not the whole session — see
+ * `packages/editor/src/preview/devPreviewSave.ts`), where pulling in the
+ * whole-world serializer would mean also deciding how to restore every
+ * other live entity (NPCs, in-flight VFX, session fixtures) at its exact
+ * original id, which that caller deliberately does not need to solve.
+ */
+export function serializeEntity(world: World, entity: EntityId): Readonly<Record<string, ComponentFieldValues>> {
+  const components: Record<string, ComponentFieldValues> = {};
+  for (const name of world.componentsOf(entity)) {
+    const value = world.get(entity, name);
+    if (value) components[name] = value as ComponentFieldValues;
+  }
+  return components;
+}
+
+/**
  * Serializes every live entity's component data into the `world` shape of
  * `docs/SPEC.md` Section 8.5's `SaveFile`. Component names are written
  * verbatim, whatever they were registered under — SPEC 8.5's "namespaced
@@ -24,12 +44,7 @@ export interface SavedWorld {
 export function serializeWorld(world: World): SavedWorld {
   const entities: SavedEntity[] = [];
   world.query([]).forEach((entity) => {
-    const components: Record<string, ComponentFieldValues> = {};
-    for (const name of world.componentsOf(entity)) {
-      const value = world.get(entity, name);
-      if (value) components[name] = value as ComponentFieldValues;
-    }
-    entities.push({ id: entity, components });
+    entities.push({ id: entity, components: serializeEntity(world, entity) });
   });
   return { entities, nextEntityId: world.entityIndexBound };
 }

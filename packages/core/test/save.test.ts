@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { registerCoreComponents } from "../src/components/core";
 import { World } from "../src/ecs/world";
-import { deserializeWorld, serializeWorld } from "../src/save/serialize";
+import { deserializeWorld, serializeEntity, serializeWorld } from "../src/save/serialize";
 
 function makeWorld() {
   const world = new World();
@@ -79,5 +79,39 @@ describe("save: serializeWorld / deserializeWorld round trip", () => {
     for (const id of ids) {
       expect(restored.isAlive(id)).toBe(true);
     }
+  });
+});
+
+describe("save: serializeEntity", () => {
+  it("captures exactly one entity's own components, not the rest of the world", () => {
+    const world = makeWorld();
+    const a = world.create({ Transform: { x: 1, y: 2, rotation: 0, scaleX: 1, scaleY: 1 } });
+    world.create({ Transform: { x: 9, y: 9, rotation: 0, scaleX: 1, scaleY: 1 } }); // a second entity — must not leak into `a`'s snapshot
+    world.flush();
+
+    const snapshot = serializeEntity(world, a);
+    expect(Object.keys(snapshot)).toEqual(["Transform"]);
+    expect(snapshot.Transform).toMatchObject({ x: 1, y: 2 });
+  });
+
+  it("round-trips through world.create(), landing at a freshly-allocated id rather than the original one", () => {
+    const world = makeWorld();
+    const original = world.create({ Transform: { x: 5, y: 6, rotation: 0, scaleX: 1, scaleY: 1 }, Velocity: { vx: 1, vy: 2, maxSpeed: 100, friction: 0 } });
+    world.flush();
+    const snapshot = serializeEntity(world, original);
+
+    const restored = world.create(snapshot);
+    world.flush();
+
+    expect(restored).not.toBe(original);
+    expect(world.get(restored, "Transform")).toMatchObject({ x: 5, y: 6 });
+    expect(world.get(restored, "Velocity")).toMatchObject({ vx: 1, vy: 2, maxSpeed: 100 });
+  });
+
+  it("returns an empty object for an entity with no components", () => {
+    const world = makeWorld();
+    const bare = world.create();
+    world.flush();
+    expect(serializeEntity(world, bare)).toEqual({});
   });
 });

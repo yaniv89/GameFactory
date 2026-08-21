@@ -133,6 +133,9 @@ export function DataTableEditorDialog({ open, onClose, tableName, columns, rows,
                     )
                   }
                 />
+                <code className="fg-id-tag" title="Reference this column in a graph node's Key column field">
+                  {column.id}
+                </code>
                 <Button variant="destructive" onClick={() => onChange(...toColumnsAndRows(removeColumn({ columns: mutableColumns, rows: mutableRows }, column.id)))}>
                   Remove column
                 </Button>

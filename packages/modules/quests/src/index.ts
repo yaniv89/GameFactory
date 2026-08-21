@@ -69,20 +69,65 @@ export const questsModule: ForgeModule = {
       ctx.defineComponent<QuestStateShape>(questComponentName(quest.id), schema, QUEST_STATE_DEFAULTS);
     }
 
+    /**
+     * Found while building M13's own exit-criteria proof (docs/adr/0018):
+     * a graph that starts a quest and completes its objective in the same
+     * synchronous reaction (e.g. one `pickup:collected` handler) always
+     * used to fail the objective-completion silently. `WorldApi.add`
+     * (`@forge/module-api`'s own doc comment on `WorldApi`) is deferred to
+     * the next flush — correct, deliberate ECS batching
+     * (`packages/core/src/ecs/world.ts`'s own `CommandBuffer` doc comment)
+     * — so `quest:start`'s first-ever `ctx.world.add` for an entity was
+     * never actually visible to the very next `ctx.world.get` inside the
+     * same synchronous call chain, and `quest:completeObjective` rejected
+     * with `"notActive"` even though the quest had, from the author's
+     * perspective, obviously just started.
+     *
+     * This cache is the fix: the *decision* source (`stateOf`, below) is
+     * this always-synchronous in-memory map, never `ctx.world` directly.
+     * `ctx.world.add`/`.set` still run on every change, same as before —
+     * they remain the durable, inspectable, save/load-serializable mirror
+     * (`docs/SPEC.md`'s own "ECS component snapshot" persistence model,
+     * and what `__forgePreviewDebug`'s test hook reads) — just no longer
+     * the thing this module's own logic waits on.
+     */
+    const stateCache = new Map<string, QuestStateShape>();
+    function cacheKey(entity: EntityId, questId: string): string {
+      return `${entity}:${questId}`;
+    }
+
+    // Seed the cache from whatever component state already exists (e.g. a
+    // restored dev-preview save, `PreviewApp.tsx`'s own `devPreviewRestore`
+    // — I1f, which serializes and restores a player entity's *entire*
+    // component set, `Quest_<id>` included, with no awareness this module
+    // even exists) — so a fresh `setup()` call (a rebuild, or the one-shot
+    // preview attach) agrees with the world it's actually looking at,
+    // rather than starting blank and re-rejecting an already-active quest
+    // as "unknown" state.
+    for (const quest of quests) {
+      const componentName = questComponentName(quest.id);
+      ctx.world.query([componentName]).forEach((entity) => {
+        const state = ctx.world.get<QuestStateShape>(entity, componentName);
+        if (state) stateCache.set(cacheKey(entity, quest.id), state);
+      });
+    }
+
     function reject(entity: EntityId, questId: string, reason: QuestRejectedEvent["reason"]): void {
       ctx.events.emit("quest:rejected", { entity, questId, reason } satisfies QuestRejectedEvent);
     }
 
     function stateOf(entity: EntityId, questId: string): QuestStateShape | undefined {
-      const componentName = questComponentName(questId);
-      if (!ctx.world.has(entity, componentName)) return undefined;
-      return ctx.world.get<QuestStateShape>(entity, componentName);
+      return stateCache.get(cacheKey(entity, questId));
     }
 
-    function objectivePatch(index: number, value: boolean): Partial<QuestStateShape> {
-      const patch: Partial<QuestStateShape> = {};
-      patch[objectiveFieldName(index)] = value;
-      return patch;
+    /** Mirrors `state` into the ECS component — `add` if this is the first write ever for `entity`/`questId` (the component doesn't exist in the world's own view yet, even though the cache may already know better), `set` otherwise. Never the decision source (see `stateCache`'s own doc comment above) — purely for persistence and external inspection. */
+    function persist(entity: EntityId, questId: string, state: QuestStateShape): void {
+      const componentName = questComponentName(questId);
+      if (ctx.world.has(entity, componentName)) {
+        ctx.world.set<QuestStateShape>(entity, componentName, state);
+      } else {
+        ctx.world.add<QuestStateShape>(entity, componentName, state);
+      }
     }
 
     ctx.events.on("quest:start", (payload) => {
@@ -90,16 +135,13 @@ export const questsModule: ForgeModule = {
       const quest = questsById.get(questId);
       if (!quest) return reject(entity, questId, "unknownQuest");
 
-      const componentName = questComponentName(questId);
       const current = stateOf(entity, questId);
       if (current?.active) return reject(entity, questId, "alreadyActive");
       if (current?.completed) return reject(entity, questId, "alreadyCompleted");
 
-      if (ctx.world.has(entity, componentName)) {
-        ctx.world.set<QuestStateShape>(entity, componentName, { active: true });
-      } else {
-        ctx.world.add<QuestStateShape>(entity, componentName, { ...QUEST_STATE_DEFAULTS, active: true });
-      }
+      const next: QuestStateShape = { ...QUEST_STATE_DEFAULTS, active: true };
+      stateCache.set(cacheKey(entity, questId), next);
+      persist(entity, questId, next);
       ctx.events.emit("quest:started", { entity, questId } satisfies QuestStartedEvent);
     });
 
@@ -111,22 +153,23 @@ export const questsModule: ForgeModule = {
       const objectiveIndex = quest.objectives.findIndex((objective) => objective.id === objectiveId);
       if (objectiveIndex === -1) return reject(entity, questId, "unknownObjective");
 
-      const componentName = questComponentName(questId);
       const current = stateOf(entity, questId);
       if (!current?.active) return reject(entity, questId, "notActive");
 
       const field = objectiveFieldName(objectiveIndex);
       if (current[field]) return; // idempotent: already completed, not an error
 
-      ctx.world.set<QuestStateShape>(entity, componentName, objectivePatch(objectiveIndex, true));
-      ctx.events.emit("quest:objectiveCompleted", { entity, questId, objectiveId } satisfies ObjectiveCompletedEvent);
-
-      const updated = stateOf(entity, questId)!;
+      const updated: QuestStateShape = { ...current, [field]: true };
       const allComplete = quest.objectives.every((_objective, index) => updated[objectiveFieldName(index)]);
       if (allComplete) {
-        ctx.world.set<QuestStateShape>(entity, componentName, { active: false, completed: true });
-        ctx.events.emit("quest:completed", { entity, questId } satisfies QuestCompletedEvent);
+        updated.active = false;
+        updated.completed = true;
       }
+      stateCache.set(cacheKey(entity, questId), updated);
+      persist(entity, questId, updated);
+
+      ctx.events.emit("quest:objectiveCompleted", { entity, questId, objectiveId } satisfies ObjectiveCompletedEvent);
+      if (allComplete) ctx.events.emit("quest:completed", { entity, questId } satisfies QuestCompletedEvent);
     });
 
     ctx.events.on("quest:query", (payload) => {

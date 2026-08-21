@@ -128,6 +128,9 @@ importers:
       '@forge/project-export':
         specifier: workspace:*
         version: link:../project-export
+      '@forge/quests':
+        specifier: workspace:*
+        version: link:../modules/quests
       '@forge/render-2d':
         specifier: workspace:*
         version: link:../render-2d

@@ -27,6 +27,7 @@
     "@forge/inventory": "workspace:*",
     "@forge/module-api": "workspace:*",
     "@forge/project-export": "workspace:*",
+    "@forge/quests": "workspace:*",
     "@forge/render-2d": "workspace:*",
     "@forge/richtext": "workspace:*",
     "@microsoft/signalr": "^8.0.7",

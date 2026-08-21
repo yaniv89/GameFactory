@@ -193,6 +193,54 @@ describe("isPreviewSceneMessage", () => {
     expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], graphs: "nope" })).toBe(false);
     expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], graphs: null })).toBe(false);
   });
+
+  it("accepts a message with no dataTables field, an empty dataTables map, and a well-formed table's rows", () => {
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [] })).toBe(true);
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], dataTables: {} })).toBe(true);
+    expect(
+      isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], dataTables: { loot: [{ id: "sword", weight: 5 }] } }),
+    ).toBe(true);
+  });
+
+  it("rejects a data table whose rows aren't an array of plain objects", () => {
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], dataTables: { loot: "nope" } })).toBe(false);
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], dataTables: { loot: [["not", "a", "row"]] } })).toBe(
+      false,
+    );
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], dataTables: { loot: [null] } })).toBe(false);
+  });
+
+  it("rejects dataTables that isn't an object at all", () => {
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], dataTables: "nope" })).toBe(false);
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], dataTables: null })).toBe(false);
+  });
+
+  const VALID_QUEST = { id: "q1", name: "Wolf Trouble", description: "Deal with the wolves.", objectives: [{ id: "o1", description: "Kill 3 wolves" }] };
+
+  it("accepts a message with no quests field, an empty quests map, and a well-formed quest", () => {
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [] })).toBe(true);
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], quests: {} })).toBe(true);
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], quests: { q1: VALID_QUEST } })).toBe(true);
+  });
+
+  it("rejects a quest missing a required field", () => {
+    const { name, ...missingName } = VALID_QUEST;
+    void name;
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], quests: { q1: missingName } })).toBe(false);
+  });
+
+  it("rejects a quest whose objectives isn't an array of well-formed objectives", () => {
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], quests: { q1: { ...VALID_QUEST, objectives: "nope" } } })).toBe(
+      false,
+    );
+    const badObjective = { ...VALID_QUEST, objectives: [{ id: "o1" }] }; // missing "description"
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], quests: { q1: badObjective } })).toBe(false);
+  });
+
+  it("rejects quests that isn't an object at all", () => {
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], quests: "nope" })).toBe(false);
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], quests: null })).toBe(false);
+  });
 });
 
 describe("isPreviewToEditorMessage", () => {

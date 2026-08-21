@@ -78,6 +78,13 @@ export function PreviewPanel() {
   // editing a table in DataTablesPanel (M12) should reach the running
   // preview the same tick a graph edit would.
   const dataTables = useProjectStore((state) => state.document.dataTables);
+  // docs/adr/0018 Decision 1 (M7/M13): every authored quest's static
+  // definition. Re-sent on every scene message like graphs/dataTables
+  // above, but PreviewApp.tsx only ever actually reads it once — see
+  // `PreviewSceneMessage.quests`'s own doc comment (protocol.ts) for why
+  // a quest's live definition can't be swapped mid-session the way a
+  // graph can.
+  const quests = useProjectStore((state) => state.document.quests);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent): void => {
@@ -117,6 +124,7 @@ export function PreviewPanel() {
       // (`columns`/`name` are editor-only metadata nothing at runtime
       // reads, per `DataTableDefinition`'s own doc comment).
       dataTables: Object.fromEntries(Object.entries(dataTables).map(([id, table]) => [id, table.rows])),
+      quests,
       ...(activePack !== undefined ? { activePack } : {}),
       ...(devSaveRef.current ? { devSave: devSaveRef.current } : {}),
     };
@@ -132,7 +140,7 @@ export function PreviewPanel() {
     // general, false positive for this specific, structurally-safe case.
     // nosemgrep: javascript.browser.security.wildcard-postmessage-configuration.wildcard-postmessage-configuration
     iframeRef.current?.contentWindow?.postMessage(message, "*");
-  }, [status, tiles, entities, activePack, installedModules, graphs, dataTables]);
+  }, [status, tiles, entities, activePack, installedModules, graphs, dataTables, quests]);
 
   return (
     <div className="fg-preview-panel">

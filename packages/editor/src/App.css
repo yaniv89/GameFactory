@@ -139,7 +139,8 @@ li.fg-quests-list__row {
   min-width: 0;
 }
 
-.fg-quests-list__id {
+/** A copyable id an author cross-references by hand in a graph node's config field — QuestsPanel's own convention (docs/adr/0018 Decision 1), reused wherever else a graph node config takes a plain-string id (DataTablesPanel's table id, DataTableEditorDialog's column id — Decision 3). */
+.fg-id-tag {
   color: var(--text-secondary);
   font-size: var(--text-xs);
   user-select: all;

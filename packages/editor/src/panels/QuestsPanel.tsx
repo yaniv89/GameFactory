@@ -100,7 +100,7 @@ export function QuestsPanel({
                 values={{ name: quest.name, description: quest.description }}
                 onSubmit={(values) => onEditQuest?.(quest.id, values.name as string, values.description as string)}
               />
-              <code className="fg-quests-list__id" title="Reference this quest in a graph node's questId field">
+              <code className="fg-id-tag" title="Reference this quest in a graph node's questId field">
                 {quest.id}
               </code>
               <Button variant="destructive" onClick={() => onDeleteQuest?.(quest.id)}>
@@ -116,7 +116,7 @@ export function QuestsPanel({
                     values={{ description: objective.description }}
                     onSubmit={(values) => onEditObjective?.(quest.id, objective.id, values.description as string)}
                   />
-                  <code className="fg-quests-list__id" title="Reference this objective in a graph node's objectiveId field">
+                  <code className="fg-id-tag" title="Reference this objective in a graph node's objectiveId field">
                     {objective.id}
                   </code>
                   <Button variant="destructive" onClick={() => onRemoveObjective?.(quest.id, objective.id)}>

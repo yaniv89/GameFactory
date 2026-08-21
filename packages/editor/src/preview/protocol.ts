@@ -1,5 +1,5 @@
 import { isPrefabId } from "@forge/core";
-import type { GraphDocument } from "@forge/project-export";
+import type { GraphDocument, QuestDefinition } from "@forge/project-export";
 import { GRID_HEIGHT, GRID_WIDTH } from "../canvas/gridConstants";
 import type { EntityPlacement } from "../store/projectStore";
 import { isValidDevPreviewSave, type DevPreviewSave } from "./devPreviewSave";
@@ -68,6 +68,25 @@ export interface PreviewSceneMessage {
    * `rebuildGraphRuntime`-style full rebuild, not a hot patch).
    */
   readonly dataTables?: Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>;
+  /**
+   * `ProjectDocument.quests` (docs/adr/0018 Decision 1, M7) — every
+   * authored quest's static definition, keyed by id, the same shape
+   * `forge export`'s own `moduleAdapters.ts` assembles `@forge/quests`'
+   * `config.quests` from. Optional like `graphs`/`dataTables` above: an
+   * absent field means "no quests authored yet." Unlike `graphs`, which
+   * `PreviewApp.tsx` re-attaches fresh on every scene message, quest
+   * definitions can only be read once, on the *first* scene message this
+   * preview session receives — `@forge/quests` registers one real ECS
+   * component per quest (`ctx.defineComponent`) against the live
+   * preview's own persistent, shared game world, and a component type
+   * can never be redefined on the same world twice
+   * (`ComponentRegistry.define` throws "already registered" — see
+   * `PreviewApp.tsx`'s own doc comment on `questRuntimeAttachedRef`).
+   * Editing an already-running preview session's quests takes effect on
+   * the next full preview reload, not live — an honest, structural
+   * limitation, not an oversight.
+   */
+  readonly quests?: Readonly<Record<string, QuestDefinition>>;
 }
 
 export interface PreviewReadyMessage {
@@ -168,6 +187,19 @@ function isValidDataTableRows(value: unknown): value is readonly Readonly<Record
   return Array.isArray(value) && value.every((row) => typeof row === "object" && row !== null && !Array.isArray(row));
 }
 
+function isValidQuestObjective(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.id === "string" && typeof candidate.description === "string";
+}
+
+function isValidQuestDefinition(value: unknown): value is QuestDefinition {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.id !== "string" || typeof candidate.name !== "string" || typeof candidate.description !== "string") return false;
+  return Array.isArray(candidate.objectives) && candidate.objectives.every(isValidQuestObjective);
+}
+
 export function isPreviewSceneMessage(data: unknown): data is PreviewSceneMessage {
   if (typeof data !== "object" || data === null) return false;
   const candidate = data as {
@@ -179,6 +211,7 @@ export function isPreviewSceneMessage(data: unknown): data is PreviewSceneMessag
     installedModules?: unknown;
     graphs?: unknown;
     dataTables?: unknown;
+    quests?: unknown;
   };
   if (candidate.type !== "forge:preview:scene") return false;
   if (!Array.isArray(candidate.tiles) || candidate.tiles.length !== EXPECTED_TILE_COUNT) return false;
@@ -196,6 +229,10 @@ export function isPreviewSceneMessage(data: unknown): data is PreviewSceneMessag
   if (candidate.dataTables !== undefined) {
     if (typeof candidate.dataTables !== "object" || candidate.dataTables === null) return false;
     if (!Object.values(candidate.dataTables).every(isValidDataTableRows)) return false;
+  }
+  if (candidate.quests !== undefined) {
+    if (typeof candidate.quests !== "object" || candidate.quests === null) return false;
+    if (!Object.values(candidate.quests).every(isValidQuestDefinition)) return false;
   }
   return candidate.entities.every(isValidEntity);
 }

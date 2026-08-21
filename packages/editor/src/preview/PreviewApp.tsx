@@ -32,6 +32,7 @@ import {
 import { dialogueModule } from "@forge/dialogue";
 import { graphRuntimeModule } from "@forge/graph-runtime";
 import { inventoryModule, storageKey, type InventoryChangedEvent } from "@forge/inventory";
+import { questsModule } from "@forge/quests";
 import { buildDialogueTreesFromEntities, type GraphDocument } from "@forge/project-export";
 import {
   Camera,
@@ -271,8 +272,23 @@ interface DialogueRuntime {
 }
 
 interface DialogueBubble {
+  readonly entity: EntityId;
   readonly speaker: string;
   readonly text: string;
+  /**
+   * docs/adr/0018 Decision 2/M13: present only once `@forge/dialogue`'s
+   * own `dialogue:choicesShown` has fired for this same line (a node
+   * with `choices` always emits `dialogue:shown` first, then
+   * `dialogue:choicesShown` — both synchronous, within the same
+   * `showNode()` call — see `rebuildDialogueRuntime`'s own doc comment).
+   * `undefined` means either "no choices on this line" or "the
+   * choices event genuinely hasn't arrived yet" — the bubble-dismiss
+   * effect below only ever schedules a timeout for the former, and
+   * `onChoicesShown` always fires before that effect's own dependency
+   * array re-runs (synchronous, same call chain), so the two cases never
+   * get confused in practice.
+   */
+  readonly choices?: readonly { readonly id: string; readonly text: string }[];
 }
 
 /** --surface-canvas from tokens.css, as a Pixi-friendly hex number. */
@@ -333,6 +349,25 @@ export function PreviewApp() {
    */
   const graphRuntimeAttachedRef = useRef(false);
   /**
+   * docs/adr/0018 Decision 1 (M7/M13): true once `questsModule.setup()`
+   * has been called against the shared `gameWorld.world`/`graphEvents` at
+   * least once — read by the scene-message effect below to attach the
+   * quest runtime on the *first* message only, never again. Unlike
+   * `graphRuntimeAttachedRef` above, this is genuinely one-shot, not
+   * "torn down and rebuilt each message": `@forge/quests`' own `setup()`
+   * calls `ctx.defineComponent` once per authored quest, and
+   * `ComponentRegistry.define` (`@forge/core`) throws if the same
+   * component name is ever registered twice against the same `World` —
+   * unlike `@forge/graph-runtime`'s own node-type registry (a fresh local
+   * `Map` per `createModuleRuntime` call, safe to redo every message),
+   * quest components are registered directly on `gameWorld.world`, the
+   * one persistent world this whole preview session shares. A quest
+   * authored or edited after this first attach only takes effect on the
+   * next full preview reload — `PreviewSceneMessage.quests`'s own doc
+   * comment states this same limitation from the sending side.
+   */
+  const questRuntimeAttachedRef = useRef(false);
+  /**
    * I1f: the saved player's own components (`devPreviewSave.ts`), read
    * once at boot — before the first `forge:preview:scene` message (a
    * *separate* `useEffect` from the boot effect, per `DialogueRuntime`'s
@@ -373,7 +408,6 @@ export function PreviewApp() {
   const mountRequestedRef = useRef(false);
   /** I1c's equip/unequip request: set true on an `EQUIP_TOGGLE_KEY` press, consumed (and cleared) by `createEquipmentSystem`'s own `consumeEquipRequest` — the same edge shape `attackRequestedRef`/`mountRequestedRef` already establish. */
   const equipRequestedRef = useRef(false);
-  const bubbleTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lifecycleRef = useRef<Promise<void>>(Promise.resolve());
   const tickerCallbackRef = useRef<((ticker: { deltaMS: number }) => void) | null>(null);
   /**
@@ -399,6 +433,42 @@ export function PreviewApp() {
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [bubble, setBubble] = useState<DialogueBubble | null>(null);
   const [coinCount, setCoinCount] = useState(0);
+
+  // docs/adr/0018 Decision 2/M13: a bubble with no choices auto-dismisses
+  // after DIALOGUE_BUBBLE_MS, the pre-existing behavior; one with choices
+  // waits for the player to actually pick one (the choice buttons' own
+  // `onClick`, below, drives `dialogue:choose`) — this effect is the only
+  // place that ever schedules the dismiss, so a final, choice-less line
+  // (the common case — a single-line NPC, `walkableDemo.spec.ts`'s own
+  // shape) still reads normally for the full `DIALOGUE_BUBBLE_MS`, not an
+  // instant flash. `onEnded` (below) never touches this timer directly —
+  // see `justShownThisTurnRef`'s own doc comment for why an "ended" right
+  // after a "shown" (a node with no choices) must leave the bubble alone.
+  useEffect(() => {
+    if (!bubble || bubble.choices) return;
+    const timeout = setTimeout(() => setBubble(null), DIALOGUE_BUBBLE_MS);
+    return () => clearTimeout(timeout);
+  }, [bubble]);
+
+  /**
+   * docs/adr/0018 Decision 2/M13: `@forge/dialogue`'s `dialogue:ended`
+   * fires in two genuinely different situations that share one event
+   * shape (`packages/modules/dialogue/src/index.ts`'s own `endDialogue`):
+   * (a) `showNode()` reached a line with no `choices` — the line is still
+   * on screen and should stay there, dismissed by the timeout effect
+   * above like any other line, not vanish the instant it appears; (b) a
+   * choice's `next === -1` was picked — no further line was shown, so the
+   * *previous* line (with its now-answered choice buttons) has nothing
+   * left to display and should clear immediately. `EventBusImpl.emit` is
+   * synchronous, so within one `showNode()` call chain, "shown" always
+   * immediately precedes "ended" for case (a) — this ref distinguishes
+   * the two by tracking exactly that adjacency, reset to `false` the
+   * instant either `onChoicesShown` fires (choices are now the reason
+   * nothing dismissed yet, not "just shown") or `onEnded` itself consumes
+   * it, so a stale `true` from an earlier, already-resolved turn can
+   * never suppress a genuine case-(b) clear later.
+   */
+  const justShownThisTurnRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -857,6 +927,12 @@ export function PreviewApp() {
           graphRuntimeModule.teardown?.({ moduleName: "@forge/graph-runtime" });
           graphRuntimeAttachedRef.current = false;
         }
+        // No `questsModule.teardown` to call (it exports none — quests'
+        // own event listeners live only as long as the `graphEvents` bus
+        // they were attached to, which is discarded with `gameWorld`
+        // right here); just clear the flag so a remount (a genuinely new
+        // `World`) is free to attach fresh.
+        questRuntimeAttachedRef.current = false;
         previewAudioRef.current?.dispose();
         previewAudioRef.current = null;
       });
@@ -919,7 +995,7 @@ export function PreviewApp() {
       const rig = rigRef.current;
       const gameWorld = gameWorldRef.current;
       if (!rig || !gameWorld) return;
-      const { tiles, entities, activePack, devSave, installedModules = [], graphs, dataTables = {} } = event.data;
+      const { tiles, entities, activePack, devSave, installedModules = [], graphs, dataTables = {}, quests } = event.data;
       inventoryInstalledRef.current = installedModules.includes("@forge/inventory");
 
       // I1f: the one place a restore actually lands — see
@@ -1015,11 +1091,27 @@ export function PreviewApp() {
       // safely; it always has, for the brief window before the first
       // scene message ever arrives).
       dialogueRef.current = installedModules.includes("@forge/dialogue")
-        ? rebuildDialogueRuntime(entities, (payload) => {
-            clearTimeout(bubbleTimeoutRef.current);
-            setBubble({ speaker: payload.speaker, text: payload.text });
-            bubbleTimeoutRef.current = setTimeout(() => setBubble(null), DIALOGUE_BUBBLE_MS);
-          })
+        ? rebuildDialogueRuntime(
+            entities,
+            (payload) => {
+              // The dismiss timer itself is scheduled by the `bubble`-watching
+              // effect above, not here — that effect is the one place that
+              // actually knows whether `dialogue:choicesShown` also fired for
+              // this same line (see `DialogueBubble.choices`'s own doc comment).
+              justShownThisTurnRef.current = true;
+              setBubble({ entity: payload.entity, speaker: payload.speaker, text: payload.text });
+            },
+            (payload) => {
+              justShownThisTurnRef.current = false; // choices are now the reason nothing dismissed yet, not "just shown" — see justShownThisTurnRef's own doc comment.
+              setBubble((prev) => (prev && prev.entity === payload.entity ? { ...prev, choices: payload.choices } : prev));
+            },
+            (payload) => {
+              const wasImmediateAfterShown = justShownThisTurnRef.current;
+              justShownThisTurnRef.current = false;
+              if (wasImmediateAfterShown) return; // a final, choice-less line — leave it on screen for the timeout effect above to dismiss normally.
+              setBubble((prev) => (prev && prev.entity === payload.entity ? null : prev));
+            },
+          )
         : null;
 
       // docs/adr/0017 (M6): unlike dialogue above, @forge/graph-runtime
@@ -1045,11 +1137,32 @@ export function PreviewApp() {
         graphRuntimeModule.setup(graphRuntime.ctx);
         graphRuntimeAttachedRef.current = true;
       }
+
+      // docs/adr/0018 Decision 1 (M7/M13): attached on the *first* scene
+      // message only — see `questRuntimeAttachedRef`'s own doc comment
+      // above for why this can never be rebuilt the way graph-runtime is.
+      // Shares `gameWorld.world`/`graphEvents` for the identical reason
+      // graph-runtime does: `@forge/quests` writes real ECS components
+      // (`Quest_<id>`) onto the actual player entity via `ctx.world.add`/
+      // `set`, which requires that entity to have been allocated in the
+      // exact `World` instance quests received — an isolated, disposable
+      // world (the treatment dialogue/inventory get) would never contain
+      // it. `core:questStart`/etc. (`@forge/graph-nodes-core`) emit on
+      // this same `graphEvents` bus, so quests' own event listeners must
+      // share it too.
+      if (!questRuntimeAttachedRef.current && installedModules.includes("@forge/quests")) {
+        const questRuntime = createModuleRuntime(
+          "@forge/quests",
+          { quests: Object.values(quests ?? {}) },
+          { world: gameWorld.world, events: gameWorld.graphEvents },
+        );
+        questsModule.setup(questRuntime.ctx);
+        questRuntimeAttachedRef.current = true;
+      }
     };
     window.addEventListener("message", onMessage);
     return () => {
       window.removeEventListener("message", onMessage);
-      clearTimeout(bubbleTimeoutRef.current);
     };
   }, []);
 
@@ -1097,6 +1210,19 @@ export function PreviewApp() {
       if (nearestId) {
         const dialogueEntity = dialogue!.dialogueEntityByPlacementId.get(nearestId)!;
         dialogue!.runtime.ctx.events.emit("dialogue:start", { entity: dialogueEntity, treeId: nearestId });
+        // `dialogue:start` -> `showNode()`'s first-ever call for this
+        // entity takes `ctx.world.add(DIALOGUE_STATE_COMPONENT, ...)`
+        // (`@forge/dialogue`'s own `showNode`), which — like every
+        // `World.add` — only queues the command (`World.add`'s own doc
+        // comment, `packages/core/src/ecs/world.ts`); nothing else ever
+        // ticks this isolated dialogue world (unlike `gameWorld.world`,
+        // flushed every frame by the main loop), so without this the
+        // component would never actually land, and the very next
+        // `dialogue:choose` (below) would find no active-dialogue state
+        // to read. Found while building M13's own exit-criteria proof —
+        // real, not theoretical: any dialogue with choices was silently
+        // unusable in the live preview before this.
+        dialogue!.runtime.world.flush();
         return;
       }
 
@@ -1158,6 +1284,28 @@ export function PreviewApp() {
           <span className="fg-preview-app__dialogue-text">
             <RichDialogueText text={bubble.text} />
           </span>
+          {bubble.choices && bubble.choices.length > 0 && (
+            <div className="fg-preview-app__dialogue-choices" role="group" aria-label="Dialogue choices">
+              {bubble.choices.map((choice) => (
+                <button
+                  key={choice.id}
+                  type="button"
+                  className="fg-preview-app__dialogue-choice"
+                  onClick={() => {
+                    dialogueRef.current?.runtime.ctx.events.emit("dialogue:choose", { entity: bubble.entity, choiceId: choice.id });
+                    // Same reasoning as the `dialogue:start` flush above:
+                    // a choice that leads to another node re-enters
+                    // `showNode()`, which may again take the unflushed
+                    // `ctx.world.add` branch (or `set`, immediate but
+                    // harmless to flush alongside).
+                    dialogueRef.current?.runtime.world.flush();
+                  }}
+                >
+                  {choice.text}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1209,17 +1357,41 @@ function reconcileEntities(gameWorld: GameWorld, entities: readonly EntityPlacem
   world.flush();
 }
 
+/**
+ * docs/adr/0018 Decision 2/M13: `@forge/dialogue`'s own event surface
+ * already fully implements branching (`dialogue:choicesShown`/
+ * `dialogue:choose`, `packages/modules/dialogue/src/index.ts`) — this
+ * wrapper previously only ever subscribed to `dialogue:shown`, silently
+ * discarding a node's `choices` and leaving the live preview with no way
+ * to show or answer them. `onChoicesShown`/`onEnded` close that real,
+ * pre-existing gap (found while building M13's own exit-criteria proof,
+ * not introduced by it): `EventBusImpl.emit` is synchronous
+ * (`packages/core/src/events/eventBus.ts`), so for any one `showNode()`
+ * call, `onShown` always fires before `onChoicesShown` (if the node has
+ * choices) or before `onEnded` (`endDialogue`, if it doesn't) — the
+ * caller never has to guess an ordering.
+ */
 function rebuildDialogueRuntime(
   entities: readonly EntityPlacement[],
-  onShown: (payload: { speaker: string; text: string }) => void,
+  onShown: (payload: { entity: EntityId; speaker: string; text: string }) => void,
+  onChoicesShown: (payload: { entity: EntityId; choices: readonly { id: string; text: string }[] }) => void,
+  onEnded: (payload: { entity: EntityId }) => void,
 ): DialogueRuntime {
   const trees = buildDialogueTreesFromEntities(entities);
 
   const runtime = createModuleRuntime("@forge/dialogue", { trees });
   dialogueModule.setup(runtime.ctx);
   runtime.events.on("dialogue:shown", (payload) => {
-    const { speaker, text } = payload as { speaker: string; text: string };
-    onShown({ speaker, text });
+    const { entity, speaker, text } = payload as { entity: EntityId; speaker: string; text: string };
+    onShown({ entity, speaker, text });
+  });
+  runtime.events.on("dialogue:choicesShown", (payload) => {
+    const { entity, choices } = payload as { entity: EntityId; choices: readonly { id: string; text: string }[] };
+    onChoicesShown({ entity, choices });
+  });
+  runtime.events.on("dialogue:ended", (payload) => {
+    const { entity } = payload as { entity: EntityId };
+    onEnded({ entity });
   });
 
   const dialogueEntityByPlacementId = new Map<string, EntityId>();

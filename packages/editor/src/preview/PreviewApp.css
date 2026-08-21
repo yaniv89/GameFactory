@@ -118,3 +118,31 @@
   font-size: var(--text-sm);
   color: var(--text-secondary);
 }
+
+.fg-preview-app__dialogue-choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-block-start: var(--space-2);
+}
+
+.fg-preview-app__dialogue-choice {
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: start;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 1px solid var(--line-default);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.fg-preview-app__dialogue-choice:hover {
+  border-color: var(--line-strong);
+}
+
+.fg-preview-app__dialogue-choice:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}

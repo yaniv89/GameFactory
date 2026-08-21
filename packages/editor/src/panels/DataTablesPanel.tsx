@@ -72,6 +72,9 @@ export function DataTablesPanel({ state, tables = [], onCreateTable, onRenameTab
               <span className="fg-list__secondary">
                 {table.columnCount} column{table.columnCount === 1 ? "" : "s"}, {table.rowCount} row{table.rowCount === 1 ? "" : "s"}
               </span>
+              <code className="fg-id-tag" title="Reference this table in a graph node's Table ID field">
+                {table.id}
+              </code>
             </div>
             <div className="fg-graphs-list__actions">
               <Button variant="primary" onClick={() => onOpenTable?.(table.id)}>

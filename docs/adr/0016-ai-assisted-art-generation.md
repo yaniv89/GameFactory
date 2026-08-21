@@ -276,3 +276,38 @@ image generation) both:
   ADR's Decision 6 is the plan; N6 is verifying it end to end and tuning
   the actual limits against real usage), N7 (full security review against
   the new T18 row), N8 (real end-to-end exit criteria).
+
+## Addendum (N6): the daily budget is plan-tiered; the rate limit stays flat
+
+Decision 6's original `DailyBudget = 20` was one flat number for every
+Pro+ workspace — correct as a v1 placeholder, but it left Pro and Studio
+paying the identical volume ceiling despite `docs/SPEC.md` Section 23.2
+already establishing that these two tiers should differ materially on
+exactly this kind of AI-generation cost guardrail (the sibling "wizard
+generations" capability there splits 100/month Pro vs. 500/month
+Studio — a 5x spread for the higher-priced tier). N6 carries that same
+shape over to art generation's own daily budget:
+`CreateGenerationRequestEndpoint.DailyBudgetByPlan` — `{ Pro: 20, Studio:
+100 }` — read from the requesting project's own `Workspace.Plan` in the
+same query that already resolves cross-tenant ownership, not a second
+round trip. Still a live `COUNT`, not a cached counter (guardrail 18
+unchanged); still "this session's own call, not lifted from a table in
+the spec" the same way the original flat number was — a launch default
+to re-cut once real usage exists for this specific feature, since no
+usage data for it exists yet to tune against honestly.
+
+`RateLimitPolicies.ArtGeneration` (the burst-rate limiter, `Limit: 10,
+Window: 1 hour`) deliberately stays flat across both tiers — see that
+policy's own doc comment. The two controls guard different failure
+modes: the rate limit stops one account hammering the endpoint in a
+short window regardless of plan, while the daily budget is the one that
+actually reflects what a Studio workspace is paying more to get. Scaling
+the rate limit too would blur that distinction for no real benefit — a
+Studio account doesn't need to burst *faster*, just spend *more* per day.
+
+Deliberately left alone in this pass: `Workspace.StorageQuotaMb` (the
+quota `SelectGenerationVariationEndpoint` already reuses verbatim from
+`docs/adr/0012`) is still one flat 500 MB regardless of plan — a real
+gap, but a pre-existing one that predates this feature and affects every
+asset a workspace holds, not just AI-generated ones. Tiering it belongs
+with M5's own billing work, not folded into this ADR's scope.

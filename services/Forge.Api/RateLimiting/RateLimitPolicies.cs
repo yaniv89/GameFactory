@@ -118,6 +118,17 @@ public static class RateLimitPolicies
     /// independent controls on that cost — docs/adr/0016 Decision 6's
     /// live per-workspace-per-day budget check is the second, and bounds
     /// total volume rather than burst rate.
+    ///
+    /// N6: deliberately flat across Pro and Studio, unlike that daily
+    /// budget (<c>CreateGenerationRequestEndpoint.DailyBudgetByPlan</c>),
+    /// which does scale with plan. The two controls guard different
+    /// things — this one exists purely to stop a single account from
+    /// hammering the endpoint in a short window (a scripted client, a
+    /// retry loop gone wrong), and a Studio workspace's higher price
+    /// point doesn't make that abuse pattern any less worth stopping at
+    /// the same rate. Studio's real, paid-for benefit is the higher
+    /// *total daily volume* it can spend — that's what the plan-tiered
+    /// budget check is for.
     /// </summary>
     public static readonly RateLimitPolicy ArtGeneration = new(Limit: 10, Window: TimeSpan.FromHours(1));
 }

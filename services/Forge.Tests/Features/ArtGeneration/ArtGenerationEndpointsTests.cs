@@ -63,6 +63,35 @@ public sealed class ArtGenerationEndpointsTests : IClassFixture<ForgeWebApplicat
         return (user, project.Id);
     }
 
+    private async Task<(AuthenticatedTestUser User, Guid ProjectId)> CreateStudioUserWithProjectAsync()
+    {
+        var user = await AuthTestHelper.SignupAndAuthenticateAsync(_factory);
+        var project = await CreateProjectAsync(user);
+        await SetWorkspacePlanAsync(user.WorkspaceId, WorkspacePlan.Studio);
+        return (user, project.Id);
+    }
+
+    private async Task SeedFillerGenerationRequestsAsync(Guid workspaceId, Guid projectId, Guid userId, int count)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ForgeDbContext>();
+        for (var i = 0; i < count; i++)
+        {
+            db.GenerationRequests.Add(new GenerationRequest
+            {
+                Id = Guid.NewGuid(),
+                WorkspaceId = workspaceId,
+                ProjectId = projectId,
+                UserPrompt = "filler",
+                Category = ArtGenCategory.Tile,
+                Status = GenerationStatus.Ready,
+                RequestedByUserId = userId,
+                CreatedAt = DateTimeOffset.UtcNow,
+            });
+        }
+        await db.SaveChangesAsync();
+    }
+
     // A minimal, genuinely valid 1x1 PNG -- same fixture AssetsEndpointsTests/ArtGenOrchestratorTests use.
     private static readonly byte[] TinyPngBytes = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
@@ -282,32 +311,48 @@ public sealed class ArtGenerationEndpointsTests : IClassFixture<ForgeWebApplicat
         // 20 real HTTP round trips through the rate limiter -- the point
         // of this test is the live COUNT check itself, not re-driving the
         // happy path 20 times over.
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<ForgeDbContext>();
-            for (var i = 0; i < 20; i++)
-            {
-                db.GenerationRequests.Add(new GenerationRequest
-                {
-                    Id = Guid.NewGuid(),
-                    WorkspaceId = user.WorkspaceId,
-                    ProjectId = projectId,
-                    UserPrompt = "filler",
-                    Category = ArtGenCategory.Tile,
-                    Status = GenerationStatus.Ready,
-                    RequestedByUserId = user.UserId,
-                    CreatedAt = DateTimeOffset.UtcNow,
-                });
-            }
-            await db.SaveChangesAsync();
-        }
+        await SeedFillerGenerationRequestsAsync(user.WorkspaceId, projectId, user.UserId, count: 20);
 
         var response = await user.Client.PostAsJsonAsync(
             $"/api/v1/workspaces/{user.WorkspaceId}/projects/{projectId}/art-generation",
             new { userPrompt = "one too many", category = ArtGenCategory.Tile });
 
         Assert.Equal(HttpStatusCode.PaymentRequired, response.StatusCode);
+        Assert.Contains("20 of 20", (await response.Content.ReadFromJsonAsync<Dictionary<string, object>>())!["detail"]?.ToString());
         Assert.DoesNotContain(_factory.ArtGenerationClient.ExpandRequests, r => r.UserPrompt == "one too many");
+    }
+
+    [Fact]
+    public async Task A_Studio_Workspace_Gets_A_Materially_Higher_Daily_Budget_Than_Pro()
+    {
+        var (user, projectId) = await CreateStudioUserWithProjectAsync();
+
+        // Strictly more than Pro's own 20-request ceiling -- a Studio
+        // workspace generating past what would already have 402'd a Pro
+        // workspace (the test right above this one) is the concrete N6
+        // proof that these two tiers actually differ, not just both
+        // happening to pass the same flat number.
+        await SeedFillerGenerationRequestsAsync(user.WorkspaceId, projectId, user.UserId, count: 21);
+
+        var response = await user.Client.PostAsJsonAsync(
+            $"/api/v1/workspaces/{user.WorkspaceId}/projects/{projectId}/art-generation",
+            new { userPrompt = "still within the studio budget", category = ArtGenCategory.Tile });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_Studio_Workspace_Still_Has_A_Real_Ceiling_Of_Its_Own()
+    {
+        var (user, projectId) = await CreateStudioUserWithProjectAsync();
+        await SeedFillerGenerationRequestsAsync(user.WorkspaceId, projectId, user.UserId, count: 100);
+
+        var response = await user.Client.PostAsJsonAsync(
+            $"/api/v1/workspaces/{user.WorkspaceId}/projects/{projectId}/art-generation",
+            new { userPrompt = "one too many for studio too", category = ArtGenCategory.Tile });
+
+        Assert.Equal(HttpStatusCode.PaymentRequired, response.StatusCode);
+        Assert.Contains("100 of 100", (await response.Content.ReadFromJsonAsync<Dictionary<string, object>>())!["detail"]?.ToString());
     }
 
     [Fact]

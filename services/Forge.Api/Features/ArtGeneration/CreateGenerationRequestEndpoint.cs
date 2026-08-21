@@ -25,13 +25,33 @@ public static class CreateGenerationRequestEndpoint
         ArtGenCategory.Tile, ArtGenCategory.Prop,
     };
 
-    // docs/adr/0016 Decision 6: a live COUNT, not a cached counter
+    // docs/adr/0016 Decision 6 / N6: a live COUNT, not a cached counter
     // (CLAUDE.md Section 1.5 guardrail 18) — the second, independent
     // control on real per-call external cost, alongside
-    // RateLimitPolicies.ArtGeneration's own burst-rate limit. Generous
-    // enough for real use, a real ceiling against runaway cost from one
-    // workspace in one day.
-    private const int DailyBudget = 20;
+    // RateLimitPolicies.ArtGeneration's own burst-rate limit. Tiered by
+    // plan rather than one flat number every Pro+ workspace shared —
+    // docs/SPEC.md Section 23.2's own Pro-vs-Studio scaling for the
+    // sibling "wizard generations" capability (100/month vs 500/month,
+    // a 5x spread for the higher-priced tier) is the closest grounded
+    // precedent this codebase has for how those two tiers should differ
+    // on an AI-generation cost guardrail specifically, rather than
+    // picking a second number arbitrarily. Same caveat docs/adr/0016's
+    // own original flat constant already carried: a launch default to
+    // re-cut once real usage exists for *this* feature, not a number
+    // derived from usage data that doesn't exist yet.
+    private static readonly IReadOnlyDictionary<string, int> DailyBudgetByPlan = new Dictionary<string, int>(StringComparer.Ordinal)
+    {
+        [WorkspacePlan.Pro] = 20,
+        [WorkspacePlan.Studio] = 100,
+    };
+
+    // The tightest tier's own number -- reached only if a workspace's
+    // plan is somehow neither Pro nor Studio despite already passing the
+    // workspace:pro authorization gate (defensive, not an expected path:
+    // this handler makes no assumption that a different layer's check
+    // already ran, CLAUDE.md guardrail 4's spirit applied to this read
+    // too).
+    private static readonly int FallbackDailyBudget = DailyBudgetByPlan[WorkspacePlan.Pro];
 
     public static IEndpointRouteBuilder MapCreateGenerationRequest(this IEndpointRouteBuilder app)
     {
@@ -82,15 +102,21 @@ public static class CreateGenerationRequestEndpoint
         // project-vs-workspace check: a projectId from a different
         // workspace (or one that doesn't exist) is indistinguishable from
         // "not found," never disclosed via a different response shape.
-        var projectWorkspaceId = await db.Projects
+        // Pulls the workspace's own Plan in the same query (N6) rather
+        // than a second round trip — workspace:pro authorization already
+        // guarantees this project's workspace passed the plan gate, so
+        // this is reading the same fact the middleware already checked,
+        // not re-deciding whether the request is even allowed.
+        var project = await db.Projects
             .Where(p => p.Id == projectId && p.DeletedAt == null)
-            .Select(p => (Guid?)p.WorkspaceId)
+            .Select(p => new { p.WorkspaceId, WorkspacePlan = p.Workspace!.Plan })
             .SingleOrDefaultAsync(ct);
-        if (projectWorkspaceId != workspaceId)
+        if (project is null || project.WorkspaceId != workspaceId)
         {
             return TypedResults.NotFound();
         }
 
+        var dailyBudget = DailyBudgetByPlan.GetValueOrDefault(project.WorkspacePlan, FallbackDailyBudget);
         var todayStart = DateTimeOffset.UtcNow.Date;
         var usedToday = await db.GenerationRequests
             .Where(g => g.WorkspaceId == workspaceId
@@ -98,11 +124,11 @@ public static class CreateGenerationRequestEndpoint
                 && g.Status != GenerationStatus.Failed
                 && g.Status != GenerationStatus.Declined)
             .CountAsync(ct);
-        if (usedToday >= DailyBudget)
+        if (usedToday >= dailyBudget)
         {
             return TypedResults.Problem(
                 title: "Daily generation limit reached",
-                detail: $"This workspace has used {usedToday} of {DailyBudget} art generations today. The limit resets at midnight UTC.",
+                detail: $"This workspace has used {usedToday} of {dailyBudget} art generations today. The limit resets at midnight UTC.",
                 statusCode: StatusCodes.Status402PaymentRequired);
         }
 

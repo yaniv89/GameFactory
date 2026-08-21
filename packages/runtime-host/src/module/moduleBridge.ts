@@ -10,11 +10,13 @@ import type {
   World,
 } from "@forge/core";
 import { PHASE_ORDER } from "@forge/core";
+import type { GraphSocketDefinition } from "@forge/module-api";
 import type { QuickJSHandle, QuickJSWASMModule } from "quickjs-emscripten";
 import type { CapabilityHandler } from "../sandbox/capabilities";
 import { NetworkHandler } from "../sandbox/capabilities/network";
 import { LocalStorageHandler } from "../sandbox/capabilities/storageLocal";
 import { ModuleRuntime, type EvalOutcome } from "../sandbox/moduleRuntime";
+import { GraphNodeRegistry } from "./graphNodeRegistry";
 import { buildModulePrelude } from "./prelude";
 import { serializeEntitySnapshot, serializeInputSnapshot, serializeSceneSnapshot, type TickSnapshot } from "./snapshot";
 import { applyWriteBatch, type QueuedWrite } from "./writeBatch";
@@ -31,6 +33,8 @@ export interface ModuleBridgeOptions {
   readonly scheduler: Scheduler;
   readonly events: EventBusImpl;
   readonly interceptors: InterceptorRegistry;
+  /** Shared across every module in the project — docs/adr/0017 (M4): a graph node type registered by one module's `defineGraphNode` is available regardless of which module declared it, the same "shared, not per-module-scoped" treatment `interceptors`/`scheduler` already get. */
+  readonly graphNodes: GraphNodeRegistry;
   readonly memoryLimitBytes: number;
   readonly maxStackSizeBytes: number;
   readonly computeBudgetMs: number;
@@ -407,6 +411,18 @@ export class ModuleBridge {
       }
       this.options.world.defineComponent(name, schema, defaults);
       return context.newString(name);
+    });
+
+    this.installFn("__forge_defineGraphNode", (typeHandle, inputsJsonHandle, outputsJsonHandle, executeFnHandle) => {
+      const type = context.getString(typeHandle);
+      const inputs = JSON.parse(context.getString(inputsJsonHandle)) as GraphSocketDefinition[];
+      const outputs = JSON.parse(context.getString(outputsJsonHandle)) as GraphSocketDefinition[];
+      if (context.typeof(executeFnHandle) !== "function") {
+        throw new Error(`defineGraphNode: "${type}"'s execute must be a function`);
+      }
+      const executeHandle = executeFnHandle.dup();
+      this.ownedHandles.add(executeHandle);
+      this.options.graphNodes.register({ type, moduleName, inputs, outputs, executeHandle });
     });
 
     this.installFn("__forge_log", (levelHandle, messageHandle, dataJsonHandle) => {

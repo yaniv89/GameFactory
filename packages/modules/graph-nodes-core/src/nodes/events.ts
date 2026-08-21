@@ -1,4 +1,4 @@
-import type { GraphNodeDefinition } from "../types";
+import type { GraphNodeDefinition } from "@forge/module-api";
 
 /**
  * `core:onEvent` is a graph's entry point, not something invoked as part

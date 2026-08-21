@@ -1,14 +1,14 @@
-import type { EventBus, WorldApi } from "@forge/module-api";
+import type { EventBus } from "./events";
+import type { WorldApi } from "./world";
 
 /**
- * Provisional — lives here, not `@forge/module-api`, until M4 formalizes
- * `GraphNodeDefinition` there (docs/adr/0017 Decision 4's own task split:
- * "M4 ... mostly already implied by M2/M3's own shape, made explicit and
- * tested here"). `@forge/graph-runtime` (M5) and the M3 React Flow editor
- * both consume this exact shape once they exist; M4 is what promotes it
- * into the public, additive-only/semver-disciplined surface (CLAUDE.md
- * Section 3.1) after both have had a chance to exercise it, rather than
- * locking it into `@forge/module-api` from a single consumer's guess.
+ * docs/adr/0017 (J1's node-graph authoring layer). Formalized here at M4,
+ * per Decision 4's own task split — this type previously lived
+ * provisionally in `@forge/graph-nodes-core` (M2) so `@forge/module-api`
+ * wasn't locked into a shape only one consumer had exercised; M3's React
+ * Flow editor and M2's core node library have both now exercised it, so
+ * it moves to its permanent, additive-only/semver-disciplined home
+ * (CLAUDE.md Section 3.1).
  *
  * A node is "pure" (no side effect, evaluated on demand as an input to
  * whatever needs its value) if neither `inputs` nor `outputs` contains a
@@ -27,7 +27,7 @@ export interface GraphSocketDefinition {
 
 /**
  * The runtime half of a node's contract — the pure function
- * `@forge/graph-runtime` (M5) actually calls once the graph is compiled.
+ * `@forge/graph-runtime` (M5) actually calls once a graph is compiled.
  * Deliberately narrow: no `log`, no direct sandbox access beyond `world`/
  * `events` — a node gets exactly the same surface an ordinary
  * hand-written module's system already gets from `TickContext`, nothing
@@ -40,7 +40,7 @@ export interface GraphNodeExecutionContext {
   /**
    * Impure nodes only: tells the interpreter which of this node's own
    * `"flow"`-typed output sockets to continue down. `flowOutput` must
-   * name one of `outputs` — the interpreter (M5), not this package,
+   * name one of `outputs` — the interpreter (M5), not the node itself,
    * enforces that at compile time (docs/adr/0017 Decision 5: the runtime
    * never trusts that the editor already validated this).
    */
@@ -56,17 +56,25 @@ export interface GraphNodeExecutionContext {
 }
 
 /**
- * The full contract for one node *type* (e.g. `"core:add"`), not one
- * placed instance of it on a graph — matching how `SystemDefinition`
- * describes a system's shape once, reused for every entity it matches.
- * `execute()` runs once per invocation of that node instance in the
- * interpreted graph and must be a plain, synchronous function: no
- * awaiting, no closures over mutable module-level state, nothing that
- * would make one node instance's execution observable from another's —
- * the same statelessness `@forge/core` systems already hold to.
+ * The full contract for one node *type* (e.g. `"core:add"` or
+ * `"acme:spawnLoot"`), not one placed instance of it on a graph —
+ * matching how `SystemDefinition` describes a system's shape once,
+ * reused for every entity it matches. `execute()` runs once per
+ * invocation of that node instance in the interpreted graph and must be
+ * a plain, synchronous function: no awaiting, no closures over mutable
+ * module-level state, nothing that would make one node instance's
+ * execution observable from another's — the same statelessness
+ * `@forge/core` systems already hold to.
+ *
+ * Registered via `SetupContext.defineGraphNode` (`module.ts`) — the same
+ * "called once from a module's own sandboxed `setup()`" pattern
+ * `defineComponent`/`addSystem`/`addInterceptor` already use. A
+ * third-party module registers its own node types exactly the same way a
+ * first-party one does, declaring them in its manifest's existing
+ * `provides.graphNodes` array — no second plugin mechanism.
  */
 export interface GraphNodeDefinition {
-  /** Namespaced, e.g. `"core:add"` or `"acme:spawnLoot"` — matches a manifest's `provides.graphNodes` entry once M4 wires registration through `defineGraphNode`. */
+  /** Namespaced, e.g. `"core:add"` or `"acme:spawnLoot"` — matches a manifest's `provides.graphNodes` entry. */
   readonly type: string;
   readonly inputs: readonly GraphSocketDefinition[];
   readonly outputs: readonly GraphSocketDefinition[];

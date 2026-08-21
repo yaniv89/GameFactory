@@ -1,4 +1,4 @@
-import type { GraphSocketDefinition, GraphSocketType } from "@forge/graph-nodes-core";
+import type { GraphSocketDefinition, GraphSocketType } from "@forge/module-api";
 import { NODE_REGISTRY } from "./nodeRegistry";
 
 /** Structurally the same shape as `GraphNodeInstance`/`GraphEdgeInstance` (`@forge/project-export`), but this module only needs `id`/`type` and `source`/`sourceHandle`/`target`/`targetHandle` — kept minimal and dependency-free so it's trivially unit-testable without pulling in the whole document type. */

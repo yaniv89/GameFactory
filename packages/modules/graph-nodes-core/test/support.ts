@@ -1,5 +1,4 @@
-import type { EntityId, EventBus, WorldApi } from "@forge/module-api";
-import type { GraphNodeExecutionContext } from "../src/types";
+import type { EntityId, EventBus, GraphNodeExecutionContext, WorldApi } from "@forge/module-api";
 
 /**
  * A minimal, faithful fake of `GraphNodeExecutionContext` — no QuickJS, no

@@ -10,7 +10,7 @@
 // that resolve correctly both at `tsc` compile time and at plain-Node
 // runtime against the compiled output.
 import { EventBusImpl, FIXED_STEP_MS, InterceptorRegistry, registerCoreComponents, Scheduler, World, type EntityId, type SceneChangedEvent } from "@forge/core";
-import { ModuleBridge } from "@forge/runtime-host";
+import { GraphNodeRegistry, ModuleBridge } from "@forge/runtime-host";
 import type { QuickJSWASMModule } from "quickjs-emscripten";
 import { GRID_HEIGHT, GRID_WIDTH, TILE_SIZE } from "./gridConstants.js";
 import { createPlayerMovementSystem, INTERACT_RANGE, spawnNpcMarker, spawnPlayer, type HeldKeys } from "./gameWorld.js";
@@ -98,6 +98,7 @@ export async function bootGameLogic(options: GameLogicOptions): Promise<GameLogi
   // comment used to describe.
   const scheduler = new Scheduler(world, { events, initialSceneId: options.projectData.startSceneId });
   const interceptors = new InterceptorRegistry();
+  const graphNodes = new GraphNodeRegistry();
 
   function findScene(sceneId: string): PlayerScene {
     const scene = options.projectData.scenes.find((candidate) => candidate.id === sceneId);
@@ -202,6 +203,7 @@ export async function bootGameLogic(options: GameLogicOptions): Promise<GameLogi
       scheduler,
       events,
       interceptors,
+      graphNodes,
       memoryLimitBytes: MEMORY_LIMIT_BYTES,
       maxStackSizeBytes: MAX_STACK_SIZE_BYTES,
       computeBudgetMs: PER_MODULE_COMPUTE_BUDGET_MS,

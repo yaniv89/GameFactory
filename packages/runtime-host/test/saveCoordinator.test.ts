@@ -1,5 +1,6 @@
 import { EventBusImpl, InterceptorRegistry, Scheduler, World } from "@forge/core";
 import { afterEach, describe, expect, it } from "vitest";
+import { GraphNodeRegistry } from "../src/module/graphNodeRegistry";
 import { ModuleBridge } from "../src/module/moduleBridge";
 import { createSave, loadSave } from "../src/save/saveCoordinator";
 
@@ -16,7 +17,8 @@ function makeHarness() {
   const scheduler = new Scheduler(world);
   const events = new EventBusImpl();
   const interceptors = new InterceptorRegistry();
-  return { world, scheduler, events, interceptors };
+  const graphNodes = new GraphNodeRegistry();
+  return { world, scheduler, events, interceptors, graphNodes };
 }
 
 const bridges: ModuleBridge[] = [];
@@ -29,6 +31,7 @@ async function createBridge(moduleName: string, version: string, harness: Return
     scheduler: harness.scheduler,
     events: harness.events,
     interceptors: harness.interceptors,
+    graphNodes: harness.graphNodes,
   });
   bridges.push(bridge);
   return bridge;

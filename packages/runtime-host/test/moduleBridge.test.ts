@@ -1,5 +1,6 @@
 import { EventBusImpl, FIXED_STEP_MS, InputState, InterceptorRegistry, Scheduler, World, type SchedulerOptions } from "@forge/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { GraphNodeRegistry } from "../src/module/graphNodeRegistry";
 import { ModuleBridge } from "../src/module/moduleBridge";
 import { buildWasmModuleFromEmbeddedBytes } from "./testWasmModule";
 
@@ -17,7 +18,8 @@ function makeHarness(schedulerOptions?: SchedulerOptions) {
   const events = new EventBusImpl();
   const scheduler = new Scheduler(world, { events, ...schedulerOptions });
   const interceptors = new InterceptorRegistry();
-  return { world, scheduler, events, interceptors };
+  const graphNodes = new GraphNodeRegistry();
+  return { world, scheduler, events, interceptors, graphNodes };
 }
 
 const bridges: ModuleBridge[] = [];
@@ -29,6 +31,7 @@ async function createBridge(moduleName: string, harness: ReturnType<typeof makeH
     scheduler: harness.scheduler,
     events: harness.events,
     interceptors: harness.interceptors,
+    graphNodes: harness.graphNodes,
     ...extra,
   });
   bridges.push(bridge);
@@ -243,6 +246,123 @@ describe("ModuleBridge: interceptors", () => {
     errorSpy.mockRestore();
 
     expect(result).toEqual(value);
+  });
+});
+
+describe("ModuleBridge: defineGraphNode (docs/adr/0017, M4)", () => {
+  it("registers a node type, attributed to the calling module, with a real live guest execute handle", async () => {
+    const harness = makeHarness();
+    const bridge = await createBridge("acme-loot-tables", harness);
+
+    const outcome = await bridge.setup(`
+      (function () {
+        function setup(ctx) {
+          ctx.defineGraphNode({
+            type: "acme:doubleGold",
+            inputs: [{ name: "gold", type: "number" }],
+            outputs: [{ name: "result", type: "number" }],
+            execute: function (ctx, inputs, config) {
+              return { result: inputs.gold * 2 };
+            }
+          });
+        }
+        __forge_registerModule({ setup: setup });
+      })();
+    `);
+    expect(outcome.ok).toBe(true);
+
+    const registered = harness.graphNodes.get("acme:doubleGold");
+    expect(registered?.moduleName).toBe("acme-loot-tables");
+    expect(registered?.inputs).toEqual([{ name: "gold", type: "number" }]);
+    expect(registered?.outputs).toEqual([{ name: "result", type: "number" }]);
+    // Proves the function genuinely crossed the boundary intact (survived
+    // the .dup(), still alive after setup()'s own ctxHandle disposal) —
+    // not just that the metadata landed. Actually *invoking* it is
+    // @forge/graph-runtime's job (M5), which doesn't exist yet and isn't
+    // guessed at here (docs/adr/0017 Decision 4's own M4/M5 split).
+    expect(bridge.isDisposed).toBe(false);
+  });
+
+  it("a third-party-shaped module (built only against the public SetupContext, like @forge/dialogue already is) registers its own node type no differently than a first-party one would", async () => {
+    const harness = makeHarness();
+    const thirdParty = await createBridge("@acme/loot-tables", harness);
+
+    const outcome = await thirdParty.setup(`
+      (function () {
+        function setup(ctx) {
+          ctx.defineGraphNode({
+            type: "acme:rollLoot",
+            inputs: [],
+            outputs: [{ name: "itemId", type: "string" }],
+            execute: function () { return { itemId: "sword" }; }
+          });
+        }
+        __forge_registerModule({ setup: setup });
+      })();
+    `);
+
+    expect(outcome.ok).toBe(true);
+    expect(harness.graphNodes.get("acme:rollLoot")?.moduleName).toBe("@acme/loot-tables");
+    expect(harness.graphNodes.size).toBe(1);
+  });
+
+  it("two different modules can each register their own distinct node type into the same shared registry", async () => {
+    const harness = makeHarness();
+    const moduleA = await createBridge("module-a", harness);
+    const moduleB = await createBridge("module-b", harness);
+
+    await moduleA.setup(`
+      (function () {
+        function setup(ctx) {
+          ctx.defineGraphNode({ type: "a:node", inputs: [], outputs: [], execute: function () {} });
+        }
+        __forge_registerModule({ setup: setup });
+      })();
+    `);
+    await moduleB.setup(`
+      (function () {
+        function setup(ctx) {
+          ctx.defineGraphNode({ type: "b:node", inputs: [], outputs: [], execute: function () {} });
+        }
+        __forge_registerModule({ setup: setup });
+      })();
+    `);
+
+    expect(harness.graphNodes.size).toBe(2);
+    expect(harness.graphNodes.get("a:node")?.moduleName).toBe("module-a");
+    expect(harness.graphNodes.get("b:node")?.moduleName).toBe("module-b");
+  });
+
+  it("registering a node type that's already taken by another module fails setup() with a clear, attributable error", async () => {
+    const harness = makeHarness();
+    const first = await createBridge("first-module", harness);
+    const second = await createBridge("second-module", harness);
+
+    const firstOutcome = await first.setup(`
+      (function () {
+        function setup(ctx) {
+          ctx.defineGraphNode({ type: "shared:type", inputs: [], outputs: [], execute: function () {} });
+        }
+        __forge_registerModule({ setup: setup });
+      })();
+    `);
+    expect(firstOutcome.ok).toBe(true);
+
+    const secondOutcome = await second.setup(`
+      (function () {
+        function setup(ctx) {
+          ctx.defineGraphNode({ type: "shared:type", inputs: [], outputs: [], execute: function () {} });
+        }
+        __forge_registerModule({ setup: setup });
+      })();
+    `);
+    expect(secondOutcome.ok).toBe(false);
+    if (!secondOutcome.ok) {
+      expect(secondOutcome.error.message).toMatch(/shared:type/);
+      expect(secondOutcome.error.message).toMatch(/first-module/);
+    }
+    // The original registration is untouched by the failed second attempt.
+    expect(harness.graphNodes.get("shared:type")?.moduleName).toBe("first-module");
   });
 });
 

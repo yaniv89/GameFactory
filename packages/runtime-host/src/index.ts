@@ -3,6 +3,7 @@ export * from "./sandbox/capabilities";
 export * from "./sandbox/capabilities/storageLocal";
 export * from "./sandbox/capabilities/network";
 export * from "./module/moduleBridge";
+export * from "./module/graphNodeRegistry";
 export * from "./module/snapshot";
 export * from "./module/writeBatch";
 export * from "./save/saveCoordinator";

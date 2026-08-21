@@ -5,15 +5,16 @@
  * `tools/security/check-module-boundaries.mjs` already enforces for every
  * other package under `packages/modules/`.
  *
- * This package does not itself register anything with `defineGraphNode` —
- * that call doesn't exist on `SetupContext` yet (it's formalized into
- * `@forge/module-api` at M4, per docs/adr/0017 Decision 4's own task
- * split). It exports plain `GraphNodeDefinition` values; whichever module
- * calls `defineGraphNode` for each of them (M4/M5's job) is what actually
- * makes them available to a graph.
+ * `GraphNodeDefinition` itself (and its `GraphSocketType`/
+ * `GraphSocketDefinition`/`GraphNodeExecutionContext` companions) lived
+ * here provisionally at M2, then moved to its permanent home in
+ * `@forge/module-api` at M4 once M3's editor had also exercised the shape
+ * (docs/adr/0017 Decision 4's own task split) — import those types from
+ * `@forge/module-api` directly, not from here. This package does not
+ * itself call `defineGraphNode`: it exports plain `GraphNodeDefinition`
+ * values, and whichever module registers them (M5's `@forge/graph-runtime`)
+ * is what actually makes them available to a graph.
  */
-export * from "./types";
-
 export { createEntityNode, destroyEntityNode } from "./nodes/entity";
 export { getComponentNode, hasComponentNode, setComponentNode } from "./nodes/component";
 export { onEventNode, emitEventNode } from "./nodes/events";
@@ -27,7 +28,7 @@ import { onEventNode, emitEventNode } from "./nodes/events";
 import { equalsNode, greaterThanNode, lessThanNode, andNode, orNode, notNode } from "./nodes/comparisons";
 import { addNode, subtractNode, multiplyNode, divideNode } from "./nodes/math";
 import { branchNode, repeatNode, forEachEntityNode } from "./nodes/flow";
-import type { GraphNodeDefinition } from "./types";
+import type { GraphNodeDefinition } from "@forge/module-api";
 
 /** Every core node definition, for whatever registers them in bulk (M4/M5). */
 export const coreGraphNodes: readonly GraphNodeDefinition[] = [

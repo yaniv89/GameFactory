@@ -1,4 +1,4 @@
-import type { GraphNodeDefinition } from "../types";
+import type { GraphNodeDefinition } from "@forge/module-api";
 
 /** All pure — no side effect, no flow socket, evaluated on demand. */
 

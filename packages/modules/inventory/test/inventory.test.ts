@@ -107,6 +107,10 @@ function makeFakeContext(config: Record<string, unknown> = {}) {
       const fn = interceptorFns.get(point as string);
       return fn ? (fn(value) as InterceptorMap[K]) : value;
     },
+    defineGraphNode() {
+      // @forge/inventory registers no graph node types — this fake exists
+      // only to satisfy SetupContext's shape (docs/adr/0017, M4).
+    },
     storage,
     log: logger,
   };

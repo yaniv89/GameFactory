@@ -1,5 +1,4 @@
-import type { EntityId } from "@forge/module-api";
-import type { GraphNodeDefinition } from "../types";
+import type { EntityId, GraphNodeDefinition } from "@forge/module-api";
 
 /** Impure — creates an entity as a side effect, so it participates in flow order like any other action node. */
 export const createEntityNode: GraphNodeDefinition = {

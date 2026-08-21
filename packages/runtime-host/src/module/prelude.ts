@@ -5,12 +5,16 @@
  * called with — entirely out of plain guest-realm JS plus the small set of
  * native bridge functions `ModuleBridge` installs (see moduleBridge.ts):
  *
- * - `__forge_addSystem` / `__forge_addInterceptor` / `__forge_eventsOn` take
- *   a live guest function handle directly (no JSON round trip — functions
- *   aren't JSON-serializable in the first place), so the host can call back
- *   into the guest later. This is a different trust shape than the M2
- *   capability bridge's JSON-only `__hostCall`, and deliberately kept as a
- *   separate mechanism (docs/security/SANDBOX-DESIGN.md has the rationale).
+ * - `__forge_addSystem` / `__forge_addInterceptor` / `__forge_eventsOn` /
+ *   `__forge_defineGraphNode` take a live guest function handle directly
+ *   (no JSON round trip — functions aren't JSON-serializable in the first
+ *   place), so the host can call back into the guest later. This is a
+ *   different trust shape than the M2 capability bridge's JSON-only
+ *   `__hostCall`, and deliberately kept as a separate mechanism
+ *   (docs/security/SANDBOX-DESIGN.md has the rationale).
+ *   `__forge_defineGraphNode`'s own callback (`def.execute`) isn't invoked
+ *   by anything yet — it's registered for `@forge/graph-runtime` (M5) to
+ *   call once that module exists (docs/adr/0017 Decision 4).
  * - `__forge_eventsEmit` / `__forge_defineComponent` / `__forge_log` /
  *   `__forge_world` are plain JSON-in/JSON-out calls, same shape as
  *   `__hostCall`.
@@ -216,6 +220,14 @@ export function buildModulePrelude(
     defineComponent: function (name, schema, defaults) {
       var realName = __forge_defineComponent(name, JSON.stringify(schema), JSON.stringify(defaults));
       return { name: realName };
+    },
+
+    // def.execute crosses as a live guest function handle, not JSON — a
+    // function isn't JSON-serializable in the first place, same reason
+    // addSystem's run/addInterceptor's fn do the same below. Nothing calls
+    // it yet (M5's own job); this registers it for later.
+    defineGraphNode: function (def) {
+      __forge_defineGraphNode(def.type, JSON.stringify(def.inputs), JSON.stringify(def.outputs), def.execute);
     },
 
     addSystem: function (def) {

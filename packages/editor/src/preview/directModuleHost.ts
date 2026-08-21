@@ -13,6 +13,7 @@ import type {
   EntityId,
   EntityView,
   EventBus,
+  GraphNodeDefinition,
   InputSnapshot,
   InterceptorMap,
   Logger,
@@ -224,6 +225,13 @@ export function createModuleRuntime(moduleName: string, config: Readonly<Record<
   const directWorld = new DirectWorldApi(world);
   const log = makeLogger(moduleName);
   const memoryStorage = createMemoryStorage();
+  // Unsandboxed mirror of runtime-host's GraphNodeRegistry (docs/adr/0017,
+  // M4) — no separate host/guest boundary here, so `def` itself (including
+  // its live `execute` function) is stored directly, no JSON marshaling
+  // needed. Nothing consumes this yet (same M4/M5 split as the sandboxed
+  // path): the live preview doesn't interpret graphs until
+  // @forge/graph-runtime (M5) exists.
+  const graphNodes = new Map<string, GraphNodeDefinition>();
 
   const ctx: SetupContext = {
     config,
@@ -291,6 +299,12 @@ export function createModuleRuntime(moduleName: string, config: Readonly<Record<
     },
     runInterceptor(point, value) {
       return interceptors.run(point, value, { world });
+    },
+    defineGraphNode(def) {
+      if (graphNodes.has(def.type)) {
+        throw new Error(`defineGraphNode: node type "${def.type}" is already registered`);
+      }
+      graphNodes.set(def.type, def);
     },
     storage: memoryStorage.api,
     log,

@@ -1,4 +1,5 @@
 import { EventBusImpl, FIXED_STEP_MS, InterceptorRegistry, Scheduler } from "@forge/core";
+import { GraphNodeRegistry } from "../module/graphNodeRegistry";
 import { ModuleBridge } from "../module/moduleBridge";
 import { buildSmokeFixtureWorld } from "./fixtureWorld";
 
@@ -67,6 +68,7 @@ export async function runModuleSmokeTest(options: SmokeRunOptions): Promise<Smok
   const scheduler = new Scheduler(world);
   const events = new EventBusImpl();
   const interceptors = new InterceptorRegistry();
+  const graphNodes = new GraphNodeRegistry();
 
   const bridge = await ModuleBridge.create({
     moduleName: options.moduleName,
@@ -77,6 +79,7 @@ export async function runModuleSmokeTest(options: SmokeRunOptions): Promise<Smok
     scheduler,
     events,
     interceptors,
+    graphNodes,
     memoryLimitBytes: options.memoryLimitBytes ?? DEFAULT_MEMORY_LIMIT_BYTES,
     maxStackSizeBytes: options.maxStackSizeBytes ?? DEFAULT_MAX_STACK_SIZE_BYTES,
     computeBudgetMs: options.computeBudgetMs ?? DEFAULT_COMPUTE_BUDGET_MS,

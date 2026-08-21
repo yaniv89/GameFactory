@@ -1,4 +1,5 @@
-import { ABSOLUTE_REPEAT_CEILING, DEFAULT_REPEAT_CEILING, coreGraphNodes, type GraphNodeDefinition } from "@forge/graph-nodes-core";
+import { ABSOLUTE_REPEAT_CEILING, DEFAULT_REPEAT_CEILING, coreGraphNodes } from "@forge/graph-nodes-core";
+import type { GraphNodeDefinition } from "@forge/module-api";
 import { defaultsFromSchema, type FormValues, type ObjectSchema } from "../inspector/jsonSchema";
 
 const EMPTY_SCHEMA: ObjectSchema = { type: "object", properties: {} };

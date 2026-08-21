@@ -1,6 +1,7 @@
 import type { NetApi, StorageApi, Logger } from "./capabilities";
 import type { ComponentHandle, ComponentJsonSchema, ComponentShape } from "./component";
 import type { EventBus } from "./events";
+import type { GraphNodeDefinition } from "./graph";
 import type { InterceptorContext, InterceptorMap } from "./interceptors";
 import type { SystemDefinition } from "./scheduler";
 import type { WorldApi } from "./world";
@@ -14,11 +15,13 @@ import type { WorldApi } from "./world";
  * `tools/security/check-module-boundaries.mjs`.
  *
  * ⚠ Not the full surface docs/SPEC.md Section 9.3 eventually describes:
- * `defineGraphNode` (no graph VM exists yet — Section 22 Open Question 1
- * is still open) and the `audio`/`render` capabilities (no bridge
- * implementation yet — see `capabilities.ts`) are deliberately absent
- * from v1 rather than guessed at. Adding them later is additive; this
- * omission is itself the record of that decision, not a silent gap.
+ * the `audio`/`render` capabilities (no bridge implementation yet — see
+ * `capabilities.ts`) are deliberately absent from v1 rather than guessed
+ * at. Adding them later is additive; this omission is itself the record
+ * of that decision, not a silent gap. `defineGraphNode` (below) *was*
+ * absent for the same reason until docs/adr/0017 (J1's node-graph
+ * authoring layer) resolved Section 22 Open Question 1 and M4 formalized
+ * the shape M2/M3 had already exercised provisionally.
  */
 export interface ForgeModule {
   /** Called once at world construction, before any scene loads. */
@@ -88,6 +91,19 @@ export interface SetupContext {
    * registered for `point`.
    */
   runInterceptor<K extends keyof InterceptorMap>(point: K, value: InterceptorMap[K]): InterceptorMap[K];
+
+  /**
+   * Registers one node type (`graph.ts`) for `@forge/graph-runtime` (M5)
+   * to interpret — the same "called once from `setup()`" shape
+   * `defineComponent`/`addSystem`/`addInterceptor` already use, so a
+   * third-party module registers its own node types no differently than
+   * a first-party one does (docs/adr/0017 Decision 4). Declare the
+   * resulting type name(s) in the module's manifest `provides.graphNodes`
+   * array too — that's what makes the registration discoverable before
+   * any graph starts interpreting, the same way `provides.components`
+   * documents what `defineComponent` calls to expect.
+   */
+  defineGraphNode(def: GraphNodeDefinition): void;
 
   /** Namespaced key-value store, persisted into the save file. Always present — `storage:local` is implicit-consent (docs/SPEC.md Section 10.3). */
   readonly storage: StorageApi;

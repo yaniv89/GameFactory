@@ -1,4 +1,4 @@
-import type { GraphNodeDefinition } from "../types";
+import type { GraphNodeDefinition } from "@forge/module-api";
 
 export const branchNode: GraphNodeDefinition = {
   type: "core:branch",

@@ -59,6 +59,38 @@ export interface ForgeModule {
 }
 
 // @public
+export interface GraphNodeDefinition {
+    // (undocumented)
+    execute(ctx: GraphNodeExecutionContext, inputs: Readonly<Record<string, unknown>>, config: Readonly<Record<string, unknown>>): Record<string, unknown> | void;
+    // (undocumented)
+    readonly inputs: readonly GraphSocketDefinition[];
+    // (undocumented)
+    readonly outputs: readonly GraphSocketDefinition[];
+    readonly type: string;
+}
+
+// @public
+export interface GraphNodeExecutionContext {
+    // (undocumented)
+    readonly events: EventBus;
+    next(flowOutput: string): void;
+    warn(message: string, data?: Record<string, unknown>): void;
+    // (undocumented)
+    readonly world: WorldApi;
+}
+
+// @public (undocumented)
+export interface GraphSocketDefinition {
+    // (undocumented)
+    readonly name: string;
+    // (undocumented)
+    readonly type: GraphSocketType;
+}
+
+// @public
+export type GraphSocketType = "flow" | "number" | "string" | "boolean" | "entity" | "any";
+
+// @public
 export interface InputSnapshot {
     // (undocumented)
     isActionDown(action: string): boolean;
@@ -274,6 +306,7 @@ export interface SetupContext {
     readonly config: Readonly<Record<string, unknown>>;
     // (undocumented)
     defineComponent<T extends ComponentShape>(name: string, schema: ComponentJsonSchema, defaults: T): ComponentHandle<T>;
+    defineGraphNode(def: GraphNodeDefinition): void;
     // (undocumented)
     readonly engineVersion: string;
     readonly events: EventBus;

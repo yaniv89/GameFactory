@@ -18,4 +18,5 @@ export * from "./interceptors";
 export * from "./capabilities";
 export * from "./save";
 export * from "./manifest";
+export * from "./graph";
 export * from "./module";

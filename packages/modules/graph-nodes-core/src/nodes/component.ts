@@ -1,5 +1,4 @@
-import type { EntityId } from "@forge/module-api";
-import type { GraphNodeDefinition } from "../types";
+import type { EntityId, GraphNodeDefinition } from "@forge/module-api";
 
 /**
  * The component name is a `config` value (the editor's per-node inspector,

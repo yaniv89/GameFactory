@@ -68,6 +68,11 @@ export function PreviewPanel() {
   // scene-send effect below; `Object.keys` is computed inline there
   // instead, only when this reference has genuinely changed.
   const installedModules = useProjectStore((state) => state.document.installedModules);
+  // docs/adr/0017 (M6): the real, live authored-graph set, re-sent on
+  // every scene message exactly like installedModules above — editing a
+  // graph in GraphsPanel should reach the running preview the same tick
+  // an install/uninstall would.
+  const graphs = useProjectStore((state) => state.document.graphs);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent): void => {
@@ -102,6 +107,7 @@ export function PreviewPanel() {
       tiles,
       entities: entities ?? [],
       installedModules: Object.keys(installedModules),
+      graphs,
       ...(activePack !== undefined ? { activePack } : {}),
       ...(devSaveRef.current ? { devSave: devSaveRef.current } : {}),
     };
@@ -117,7 +123,7 @@ export function PreviewPanel() {
     // general, false positive for this specific, structurally-safe case.
     // nosemgrep: javascript.browser.security.wildcard-postmessage-configuration.wildcard-postmessage-configuration
     iframeRef.current?.contentWindow?.postMessage(message, "*");
-  }, [status, tiles, entities, activePack, installedModules]);
+  }, [status, tiles, entities, activePack, installedModules, graphs]);
 
   return (
     <div className="fg-preview-panel">

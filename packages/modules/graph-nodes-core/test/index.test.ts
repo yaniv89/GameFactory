@@ -21,7 +21,7 @@ describe("coreGraphNodes", () => {
     }
   });
 
-  it("registers exactly the v1 node list docs/adr/0017's task split names for M2", () => {
+  it("registers exactly the v1 node list — docs/adr/0017's own M2 task-split names, plus core:constant/core:getField/core:setField (found missing while actually building a mechanic at M6)", () => {
     const types = new Set(coreGraphNodes.map((node) => node.type));
     expect(types).toEqual(
       new Set([
@@ -45,6 +45,9 @@ describe("coreGraphNodes", () => {
         "core:branch",
         "core:repeat",
         "core:forEachEntity",
+        "core:constant",
+        "core:getField",
+        "core:setField",
       ]),
     );
   });

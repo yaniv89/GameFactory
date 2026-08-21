@@ -1,5 +1,5 @@
 import { coreGraphNodes } from "@forge/graph-nodes-core";
-import type { ForgeModule, GraphNodeDefinition, SetupContext } from "@forge/module-api";
+import type { ForgeModule, GraphNodeDefinition, SetupContext, TeardownContext } from "@forge/module-api";
 import { compileGraph, type CompiledGraph } from "./compileGraph";
 import { attachGraph } from "./interpreter";
 import type { GraphDocumentData, GraphRuntimeConfig } from "./types";
@@ -53,7 +53,24 @@ function validateGraphDocuments(ctx: SetupContext): readonly GraphDocumentData[]
  * inspection (`InterceptorRegistry` has real per-point timing;
  * `Scheduler.runPhase` has none for systems) — worth a real follow-up
  * task, not silently claimed as done here.
+ *
+ * `teardown()` (M6): the editor's live preview rebuilds this module fresh
+ * on every edited scene message, the same "no way to hand it updated
+ * content short of a fresh `setup()` call" treatment `@forge/dialogue`
+ * already gets (`PreviewApp.tsx`'s own doc comment) — but unlike
+ * dialogue, graph-runtime deliberately shares the *same* persistent
+ * `world`/`events` across rebuilds (it has to: its nodes mutate real game
+ * entities, not a disposable per-module sandbox one). Without an explicit
+ * teardown, every rebuild would stack a fresh set of `events.on(...)`
+ * subscriptions from `attachGraph` on top of the previous ones, on the
+ * same long-lived bus — the module-scoped `activeUnsubscribes` here is
+ * what keeps that from happening. `ModuleBridge.teardown()`
+ * (`packages/runtime-host`, already real since before this module
+ * existed) calls this the identical way in the sandboxed path, so this
+ * isn't a preview-only accommodation.
  */
+let activeUnsubscribes: Array<() => void> = [];
+
 export const graphRuntimeModule: ForgeModule = {
   setup(ctx: SetupContext): void {
     const nodeTypes = new Map<string, GraphNodeDefinition>(coreGraphNodes.map((node) => [node.type, node]));
@@ -66,9 +83,15 @@ export const graphRuntimeModule: ForgeModule = {
       if (graph) compiled.push(graph);
     }
 
+    activeUnsubscribes = [];
     for (const graph of compiled) {
-      attachGraph(graph, ctx.world, ctx.events, (message, data) => ctx.log.warn(`graph-runtime: ${message}`, data));
+      const unsubscribes = attachGraph(graph, ctx.world, ctx.events, (message, data) => ctx.log.warn(`graph-runtime: ${message}`, data));
+      activeUnsubscribes.push(...unsubscribes);
     }
+  },
+  teardown(_ctx: TeardownContext): void {
+    for (const unsubscribe of activeUnsubscribes) unsubscribe();
+    activeUnsubscribes = [];
   },
 };
 

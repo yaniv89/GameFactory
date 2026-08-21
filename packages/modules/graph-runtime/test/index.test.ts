@@ -21,10 +21,20 @@ import { graphRuntimeModule } from "../src/index";
  * `packages/runtime-host/test/moduleBridge.test.ts` (M4) — this module
  * uses nothing beyond what's proven there.
  */
-function makeFakeContext(config: Record<string, unknown>) {
-  const worldData = new Map<EntityId, Record<string, unknown>>();
-  let nextId = 1;
-  const handlers = new Map<string, Array<(payload: unknown) => void>>();
+/**
+ * `shared`, when passed, reuses another `makeFakeContext` call's own
+ * `worldData`/`handlers` — the same "fresh node registry, same
+ * persistent world/events" shape `PreviewApp.tsx` (M6) actually needs to
+ * rebuild `graphRuntimeModule` in place: node-type registration
+ * (`ctx.defineGraphNode`) is write-once per registry by design (matching
+ * the real sandboxed `GraphNodeRegistry`'s own duplicate-registration
+ * guard), so a rebuild can never reuse the same `ctx`/registry twice —
+ * only the underlying world/events persist across one.
+ */
+function makeFakeContext(config: Record<string, unknown>, shared?: { worldData: Map<EntityId, Record<string, unknown>>; handlers: Map<string, Array<(payload: unknown) => void>> }) {
+  const worldData = shared?.worldData ?? new Map<EntityId, Record<string, unknown>>();
+  let nextId = worldData.size + 1;
+  const handlers = shared?.handlers ?? new Map<string, Array<(payload: unknown) => void>>();
   const graphNodes = new Map<string, GraphNodeDefinition>();
   const logs: Array<{ level: string; message: string; data?: unknown }> = [];
 
@@ -199,5 +209,71 @@ describe("@forge/graph-runtime module setup", () => {
     const id = harness.ctx.world.create({ Health: {} });
     harness.emit("go", id);
     expect(harness.ctx.world.has(id, "Health")).toBe(false);
+  });
+
+  it("teardown() unsubscribes every attached trigger — a later event no longer reaches the (torn-down) graph, matching what PreviewApp.tsx (M6) relies on for a rebuild-in-place", () => {
+    const harness = makeFakeContext({
+      graphs: [
+        {
+          id: "g1",
+          name: "kill on event",
+          nodes: [
+            { id: "trigger", type: "core:onEvent", config: { event: "enemy:died" } },
+            { id: "destroy", type: "core:destroyEntity", config: {} },
+          ],
+          edges: [
+            { id: "e1", source: "trigger", target: "destroy", sourceHandle: "flow", targetHandle: "flow" },
+            { id: "e2", source: "trigger", target: "destroy", sourceHandle: "payload", targetHandle: "entity" },
+          ],
+        },
+      ],
+    });
+    graphRuntimeModule.setup(harness.ctx);
+    graphRuntimeModule.teardown?.({ moduleName: "@test/graph-runtime" });
+
+    const id = harness.ctx.world.create({ Health: {} });
+    harness.emit("enemy:died", id);
+    expect(harness.ctx.world.has(id, "Health")).toBe(true); // never destroyed — the graph was torn down before this event fired
+  });
+
+  it("setup() called again after teardown() re-attaches cleanly, with no leftover double-firing from the first attachment", () => {
+    const graphs = [
+      {
+        id: "g1",
+        name: "kill on event",
+        nodes: [
+          { id: "trigger", type: "core:onEvent", config: { event: "enemy:died" } },
+          { id: "destroy", type: "core:destroyEntity", config: {} },
+        ],
+        edges: [
+          { id: "e1", source: "trigger", target: "destroy", sourceHandle: "flow", targetHandle: "flow" },
+          { id: "e2", source: "trigger", target: "destroy", sourceHandle: "payload", targetHandle: "entity" },
+        ],
+      },
+    ];
+    // Node-type registration is write-once per registry by design
+    // (`ctx.defineGraphNode` throws on a duplicate `type`, matching the
+    // real sandboxed `GraphNodeRegistry`) — so a rebuild can never reuse
+    // the same `ctx` twice, only the underlying world/events it shares
+    // with the rest of the running game (`PreviewApp.tsx`'s own real
+    // shape, M6). `shared` here is exactly that: a second, independent
+    // `ctx` (fresh node registry) reusing the first's `worldData`/`handlers`.
+    const first = makeFakeContext({ graphs });
+    graphRuntimeModule.setup(first.ctx);
+    graphRuntimeModule.teardown?.({ moduleName: "@test/graph-runtime" });
+
+    const second = makeFakeContext({ graphs }, { worldData: first.worldData, handlers: new Map() });
+    graphRuntimeModule.setup(second.ctx);
+
+    const id = second.ctx.world.create({ Health: {} });
+    second.emit("enemy:died", id);
+    expect(second.ctx.world.has(id, "Health")).toBe(false); // the fresh attachment still works
+
+    // And the torn-down first attachment's subscription is gone — emitting
+    // on the *first* harness's own (now-orphaned) handlers map proves
+    // nothing from the old attachment is still listening.
+    const staleId = first.ctx.world.create({ Health: {} });
+    first.emit("enemy:died", staleId);
+    expect(first.ctx.world.has(staleId, "Health")).toBe(true);
   });
 });

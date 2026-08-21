@@ -110,6 +110,58 @@ describe("isPreviewSceneMessage", () => {
     expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], installedModules: [42] })).toBe(false);
     expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], installedModules: "@forge/dialogue" })).toBe(false);
   });
+
+  const VALID_GRAPH = {
+    id: "g1",
+    name: "kill on event",
+    nodes: [
+      { id: "trigger", type: "core:onEvent", position: { x: 0, y: 0 }, config: { event: "enemy:died" } },
+      { id: "destroy", type: "core:destroyEntity", position: { x: 100, y: 0 }, config: {} },
+    ],
+    edges: [{ id: "e1", source: "trigger", target: "destroy", sourceHandle: "flow", targetHandle: "flow" }],
+  };
+
+  it("accepts a message with no graphs field", () => {
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [] })).toBe(true);
+  });
+
+  it("accepts a message with an empty graphs map", () => {
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], graphs: {} })).toBe(true);
+  });
+
+  it("accepts a message with a well-formed graph", () => {
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], graphs: { g1: VALID_GRAPH } })).toBe(true);
+  });
+
+  it("rejects a graph missing id/name", () => {
+    const { id, ...missingId } = VALID_GRAPH;
+    void id;
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], graphs: { g1: missingId } })).toBe(false);
+  });
+
+  it("rejects a graph whose nodes/edges aren't arrays", () => {
+    expect(
+      isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], graphs: { g1: { ...VALID_GRAPH, nodes: "nope" } } }),
+    ).toBe(false);
+    expect(
+      isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], graphs: { g1: { ...VALID_GRAPH, edges: "nope" } } }),
+    ).toBe(false);
+  });
+
+  it("rejects a node instance missing a required field", () => {
+    const badGraph = { ...VALID_GRAPH, nodes: [{ id: "trigger", config: {} }] }; // missing "type"
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], graphs: { g1: badGraph } })).toBe(false);
+  });
+
+  it("rejects an edge instance missing a required field", () => {
+    const badGraph = { ...VALID_GRAPH, edges: [{ id: "e1", source: "trigger", target: "destroy" }] }; // missing sourceHandle/targetHandle
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], graphs: { g1: badGraph } })).toBe(false);
+  });
+
+  it("rejects graphs that isn't an object at all", () => {
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], graphs: "nope" })).toBe(false);
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [], graphs: null })).toBe(false);
+  });
 });
 
 describe("isPreviewToEditorMessage", () => {

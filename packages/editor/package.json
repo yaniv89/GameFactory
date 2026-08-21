@@ -23,6 +23,7 @@
     "@forge/dialogue": "workspace:*",
     "@forge/ds": "workspace:*",
     "@forge/graph-nodes-core": "workspace:*",
+    "@forge/graph-runtime": "workspace:*",
     "@forge/inventory": "workspace:*",
     "@forge/module-api": "workspace:*",
     "@forge/project-export": "workspace:*",

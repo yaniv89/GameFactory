@@ -21,6 +21,7 @@ export { onEventNode, emitEventNode } from "./nodes/events";
 export { equalsNode, greaterThanNode, lessThanNode, andNode, orNode, notNode } from "./nodes/comparisons";
 export { addNode, subtractNode, multiplyNode, divideNode } from "./nodes/math";
 export { branchNode, repeatNode, forEachEntityNode, DEFAULT_REPEAT_CEILING, ABSOLUTE_REPEAT_CEILING } from "./nodes/flow";
+export { constantNode, getFieldNode, setFieldNode } from "./nodes/data";
 
 import { createEntityNode, destroyEntityNode } from "./nodes/entity";
 import { getComponentNode, hasComponentNode, setComponentNode } from "./nodes/component";
@@ -28,6 +29,7 @@ import { onEventNode, emitEventNode } from "./nodes/events";
 import { equalsNode, greaterThanNode, lessThanNode, andNode, orNode, notNode } from "./nodes/comparisons";
 import { addNode, subtractNode, multiplyNode, divideNode } from "./nodes/math";
 import { branchNode, repeatNode, forEachEntityNode } from "./nodes/flow";
+import { constantNode, getFieldNode, setFieldNode } from "./nodes/data";
 import type { GraphNodeDefinition } from "@forge/module-api";
 
 /** Every core node definition, for whatever registers them in bulk (M4/M5). */
@@ -52,4 +54,7 @@ export const coreGraphNodes: readonly GraphNodeDefinition[] = [
   branchNode,
   repeatNode,
   forEachEntityNode,
+  constantNode,
+  getFieldNode,
+  setFieldNode,
 ];

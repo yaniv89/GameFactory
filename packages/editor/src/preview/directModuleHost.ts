@@ -54,7 +54,8 @@ const FIELD_TYPE_FOR: Record<"number" | "boolean", ComponentFieldType> = { numbe
 interface ModuleRuntime {
   readonly world: World;
   readonly scheduler: Scheduler;
-  readonly events: EventBusImpl<Record<string, unknown>>;
+  /** The `EventBus` interface, not the concrete `EventBusImpl` — `shared.events` (below) may be a *caller-owned* bus (e.g. `PreviewApp.tsx`'s own `graphEvents`), and nothing here needs more than `.on`/`.off`/`.emit`. */
+  readonly events: EventBus<Record<string, unknown>>;
   readonly interceptors: InterceptorRegistry<InterceptorMap>;
   readonly ctx: SetupContext;
   /** A plain-object snapshot of everything currently in `ctx.storage` — the same `Record<string, unknown>` shape `runtime-host`'s own `ModuleBridge.snapshotStorage()` returns (`SaveFile.globals[moduleName]`), so a caller building a save (I1f) doesn't need a third shape to reconcile. */
@@ -216,11 +217,29 @@ class DirectWorldApi implements WorldApi {
  * driving the simulation: `scheduler.tick(dtMs)` every frame, and
  * `events`/`world` to trigger and observe module behavior (e.g.
  * `dialogue:start`) from outside.
+ *
+ * `shared` (M6, `@forge/graph-runtime`): dialogue/inventory each get
+ * their own throwaway `World`/events on purpose — neither one needs to
+ * touch a *real* game entity, only its own storage-keyed-by-id state
+ * (see `rebuildDialogueRuntime`'s own doc comment in `PreviewApp.tsx`).
+ * `@forge/graph-runtime` is different: its whole point is
+ * `core:createEntity`/`destroyEntity`/`getComponent`/`setComponent`
+ * mutating the *actual* running game's entities, so it must share the
+ * exact same `World` (and the same `events` bus its triggers subscribe
+ * on) the rest of `PreviewApp.tsx` already drives — a fresh isolated one
+ * would let a graph "destroy" an entity that only ever existed in a
+ * phantom world nothing else can see. A fresh `Scheduler`/`InterceptorRegistry`/
+ * storage are still created either way: nothing here calls `ctx.addSystem`
+ * or reads `ctx.storage`, so there's nothing real to share for those.
  */
-export function createModuleRuntime(moduleName: string, config: Readonly<Record<string, unknown>>): ModuleRuntime {
-  const world = new World();
+export function createModuleRuntime(
+  moduleName: string,
+  config: Readonly<Record<string, unknown>>,
+  shared?: { readonly world: World; readonly events: EventBus<Record<string, unknown>> },
+): ModuleRuntime {
+  const world = shared?.world ?? new World();
   const scheduler = new Scheduler(world);
-  const events = new EventBusImpl<Record<string, unknown>>();
+  const events = shared?.events ?? new EventBusImpl<Record<string, unknown>>();
   const interceptors = new InterceptorRegistry<InterceptorMap>();
   const directWorld = new DirectWorldApi(world);
   const log = makeLogger(moduleName);

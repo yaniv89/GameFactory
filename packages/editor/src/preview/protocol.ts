@@ -1,4 +1,5 @@
 import { isPrefabId } from "@forge/core";
+import type { GraphDocument } from "@forge/project-export";
 import { GRID_HEIGHT, GRID_WIDTH } from "../canvas/gridConstants";
 import type { EntityPlacement } from "../store/projectStore";
 import { isValidDevPreviewSave, type DevPreviewSave } from "./devPreviewSave";
@@ -48,6 +49,14 @@ export interface PreviewSceneMessage {
    * ignored.
    */
   readonly devSave?: DevPreviewSave;
+  /**
+   * `ProjectDocument.graphs` (docs/adr/0017, M6) — every authored graph in
+   * the project, keyed by id, the same shape `forge export`'s own
+   * `moduleAdapters.ts` assembles `@forge/graph-runtime`'s `config.graphs`
+   * from. Optional like `activePack`/`devSave` above: an absent field
+   * means "no graphs authored yet," not "don't run the graph module."
+   */
+  readonly graphs?: Readonly<Record<string, GraphDocument>>;
 }
 
 export interface PreviewReadyMessage {
@@ -94,9 +103,36 @@ function isValidEntity(value: unknown): value is EntityPlacement {
   return true;
 }
 
+function isValidGraphNodeInstance(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.id === "string" && typeof candidate.type === "string" && typeof candidate.config === "object" && candidate.config !== null;
+}
+
+function isValidGraphEdgeInstance(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.source === "string" &&
+    typeof candidate.sourceHandle === "string" &&
+    typeof candidate.target === "string" &&
+    typeof candidate.targetHandle === "string"
+  );
+}
+
+function isValidGraphDocument(value: unknown): value is GraphDocument {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.id !== "string" || typeof candidate.name !== "string") return false;
+  if (!Array.isArray(candidate.nodes) || !candidate.nodes.every(isValidGraphNodeInstance)) return false;
+  if (!Array.isArray(candidate.edges) || !candidate.edges.every(isValidGraphEdgeInstance)) return false;
+  return true;
+}
+
 export function isPreviewSceneMessage(data: unknown): data is PreviewSceneMessage {
   if (typeof data !== "object" || data === null) return false;
-  const candidate = data as { type?: unknown; tiles?: unknown; entities?: unknown; activePack?: unknown; devSave?: unknown; installedModules?: unknown };
+  const candidate = data as { type?: unknown; tiles?: unknown; entities?: unknown; activePack?: unknown; devSave?: unknown; installedModules?: unknown; graphs?: unknown };
   if (candidate.type !== "forge:preview:scene") return false;
   if (!Array.isArray(candidate.tiles) || candidate.tiles.length !== EXPECTED_TILE_COUNT) return false;
   if (!candidate.tiles.every((tile) => typeof tile === "number" && Number.isFinite(tile))) return false;
@@ -105,6 +141,10 @@ export function isPreviewSceneMessage(data: unknown): data is PreviewSceneMessag
   if (candidate.devSave !== undefined && !isValidDevPreviewSave(candidate.devSave)) return false;
   if (candidate.installedModules !== undefined) {
     if (!Array.isArray(candidate.installedModules) || !candidate.installedModules.every((name) => typeof name === "string")) return false;
+  }
+  if (candidate.graphs !== undefined) {
+    if (typeof candidate.graphs !== "object" || candidate.graphs === null) return false;
+    if (!Object.values(candidate.graphs).every(isValidGraphDocument)) return false;
   }
   return candidate.entities.every(isValidEntity);
 }

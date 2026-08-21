@@ -39,6 +39,22 @@ const STRING_FIELD = (title: string): ObjectSchema => ({
 
 const COMPONENT_SCHEMA = STRING_FIELD("Component");
 const EVENT_SCHEMA: ObjectSchema = { type: "object", properties: { event: { type: "string", title: "Event name", minLength: 1 } } };
+// core:getField's runtime config key is "field" — not STRING_FIELD's
+// hardcoded "component" (that helper matches core:getComponent/
+// hasComponent/setComponent's own shared config shape specifically).
+const FIELD_NAME_SCHEMA: ObjectSchema = { type: "object", properties: { field: { type: "string", title: "Field name", minLength: 1 } } };
+/**
+ * `core:constant`'s own runtime `config.value` is genuinely `unknown` —
+ * a literal number, string, or boolean (`data.ts`'s own doc comment).
+ * The editor's `FieldSchema` set (`jsonSchema.ts`) has no "any" field
+ * type to offer a single form for all three, so this v1 form only
+ * authors a *number* literal — the common case this node was added for
+ * (docs/adr/0017, M6: a fixed heal/damage amount, a fixed count). A
+ * string/boolean-literal form is purely additive editor metadata to add
+ * later (the runtime node already accepts any of the three); a real,
+ * stated trim, not a silent one.
+ */
+const CONSTANT_NUMBER_SCHEMA: ObjectSchema = { type: "object", properties: { value: { type: "number", title: "Value", default: 0 } } };
 
 /** Splits/joins a comma-separated component list — the small, honest boundary `types.ts`'s own doc comment on `core:forEachEntity` already calls out (no array field type in the shared `FieldSchema` set). */
 function splitComponents(value: string): string[] {
@@ -84,6 +100,9 @@ const CORE_NODE_EDITOR_METADATA: Record<string, GraphNodeEditorMetadata> = {
     toFormValues: (config) => ({ components: Array.isArray(config.components) ? (config.components as string[]).join(", ") : "" }),
     fromFormValues: (values) => ({ components: splitComponents(String(values.components ?? "")) }),
   },
+  "core:constant": { label: "Constant (number)", category: "Data", configSchema: CONSTANT_NUMBER_SCHEMA },
+  "core:getField": { label: "Get Field", category: "Data", configSchema: FIELD_NAME_SCHEMA },
+  "core:setField": { label: "Set Field", category: "Data", configSchema: FIELD_NAME_SCHEMA },
 };
 
 /** One entry per `@forge/graph-nodes-core` definition — the M2 library plus this file's own editor metadata, matching each other 1:1 by construction (both keyed by the same `core:*` type). */

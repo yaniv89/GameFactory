@@ -30,8 +30,9 @@ import {
   type PickupEventMap,
 } from "@forge/core";
 import { dialogueModule } from "@forge/dialogue";
+import { graphRuntimeModule } from "@forge/graph-runtime";
 import { inventoryModule, storageKey, type InventoryChangedEvent } from "@forge/inventory";
-import { buildDialogueTreesFromEntities } from "@forge/project-export";
+import { buildDialogueTreesFromEntities, type GraphDocument } from "@forge/project-export";
 import {
   Camera,
   RenderHost,
@@ -259,6 +260,8 @@ interface GameWorld {
   readonly combatEvents: EventBus<MeleeAttackEventMap>;
   /** `createPickupSystem`'s own event bus — H1e's HUD coin-slot counter subscribes to `"pickup:collected"` here. */
   readonly pickupEvents: EventBus<PickupEventMap>;
+  /** docs/adr/0017 (M6) — the bus `@forge/graph-runtime`'s `core:onEvent` triggers actually subscribe on; real gameplay events are forwarded onto it, see `graphEvents`'s own doc comment at the boot effect. */
+  readonly graphEvents: EventBus<Record<string, unknown>>;
 }
 
 /** The dialogue module's own world, rebuilt whenever the NPC/dialogue set changes (see the doc comment on the scene-message effect below for why this is a *separate*, disposable world from GameWorld). */
@@ -318,6 +321,17 @@ export function PreviewApp() {
   const rigRef = useRef<RenderRig | null>(null);
   const gameWorldRef = useRef<GameWorld | null>(null);
   const dialogueRef = useRef<DialogueRuntime | null>(null);
+  /**
+   * docs/adr/0017 (M6): true once `graphRuntimeModule.setup()` has been
+   * called against the shared `graphEvents` bus at least once and not yet
+   * torn down — read by the scene-message effect below to know whether a
+   * `teardown()` is owed before the next rebuild (`createModuleRuntime`'s
+   * own doc comment on why graph-runtime, unlike dialogue, shares its
+   * `world`/`events` across rebuilds instead of getting a disposable pair
+   * each time — see also `graphRuntimeModule`'s own `teardown()` doc
+   * comment in `@forge/graph-runtime/src/index.ts`).
+   */
+  const graphRuntimeAttachedRef = useRef(false);
   /**
    * I1f: the saved player's own components (`devPreviewSave.ts`), read
    * once at boot — before the first `forge:preview:scene` message (a
@@ -480,6 +494,14 @@ export function PreviewApp() {
         const entityTextures = buildEntityTextures(host.app.renderer, TILE_SIZE);
         const combatEvents = new EventBusImpl<MeleeAttackEventMap>();
         const pickupEvents = new EventBusImpl<PickupEventMap>();
+        // docs/adr/0017 (M6): the one event bus @forge/graph-runtime's
+        // core:onEvent triggers actually subscribe on — a broad
+        // Record<string, unknown> bus, not the narrowly-typed
+        // combatEvents/pickupEvents above, since a graph can react to
+        // either kind of gameplay event. Real gameplay events are
+        // forwarded onto it (not replaced) right where they're already
+        // handled, below — see those handlers' own comments.
+        const graphEvents = new EventBusImpl<Record<string, unknown>>();
         // I1e: a real @forge/inventory runtime, created once at boot (not
         // rebuilt per scene message the way the dialogue runtime is — an
         // inventory doesn't depend on scene/NPC placements). Unsandboxed,
@@ -603,6 +625,10 @@ export function PreviewApp() {
           // H1d's original ad hoc code only ever fired on death.
           spawnVfxBurst(world, targetTransform.x, targetTransform.y, IMPACT_SPARK_OPTIONS);
           world.flush();
+          // docs/adr/0017 (M6): forwarded, not replaced — a graph can react
+          // to the same real gameplay event this hand-coded system already
+          // does, reusing combatEvents' own payload shape unchanged.
+          graphEvents.emit("combat:hit", payload);
         });
         combatEvents.on("combat:death", (payload) => {
           audio.playDeath();
@@ -612,6 +638,7 @@ export function PreviewApp() {
           // job to decide loot tables), every death drops exactly one.
           spawnCoinPickup(world, payload.x, payload.y);
           world.flush();
+          graphEvents.emit("combat:death", payload);
         });
         pickupEvents.on("pickup:collected", (payload) => {
           audio.playPickup();
@@ -623,19 +650,24 @@ export function PreviewApp() {
           // the same way `forge export` wouldn't wire this event up at
           // all in that case (`gameLogic.ts`'s own module-gated bridge
           // wiring).
-          if (!inventoryInstalledRef.current) return;
-          const itemKey = ITEM_KEY_FOR_ID[payload.itemId];
-          if (!itemKey) {
-            console.warn(`[forge:preview] picked up an item with no known inventory key (Pickup.itemId ${payload.itemId}) — dropped, not added to inventory.`);
-            return;
+          if (inventoryInstalledRef.current) {
+            const itemKey = ITEM_KEY_FOR_ID[payload.itemId];
+            if (!itemKey) {
+              console.warn(`[forge:preview] picked up an item with no known inventory key (Pickup.itemId ${payload.itemId}) — dropped, not added to inventory.`);
+            } else {
+              // `payload.player` is only ever used here as an opaque storage
+              // key (`inv:<entity>`), never dereferenced structurally against
+              // this runtime's own isolated World — the same cross-world id
+              // reuse `capacityFor`'s own `ctx.world.has(...)` check already
+              // tolerates (falls back to `defaultMaxSlots` since nothing was
+              // ever created with that id in *this* World either).
+              inventoryRuntime.events.emit("inventory:add", { entity: payload.player, itemId: itemKey, qty: payload.amount });
+            }
           }
-          // `payload.player` is only ever used here as an opaque storage
-          // key (`inv:<entity>`), never dereferenced structurally against
-          // this runtime's own isolated World — the same cross-world id
-          // reuse `capacityFor`'s own `ctx.world.has(...)` check already
-          // tolerates (falls back to `defaultMaxSlots` since nothing was
-          // ever created with that id in *this* World either).
-          inventoryRuntime.events.emit("inventory:add", { entity: payload.player, itemId: itemKey, qty: payload.amount });
+          // Forwarded unconditionally — a graph mechanic reacting to a
+          // pickup (docs/adr/0017, M6) has nothing to do with whether
+          // @forge/inventory happens to be installed.
+          graphEvents.emit("pickup:collected", payload);
         });
         inventoryRuntime.events.on("inventory:changed", (payload) => {
           // The HUD's single coin slot is still the right-sized UI for a
@@ -694,6 +726,7 @@ export function PreviewApp() {
           mountEntity,
           combatEvents,
           pickupEvents,
+          graphEvents,
         };
 
         const onTick = (ticker: { deltaMS: number }) => {
@@ -820,6 +853,10 @@ export function PreviewApp() {
         rigRef.current = null;
         gameWorldRef.current = null;
         inventoryRuntimeRef.current = null;
+        if (graphRuntimeAttachedRef.current) {
+          graphRuntimeModule.teardown?.({ moduleName: "@forge/graph-runtime" });
+          graphRuntimeAttachedRef.current = false;
+        }
         previewAudioRef.current?.dispose();
         previewAudioRef.current = null;
       });
@@ -882,7 +919,7 @@ export function PreviewApp() {
       const rig = rigRef.current;
       const gameWorld = gameWorldRef.current;
       if (!rig || !gameWorld) return;
-      const { tiles, entities, activePack, devSave, installedModules = [] } = event.data;
+      const { tiles, entities, activePack, devSave, installedModules = [], graphs } = event.data;
       inventoryInstalledRef.current = installedModules.includes("@forge/inventory");
 
       // I1f: the one place a restore actually lands — see
@@ -984,6 +1021,29 @@ export function PreviewApp() {
             bubbleTimeoutRef.current = setTimeout(() => setBubble(null), DIALOGUE_BUBBLE_MS);
           })
         : null;
+
+      // docs/adr/0017 (M6): unlike dialogue above, @forge/graph-runtime
+      // shares gameWorld's own real world/graphEvents (createModuleRuntime's
+      // own doc comment explains why) — so a rebuild can't just discard the
+      // old instance the way dialogue's fresh-isolated-World rebuild does.
+      // teardown() first (a no-op the very first time, before anything was
+      // ever attached) removes the previous attachment's event
+      // subscriptions from the *persistent* graphEvents bus, then a fresh
+      // ctx (fresh node-type registry — defineGraphNode is write-once per
+      // registry) picks up whatever's currently authored.
+      if (graphRuntimeAttachedRef.current) {
+        graphRuntimeModule.teardown?.({ moduleName: "@forge/graph-runtime" });
+        graphRuntimeAttachedRef.current = false;
+      }
+      if (installedModules.includes("@forge/graph-runtime")) {
+        const graphRuntime = createModuleRuntime(
+          "@forge/graph-runtime",
+          { graphs: Object.values(graphs ?? {}) },
+          { world: gameWorld.world, events: gameWorld.graphEvents },
+        );
+        graphRuntimeModule.setup(graphRuntime.ctx);
+        graphRuntimeAttachedRef.current = true;
+      }
     };
     window.addEventListener("message", onMessage);
     return () => {

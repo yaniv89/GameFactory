@@ -116,6 +116,9 @@ importers:
       '@forge/graph-nodes-core':
         specifier: workspace:*
         version: link:../modules/graph-nodes-core
+      '@forge/graph-runtime':
+        specifier: workspace:*
+        version: link:../modules/graph-runtime
       '@forge/inventory':
         specifier: workspace:*
         version: link:../modules/inventory

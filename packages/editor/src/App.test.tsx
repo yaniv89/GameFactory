@@ -4,13 +4,15 @@ import { describe, expect, it } from "vitest";
 import { App } from "./App";
 
 describe("App", () => {
-  it("mounts the shell and adds all eight panels via Dockview", async () => {
+  it("mounts the shell and adds all nine panels via Dockview", async () => {
     render(<App />);
     expect(screen.getByText("Forge")).toBeInTheDocument();
 
     const tabs = await screen.findAllByRole("tab");
     const tabLabels = tabs.map((tab) => within(tab).getByText((_, el) => el?.className === "dv-default-tab-content").textContent);
-    expect(new Set(tabLabels)).toEqual(new Set(["Scenes", "Modules", "Canvas", "Inspector", "History", "Preview", "Graphs", "Quests"]));
+    expect(new Set(tabLabels)).toEqual(
+      new Set(["Scenes", "Modules", "Canvas", "Inspector", "History", "Preview", "Graphs", "Quests", "Data Tables"]),
+    );
   });
 
   it("opens the pack-swap dialog from the toolbar", async () => {

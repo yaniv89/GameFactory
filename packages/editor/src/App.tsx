@@ -15,6 +15,8 @@ import { useMarketplaceStore } from "./project/marketplaceStore";
 import { useProjectSyncStore, type SyncStatus } from "./project/projectSyncStore";
 import { useProjectStore } from "./store/projectStore";
 import {
+  DataTableEditorDialogContainer,
+  DataTablesPanelContainer,
   DialogueTreeEditorDialogContainer,
   GraphEditorDialogContainer,
   GraphsPanelContainer,
@@ -37,6 +39,7 @@ const COMPONENTS: Record<string, FC<IDockviewPanelProps>> = {
   preview: PreviewPanel,
   graphs: GraphsPanelContainer,
   quests: QuestsPanelContainer,
+  dataTables: DataTablesPanelContainer,
 };
 
 function onReady(event: DockviewReadyEvent): void {
@@ -77,6 +80,12 @@ function onReady(event: DockviewReadyEvent): void {
     id: "quests",
     component: "quests",
     title: "Quests",
+    position: { direction: "below", referencePanel: scenes.id },
+  });
+  api.addPanel({
+    id: "dataTables",
+    component: "dataTables",
+    title: "Data Tables",
     position: { direction: "below", referencePanel: scenes.id },
   });
   api.addPanel({
@@ -168,6 +177,7 @@ export function App({ projectTitle = "Untitled Project", onCloseProject }: AppPr
       <MarketplaceDialogContainer />
       <GraphEditorDialogContainer />
       <DialogueTreeEditorDialogContainer />
+      <DataTableEditorDialogContainer />
       <Dialog open={syncStatus === "conflict"} title="This project changed on the server" onClose={() => {}}>
         <p>
           {syncError ?? "Someone else (or another tab) saved a newer revision"}

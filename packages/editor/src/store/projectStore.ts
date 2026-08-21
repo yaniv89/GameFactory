@@ -6,6 +6,8 @@ import {
   GRID_WIDTH,
   emptyTiles,
   migrateDocument as migrateDocumentShape,
+  type DataTableColumn,
+  type DataTableDefinition,
   type EntityDialogue,
   type EntityPlacement,
   type DialogueTreeChoice,
@@ -26,6 +28,8 @@ import type { FormValues } from "../inspector/jsonSchema";
 // and a future server build worker can depend on the document shape
 // without depending on the whole editor SPA.
 export type {
+  DataTableColumn,
+  DataTableDefinition,
   DialogueTreeChoice,
   DialogueTreeNode,
   EntityDialogue,
@@ -142,7 +146,29 @@ type ProjectCommand =
   | { readonly type: "quest/add-objective"; readonly questId: string; readonly objective: QuestObjective }
   | { readonly type: "quest/remove-objective"; readonly questId: string; readonly objectiveId: string }
   | { readonly type: "quest/restore-objective"; readonly questId: string; readonly objective: QuestObjective; readonly index: number }
-  | { readonly type: "quest/edit-objective"; readonly questId: string; readonly objectiveId: string; readonly description: string };
+  | { readonly type: "quest/edit-objective"; readonly questId: string; readonly objectiveId: string; readonly description: string }
+  // docs/adr/0018 Decision 3 (J1's data tables, M12). Table-level CRUD
+  // mirrors quest/graph's own shapes exactly ("create"/"rename"
+  // self-inverse or paired with their own opposite; "delete" paired with
+  // "restore" carrying a whole snapshot). Unlike quests' per-objective
+  // commands, a table's own contents (columns+rows together) have no
+  // per-cell store commands — "configure" is a single whole-value
+  // replace, the same "every edit computes a brand-new whole value"
+  // treatment `configureEntityDialogue`/M10 already established, for the
+  // identical reason: a spreadsheet-shaped edit (add/remove
+  // column/row, edit a cell, import a CSV) doesn't decompose usefully
+  // into a handful of named per-field commands the way a quest's
+  // name/description does.
+  | { readonly type: "dataTable/create"; readonly tableId: string; readonly name: string }
+  | { readonly type: "dataTable/delete"; readonly tableId: string }
+  | { readonly type: "dataTable/restore"; readonly table: DataTableDefinition }
+  | { readonly type: "dataTable/rename"; readonly tableId: string; readonly name: string }
+  | {
+      readonly type: "dataTable/configure";
+      readonly tableId: string;
+      readonly columns: DataTableColumn[];
+      readonly rows: Record<string, unknown>[];
+    };
 
 interface HistoryEntry {
   readonly forward: ProjectCommand;
@@ -245,6 +271,14 @@ function applyCommand(document: ProjectDocument, command: ProjectCommand): void 
       document.packOverrides = command.document.packOverrides;
       document.packTerrainRemap = command.document.packTerrainRemap;
       document.graphs = command.document.graphs;
+      // A real, pre-existing bug found and fixed here (M11): this case
+      // never restored `quests` (added at M7) — a checkpoint restore or
+      // undo/redo of `restoreCheckpoint` silently left whatever quests
+      // were already in the live document in place instead of matching
+      // the checkpoint's own. Fixed alongside adding `dataTables` (M11)
+      // rather than repeating the same omission a second time.
+      document.quests = command.document.quests;
+      document.dataTables = command.document.dataTables;
       return;
     case "graph/create":
       document.graphs[command.graphId] = { id: command.graphId, name: command.name, nodes: [], edges: [] };
@@ -344,6 +378,25 @@ function applyCommand(document: ProjectDocument, command: ProjectCommand): void 
       if (quest && objective) quest.objectives[index] = { ...objective, description: command.description };
       return;
     }
+    case "dataTable/create":
+      document.dataTables[command.tableId] = { id: command.tableId, name: command.name, columns: [], rows: [] };
+      return;
+    case "dataTable/delete":
+      delete document.dataTables[command.tableId];
+      return;
+    case "dataTable/restore":
+      document.dataTables[command.table.id] = command.table;
+      return;
+    case "dataTable/rename": {
+      const table = document.dataTables[command.tableId];
+      if (table) document.dataTables[command.tableId] = { ...table, name: command.name };
+      return;
+    }
+    case "dataTable/configure": {
+      const table = document.dataTables[command.tableId];
+      if (table) document.dataTables[command.tableId] = { ...table, columns: command.columns, rows: command.rows };
+      return;
+    }
   }
 }
 
@@ -385,6 +438,16 @@ interface ProjectStoreState {
   openDialogueEntity: { sceneId: string; entityId: string } | undefined;
   openDialogueEditor: (sceneId: string, entityId: string) => void;
   closeDialogueEditor: () => void;
+  /**
+   * Which table `DataTableEditorDialog` (docs/adr/0018 Decision 3, M12 —
+   * a `Dialog`, not a dockview panel, the same treatment `openGraphId`/
+   * `openDialogueEntity` already get) is currently editing, `undefined`
+   * when it's closed. Transient UI state, not part of the command log,
+   * not persisted.
+   */
+  openDataTableId: string | undefined;
+  openDataTableEditor: (tableId: string) => void;
+  closeDataTableEditor: () => void;
   createScene: () => void;
   renameScene: (sceneId: string, name: string) => void;
   selectScene: (sceneId: string | undefined) => void;
@@ -423,6 +486,10 @@ interface ProjectStoreState {
   addObjective: (questId: string) => string;
   editObjective: (questId: string, objectiveId: string, description: string) => void;
   removeObjective: (questId: string, objectiveId: string) => void;
+  createDataTable: () => string;
+  renameDataTable: (tableId: string, name: string) => void;
+  deleteDataTable: (tableId: string) => void;
+  configureDataTable: (tableId: string, columns: DataTableColumn[], rows: Record<string, unknown>[]) => void;
   undo: () => void;
   redo: () => void;
   /**
@@ -501,6 +568,7 @@ export const useProjectStore = create<ProjectStoreState>()(
       selection: undefined,
       openGraphId: undefined,
       openDialogueEntity: undefined,
+      openDataTableId: undefined,
 
       openGraphEditor: (graphId) =>
         set((state) => {
@@ -520,6 +588,16 @@ export const useProjectStore = create<ProjectStoreState>()(
       closeDialogueEditor: () =>
         set((state) => {
           state.openDialogueEntity = undefined;
+        }),
+
+      openDataTableEditor: (tableId) =>
+        set((state) => {
+          state.openDataTableId = tableId;
+        }),
+
+      closeDataTableEditor: () =>
+        set((state) => {
+          state.openDataTableId = undefined;
         }),
 
       createScene: () =>
@@ -939,6 +1017,60 @@ export const useProjectStore = create<ProjectStoreState>()(
           state.future = [];
         }),
 
+      createDataTable: () => {
+        const tableId = crypto.randomUUID();
+        set((state) => {
+          const name = `Table ${Object.keys(state.document.dataTables).length + 1}`;
+          const forward: ProjectCommand = { type: "dataTable/create", tableId, name };
+          const inverse: ProjectCommand = { type: "dataTable/delete", tableId };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        });
+        return tableId;
+      },
+
+      renameDataTable: (tableId, name) =>
+        set((state) => {
+          const table = state.document.dataTables[tableId];
+          if (!table || table.name === name) return;
+          const forward: ProjectCommand = { type: "dataTable/rename", tableId, name };
+          const inverse: ProjectCommand = { type: "dataTable/rename", tableId, name: table.name };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        }),
+
+      deleteDataTable: (tableId) =>
+        set((state) => {
+          const table = state.document.dataTables[tableId];
+          if (!table) return;
+          const forward: ProjectCommand = { type: "dataTable/delete", tableId };
+          const inverse: ProjectCommand = { type: "dataTable/restore", table: current(table) as DataTableDefinition };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          if (state.openDataTableId === tableId) state.openDataTableId = undefined;
+          state.future = [];
+        }),
+
+      configureDataTable: (tableId, columns, rows) =>
+        set((state) => {
+          const table = state.document.dataTables[tableId];
+          if (!table) return;
+          const prior = current(table);
+          if (JSON.stringify({ columns: prior.columns, rows: prior.rows }) === JSON.stringify({ columns, rows })) return;
+          const forward: ProjectCommand = { type: "dataTable/configure", tableId, columns, rows };
+          const inverse: ProjectCommand = {
+            type: "dataTable/configure",
+            tableId,
+            columns: prior.columns as DataTableColumn[],
+            rows: prior.rows as Record<string, unknown>[],
+          };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        }),
+
       undo: () =>
         set((state) => {
           const entry = state.past.pop();
@@ -963,6 +1095,7 @@ export const useProjectStore = create<ProjectStoreState>()(
           state.checkpoints = [];
           state.selection = undefined;
           state.openGraphId = undefined;
+          state.openDataTableId = undefined;
         }),
     })),
     {

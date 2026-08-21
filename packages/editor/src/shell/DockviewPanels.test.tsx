@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { useMarketplaceStore } from "../project/marketplaceStore";
 import { useProjectStore } from "../store/projectStore";
 import {
+  DataTableEditorDialogContainer,
+  DataTablesPanelContainer,
   DialogueTreeEditorDialogContainer,
   GraphEditorDialogContainer,
   GraphsPanelContainer,
@@ -235,5 +237,72 @@ describe("DialogueTreeEditorDialogContainer — docs/adr/0018 (M10)", () => {
     render(<DialogueTreeEditorDialogContainer />);
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     expect(useProjectStore.getState().openDialogueEntity).toBeUndefined();
+  });
+});
+
+describe("DataTablesPanelContainer / DataTableEditorDialogContainer — docs/adr/0018 (M12)", () => {
+  beforeEach(() => {
+    useProjectStore.setState({ document: EMPTY_DOCUMENT, past: [], future: [], selection: undefined, openDataTableId: undefined });
+  });
+
+  it("shows the empty state with no tables, and creating one makes it appear with 0 columns/rows", () => {
+    render(<DataTablesPanelContainer />);
+    expect(screen.getByText("No data tables yet")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Create a data table" }));
+    expect(screen.getByDisplayValue("Table 1")).toBeInTheDocument();
+    expect(screen.getByText("0 columns, 0 rows")).toBeInTheDocument();
+  });
+
+  it("Open on a table row sets openDataTableId, which DataTableEditorDialogContainer picks up and renders", () => {
+    useProjectStore.getState().createDataTable();
+    const tableId = Object.keys(useProjectStore.getState().document.dataTables)[0]!;
+
+    const { rerender } = render(
+      <>
+        <DataTablesPanelContainer />
+        <DataTableEditorDialogContainer />
+      </>,
+    );
+    expect(screen.queryByText(/^Data Table —/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    rerender(
+      <>
+        <DataTablesPanelContainer />
+        <DataTableEditorDialogContainer />
+      </>,
+    );
+    expect(useProjectStore.getState().openDataTableId).toBe(tableId);
+    expect(screen.getByText("Data Table — Table 1")).toBeInTheDocument();
+  });
+
+  it("DataTableEditorDialogContainer renders nothing when openDataTableId points at a table that no longer exists", () => {
+    useProjectStore.setState({ openDataTableId: "deleted-table" });
+    render(<DataTableEditorDialogContainer />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("adding a column through the dialog is real, undoable project-document state — not local-only UI state", () => {
+    useProjectStore.getState().createDataTable();
+    const tableId = Object.keys(useProjectStore.getState().document.dataTables)[0]!;
+    useProjectStore.getState().openDataTableEditor(tableId);
+
+    render(<DataTableEditorDialogContainer />);
+    fireEvent.click(screen.getByRole("button", { name: "Add column" }));
+
+    expect(useProjectStore.getState().document.dataTables[tableId]?.columns).toHaveLength(1);
+  });
+
+  it("deleting a table through the panel removes it from the document and clears openDataTableId if it was open", () => {
+    useProjectStore.getState().createDataTable();
+    const tableId = Object.keys(useProjectStore.getState().document.dataTables)[0]!;
+    useProjectStore.getState().openDataTableEditor(tableId);
+
+    render(<DataTablesPanelContainer />);
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(useProjectStore.getState().document.dataTables).toEqual({});
+    expect(useProjectStore.getState().openDataTableId).toBeUndefined();
   });
 });

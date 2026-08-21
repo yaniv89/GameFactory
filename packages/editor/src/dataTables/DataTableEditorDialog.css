@@ -1,0 +1,97 @@
+.fg-data-table-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: min(92vw, 1100px);
+  height: min(85vh, 800px);
+  overflow-y: auto;
+  padding: var(--space-2);
+}
+
+.fg-data-table-editor h3 {
+  margin: 0 0 var(--space-2) 0;
+}
+
+.fg-data-table-editor__columns,
+.fg-data-table-editor__grid,
+.fg-data-table-editor__csv {
+  background: var(--surface-chrome);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.fg-data-table-editor__column-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  padding-block: var(--space-2);
+}
+
+.fg-data-table-editor__column-row > .fg-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.fg-data-table-editor__grid-scroll {
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+}
+
+/*
+ * `--surface-paper` (tokens.css) is explicitly reserved for "data tables
+ * and long text only" — this is the one place in the product that is.
+ */
+.fg-data-table-editor__table {
+  border-collapse: collapse;
+  width: 100%;
+  background: var(--surface-paper);
+  color: var(--surface-abyss);
+}
+
+.fg-data-table-editor__table th,
+.fg-data-table-editor__table td {
+  border: 1px solid var(--line-default);
+  padding: var(--space-1) var(--space-2);
+  text-align: start;
+  white-space: nowrap;
+}
+
+.fg-data-table-editor__table th {
+  font-weight: 600;
+}
+
+/*
+ * Each grid cell's `Input` still renders a real `<label>` (CLAUDE.md 5.6 —
+ * every field keeps its accessible name), but a spreadsheet's own column
+ * header already gives sighted users that same context per-column, so a
+ * repeated "Row N, ColumnName" label above every single cell would be
+ * pure visual noise. Standard clip-based visually-hidden technique,
+ * scoped to this grid only — never touches `Input`'s own default,
+ * visible-label rendering anywhere else in the product.
+ */
+.fg-data-table-editor__cell .fg-field__label,
+.fg-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.fg-data-table-editor__cell .fg-field {
+  margin: 0;
+}
+
+.fg-data-table-editor__cell .fg-input {
+  min-width: 8ch;
+}
+
+.fg-data-table-editor__csv-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-block-start: var(--space-2);
+}

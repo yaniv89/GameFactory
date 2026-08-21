@@ -7,7 +7,9 @@ import { ModuleInspector } from "../inspector/ModuleInspector";
 import { SceneInspector } from "../inspector/SceneInspector";
 import { FIRST_PARTY_MODULE_MANIFESTS, type ModuleManifest } from "../modules/moduleManifests";
 import { DialogueTreeEditorDialog } from "../dialogue/DialogueTreeEditorDialog";
+import { DataTableEditorDialog } from "../dataTables/DataTableEditorDialog";
 import { GraphEditorDialog } from "../graph/GraphEditorDialog";
+import { DataTablesPanel } from "../panels/DataTablesPanel";
 import { GraphsPanel } from "../panels/GraphsPanel";
 import { HistoryPanel } from "../panels/HistoryPanel";
 import { InspectorPanel } from "../panels/InspectorPanel";
@@ -401,6 +403,60 @@ export function DialogueTreeEditorDialogContainer() {
       entityLabel={entity.dialogue?.nodes[0]?.speaker || entity.prefabId}
       nodes={entity.dialogue?.nodes ?? []}
       onChange={(nodes) => configureEntityDialogue(openDialogueEntity.sceneId, openDialogueEntity.entityId, { nodes: [...nodes] })}
+    />
+  );
+}
+
+/**
+ * docs/adr/0018 Decision 3 (M12): CRUD over `document.dataTables`, all
+ * undoable through the same command log as scenes/modules/graphs/quests.
+ * "Open" sets `openDataTableId`, which `DataTableEditorDialogContainer`
+ * (rendered as a sibling of the dockview tree, the same `GraphEditorDialogContainer`
+ * treatment) subscribes to independently.
+ */
+export function DataTablesPanelContainer() {
+  const dataTables = useProjectStore((state) => state.document.dataTables);
+  const createDataTable = useProjectStore((state) => state.createDataTable);
+  const renameDataTable = useProjectStore((state) => state.renameDataTable);
+  const deleteDataTable = useProjectStore((state) => state.deleteDataTable);
+  const openDataTableEditor = useProjectStore((state) => state.openDataTableEditor);
+
+  const summaries = Object.values(dataTables).map((table) => ({
+    id: table.id,
+    name: table.name,
+    columnCount: table.columns.length,
+    rowCount: table.rows.length,
+  }));
+
+  return (
+    <DataTablesPanel
+      state={summaries.length > 0 ? "populated" : "empty"}
+      tables={summaries}
+      onCreateTable={createDataTable}
+      onRenameTable={renameDataTable}
+      onOpenTable={openDataTableEditor}
+      onDeleteTable={deleteDataTable}
+    />
+  );
+}
+
+/** The Dialog counterpart of `DataTablesPanelContainer`'s "Open" action — see its own doc comment for why this lives at the App.tsx sibling level rather than inside the dockview tree. */
+export function DataTableEditorDialogContainer() {
+  const openDataTableId = useProjectStore((state) => state.openDataTableId);
+  const table = useProjectStore((state) => (state.openDataTableId ? state.document.dataTables[state.openDataTableId] : undefined));
+  const closeDataTableEditor = useProjectStore((state) => state.closeDataTableEditor);
+  const configureDataTable = useProjectStore((state) => state.configureDataTable);
+
+  if (!openDataTableId || !table) return null;
+
+  return (
+    <DataTableEditorDialog
+      open
+      onClose={closeDataTableEditor}
+      tableName={table.name}
+      columns={table.columns}
+      rows={table.rows}
+      onChange={(columns, rows) => configureDataTable(openDataTableId, columns, rows)}
     />
   );
 }

@@ -2,6 +2,9 @@ using Forge.Domain.Entities;
 using Forge.Functions.Assets;
 using Forge.Infrastructure.ArtGeneration;
 using Forge.Infrastructure.Storage;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace Forge.Functions.ArtGen;
 
@@ -24,14 +27,17 @@ public sealed class ArtGenHarnessException(string message, Exception? innerExcep
 /// most fine) still produces a real, usable Ready result rather than
 /// discarding the whole attempt over one bad image.
 ///
-/// What this does NOT do yet, named per docs/adr/0016 Decision 1/4, not
-/// hidden: category-specific finishing (chroma-key + crop-to-content for
-/// a Prop) is N4's job. A Tile variation is already genuinely usable as-is
-/// once decode-verified (docs/adr/0014's own "no transparency needed —
-/// the whole frame is the asset" for terrain tiles); a Prop variation
-/// stored by this class is the raw decoded image on its magenta
-/// background, not yet chroma-keyed — real, decode-safe pixel data, just
-/// not pack-ready until N4 runs.
+/// Category-specific finishing (docs/adr/0016 Decision 1/4, N4): a Tile
+/// variation is genuinely usable as-is once decode-verified (docs/adr/0014's
+/// own "no transparency needed — the whole frame is the asset" for
+/// terrain tiles), so it's stored unmodified. A Prop variation runs
+/// through <see cref="ChromaKeyExtractor"/> (the C#/ImageSharp port of
+/// this session's own <c>chroma_key_extract.py</c>) on top of the
+/// already-decode-verified pixels — magenta background out, real alpha
+/// in, spill-suppressed, cropped tight — matching the same generation
+/// convention the Gemini prompt template (<c>GeminiArtGenerationClient</c>'s
+/// own <c>CategoryInstructions</c>) asks for a Prop image to use in the
+/// first place.
 /// </summary>
 public sealed class ArtGenOrchestrator(ArtGenScanner scanner, IArtGenerationClient client, AssetRunner runner, IArtGenerationStorage storage)
 {
@@ -83,10 +89,38 @@ public sealed class ArtGenOrchestrator(ArtGenScanner scanner, IArtGenerationClie
                 continue;
             }
 
+            byte[] finalPngBytes;
+            int finalWidth, finalHeight;
+            if (claimed.Category == ArtGenCategory.Prop)
+            {
+                try
+                {
+                    (finalPngBytes, finalWidth, finalHeight) = FinishProp(artifact.PngBytes);
+                }
+                catch (Exception ex) when (ex is NoKeyColorFoundException or InvalidOperationException)
+                {
+                    // A real, attributable failure of *this specific*
+                    // generated image -- Gemini's own output didn't
+                    // actually carry a keyable magenta background (or
+                    // keyed out to nothing), despite the prompt asking
+                    // for one. Same "skip this one, keep the batch going"
+                    // treatment as a decode-safety failure above, not a
+                    // harness problem.
+                    lastDecodeFailureReason = ex.Message;
+                    continue;
+                }
+            }
+            else
+            {
+                finalPngBytes = artifact.PngBytes;
+                finalWidth = artifact.Width;
+                finalHeight = artifact.Height;
+            }
+
             var variationId = Guid.NewGuid();
             try
             {
-                await storage.UploadVariationAsync(claimed.WorkspaceId, claimed.Id, variationId, artifact.PngBytes, ct);
+                await storage.UploadVariationAsync(claimed.WorkspaceId, claimed.Id, variationId, finalPngBytes, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -94,7 +128,7 @@ public sealed class ArtGenOrchestrator(ArtGenScanner scanner, IArtGenerationClie
                 throw new ArtGenHarnessException($"Failed to upload a generated variation for request '{claimed.Id}'.", ex);
             }
 
-            completed.Add(new CompletedVariation($"{claimed.WorkspaceId}/{claimed.Id}/{variationId}.png", artifact.Width, artifact.Height));
+            completed.Add(new CompletedVariation($"{claimed.WorkspaceId}/{claimed.Id}/{variationId}.png", finalWidth, finalHeight));
         }
 
         if (completed.Count == 0)
@@ -113,5 +147,26 @@ public sealed class ArtGenOrchestrator(ArtGenScanner scanner, IArtGenerationClie
 
         await scanner.MarkReadyAsync(claimed.Id, completed, ct);
         return true;
+    }
+
+    /// <summary>
+    /// docs/adr/0016 Decision 4 (N4): chroma-key + crop-to-content on top
+    /// of already decode-verified pixel data (<paramref name="decodedPngBytes"/>
+    /// is <see cref="ProcessedAssetArtifact.PngBytes"/>, never the raw
+    /// Gemini response bytes). Default <see cref="ChromaKeyOptions"/> —
+    /// the same magenta/tolerance/feather/pad defaults
+    /// <c>tools/art-pipeline/chroma_key_extract.py</c> uses, matching the
+    /// magenta-background convention <c>GeminiArtGenerationClient</c>'s
+    /// own Prop system instruction asks the model to follow.
+    /// </summary>
+    private static (byte[] PngBytes, int Width, int Height) FinishProp(byte[] decodedPngBytes)
+    {
+        var options = new ChromaKeyOptions();
+        using var source = Image.Load<Rgba32>(decodedPngBytes);
+        using var keyed = ChromaKeyExtractor.Extract(source, options);
+        using var cropped = ChromaKeyExtractor.CropToContent(keyed, options.Pad);
+        using var output = new MemoryStream();
+        cropped.Save(output, new PngEncoder());
+        return (output.ToArray(), cropped.Width, cropped.Height);
     }
 }

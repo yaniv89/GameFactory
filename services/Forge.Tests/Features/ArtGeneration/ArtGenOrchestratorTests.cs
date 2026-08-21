@@ -7,6 +7,9 @@ using Forge.Infrastructure.Persistence;
 using Forge.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.PixelFormats;
 using Xunit;
 
 namespace Forge.Tests.Features.ArtGeneration;
@@ -24,10 +27,11 @@ namespace Forge.Tests.Features.ArtGeneration;
 /// decode-safety pass, the real Azurite-backed <see cref="IArtGenerationStorage"/>
 /// upload, the real claim/complete lifecycle) is genuinely exercised.
 ///
-/// ⚠ Not run in this sandbox: Docker/Testcontainers is unavailable here
-/// (this session's own environment — dockerd did not come up). Verified
-/// when CI runs on a GitHub-hosted runner with Docker available, the same
-/// as every other Testcontainers-backed suite in this project.
+/// Docker/Testcontainers availability in this sandbox is intermittent
+/// (some sessions' <c>dockerd</c> comes up, some don't) — verified for
+/// real, end to end, whenever it's available here; otherwise verified
+/// when CI runs on a GitHub-hosted runner, the same as every other
+/// Testcontainers-backed suite in this project.
 /// </summary>
 public sealed class ArtGenOrchestratorTests : IClassFixture<ForgeWebApplicationFactory>
 {
@@ -40,6 +44,27 @@ public sealed class ArtGenOrchestratorTests : IClassFixture<ForgeWebApplicationF
     public ArtGenOrchestratorTests(ForgeWebApplicationFactory factory)
     {
         _factory = factory;
+    }
+
+    // A 40x40 magenta-background PNG with a solid 20x20 red square
+    // centered in it -- the same synthetic shape ChromaKeyExtractorTests
+    // uses, standing in for a real Gemini-generated Prop image (the
+    // GeminiArtGenerationClient's own Prop system instruction asks for
+    // exactly this: a solid magenta background around one subject).
+    private static byte[] MakeMagentaPropPngBytes()
+    {
+        using var image = new Image<Rgba32>(40, 40, new Rgba32(255, 0, 255, 255));
+        image.ProcessPixelRows(accessor =>
+        {
+            for (var y = 10; y < 30; y++)
+            {
+                var row = accessor.GetRowSpan(y);
+                for (var x = 10; x < 30; x++) row[x] = new Rgba32(200, 40, 40, 255);
+            }
+        });
+        using var stream = new MemoryStream();
+        image.Save(stream, new PngEncoder());
+        return stream.ToArray();
     }
 
     private IArtGenerationStorage CreateStorage()
@@ -248,5 +273,86 @@ public sealed class ArtGenOrchestratorTests : IClassFixture<ForgeWebApplicationF
         }
 
         Assert.False(await orchestrator.ProcessNextAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_Prop_Variation_Gets_Chroma_Keyed_And_Cropped_Not_Stored_On_Its_Raw_Magenta_Background()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ForgeDbContext>();
+        var storage = CreateStorage();
+        var requestId = await SeedQueuedRequestAsync(db, category: ArtGenCategory.Prop);
+
+        var propBytes = MakeMagentaPropPngBytes(); // 40x40 canvas, 20x20 opaque content, magenta everywhere else.
+        var fakeClient = new FakeArtGenerationClient
+        {
+            NextGenerateResult = _ => new GenerateImageResult(Declined: false, Images: [new GeneratedImage(propBytes, "image/png")], DeclineReason: null),
+        };
+        var orchestrator = new ArtGenOrchestrator(new ArtGenScanner(db), fakeClient, new AssetRunner(), storage);
+
+        await orchestrator.ProcessNextAsync(CancellationToken.None);
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<ForgeDbContext>();
+        var request = await verifyDb.GenerationRequests.SingleAsync(g => g.Id == requestId);
+        Assert.Equal(GenerationStatus.Ready, request.Status);
+
+        var variation = await verifyDb.GenerationVariations.SingleAsync(v => v.GenerationRequestId == requestId);
+        // docs/adr/0016 Decision 4 (N4): a 20x20 content box + the default
+        // 2px pad on every side = 24x24 -- proves N4's ChromaKeyExtractor
+        // actually ran (a Tile-path variation would keep the full 40x40
+        // canvas, the next test below proves that side directly).
+        Assert.Equal(24, variation.Width);
+        Assert.Equal(24, variation.Height);
+
+        var container = new BlobContainerClient(_factory.AzuriteConnectionString, "art-generations");
+        var blob = container.GetBlobClient(variation.ProcessedBlobPath);
+        var downloaded = await blob.DownloadContentAsync();
+        using var storedImage = Image.Load<Rgba32>(downloaded.Value.Content.ToArray());
+        Assert.Equal(24, storedImage.Width);
+        // A corner of the padded crop is background -- must be real,
+        // keyed-out alpha, not leftover opaque magenta.
+        Assert.Equal(0, storedImage[0, 0].A);
+        // The center must be the original opaque red content, untouched.
+        var center = storedImage[12, 12];
+        Assert.Equal(255, center.A);
+        Assert.Equal((200, 40, 40), (center.R, center.G, center.B));
+    }
+
+    [Fact]
+    public async Task A_Tile_Variation_Is_Stored_At_Full_Canvas_Size_With_No_Chroma_Keying()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ForgeDbContext>();
+        var storage = CreateStorage();
+        var requestId = await SeedQueuedRequestAsync(db, category: ArtGenCategory.Tile);
+
+        // Same magenta-square image as the Prop test, deliberately -- for
+        // a Tile, docs/adr/0014's own "the whole frame is the asset"
+        // means this must be stored completely unmodified (no crop, no
+        // keying), even though it happens to contain a keyable pattern.
+        var imageBytes = MakeMagentaPropPngBytes();
+        var fakeClient = new FakeArtGenerationClient
+        {
+            NextGenerateResult = _ => new GenerateImageResult(Declined: false, Images: [new GeneratedImage(imageBytes, "image/png")], DeclineReason: null),
+        };
+        var orchestrator = new ArtGenOrchestrator(new ArtGenScanner(db), fakeClient, new AssetRunner(), storage);
+
+        await orchestrator.ProcessNextAsync(CancellationToken.None);
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<ForgeDbContext>();
+        var variation = await verifyDb.GenerationVariations.SingleAsync(v => v.GenerationRequestId == requestId);
+        Assert.Equal(40, variation.Width);
+        Assert.Equal(40, variation.Height);
+
+        var container = new BlobContainerClient(_factory.AzuriteConnectionString, "art-generations");
+        var blob = container.GetBlobClient(variation.ProcessedBlobPath);
+        var downloaded = await blob.DownloadContentAsync();
+        using var storedImage = Image.Load<Rgba32>(downloaded.Value.Content.ToArray());
+        // Still opaque magenta at the corner -- no keying happened.
+        var corner = storedImage[0, 0];
+        Assert.Equal(255, corner.A);
+        Assert.Equal((255, 0, 255), (corner.R, corner.G, corner.B));
     }
 }

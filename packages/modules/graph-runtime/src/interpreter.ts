@@ -21,6 +21,7 @@ interface Env {
   readonly graph: CompiledGraph;
   readonly world: WorldApi;
   readonly events: EventBus;
+  readonly dataTables: Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>;
   readonly warn: GraphWarn;
 }
 
@@ -59,6 +60,7 @@ function makeExecutionContext(env: Env, node: CompiledNode, onNext: (flowOutput:
   return {
     world: env.world,
     events: env.events,
+    dataTables: env.dataTables,
     next: onNext,
     warn: (message, data) => env.warn(`graph "${env.graph.name}", node "${node.id}" (${node.type}): ${message}`, data),
   };
@@ -292,8 +294,14 @@ function walkFlow(
  * `@forge/graph-runtime`'s own `setup()` doesn't need to unsubscribe
  * today (no `teardown()` is declared), but callers/tests are free to.
  */
-export function attachGraph(graph: CompiledGraph, world: WorldApi, events: EventBus, warn: GraphWarn): Array<() => void> {
-  const env: Env = { graph, world, events, warn };
+export function attachGraph(
+  graph: CompiledGraph,
+  world: WorldApi,
+  events: EventBus,
+  dataTables: Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>,
+  warn: GraphWarn,
+): Array<() => void> {
+  const env: Env = { graph, world, events, dataTables, warn };
   const unsubscribes: Array<() => void> = [];
   for (const nodeId of graph.triggerNodeIds) {
     const node = graph.nodes.get(nodeId);

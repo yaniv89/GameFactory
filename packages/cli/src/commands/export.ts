@@ -47,6 +47,10 @@ export interface ExportOptions {
   readonly outDir: string;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function validateExportProjectInput(value: unknown, sourcePath: string): asserts value is ExportProjectInput {
   const fail = (reason: string): never => {
     throw new Error(`forge export: "${sourcePath}" is not a valid project file — ${reason}`);
@@ -69,6 +73,22 @@ function validateExportProjectInput(value: unknown, sourcePath: string): asserts
   }
   if (!scenes.some((scene) => scene.id === data.startSceneId)) {
     fail(`"startSceneId" (${String(data.startSceneId)}) does not match any scene id`);
+  }
+  // docs/adr/0018 Decision 3: optional, defaulting to `{}` in
+  // resolveExportProjectInput below — an existing hand-authored
+  // ExportProjectInput fixture written before data tables existed has no
+  // tables to declare and keeps working unchanged, the same
+  // optional-with-default treatment `ModuleBridgeOptions.dataTables?` gets.
+  if (data.dataTables !== undefined) {
+    if (!isPlainObject(data.dataTables)) {
+      fail('"dataTables", if present, must be an object mapping table id to an array of row objects');
+    }
+    const dataTables = data.dataTables as Record<string, unknown>;
+    for (const [tableId, rows] of Object.entries(dataTables)) {
+      if (!Array.isArray(rows) || !rows.every((row) => isPlainObject(row))) {
+        fail(`data table "${tableId}" must be an array of plain row objects`);
+      }
+    }
   }
   const modules = data.installedModules as Array<Record<string, unknown>>;
   for (const installedModule of modules) {
@@ -282,7 +302,7 @@ function resolveExportProjectInput(options: ExportOptions): ExportProjectInput {
   if (options.projectPath) {
     const raw: unknown = JSON.parse(readFileSync(options.projectPath, "utf8"));
     validateExportProjectInput(raw, options.projectPath);
-    return raw;
+    return { ...raw, dataTables: raw.dataTables ?? {} };
   }
   throw new Error("forge export: pass one of --project or --document.");
 }

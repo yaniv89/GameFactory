@@ -45,12 +45,14 @@ export function buildModulePrelude(
   moduleName: string,
   engineVersion: string,
   config: Readonly<Record<string, unknown>>,
+  dataTables: Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>,
 ): string {
   return `
 (function () {
   var MODULE_NAME = ${JSON.stringify(moduleName)};
   var ENGINE_VERSION = ${JSON.stringify(engineVersion)};
   var CONFIG = Object.freeze(${JSON.stringify(config)});
+  var DATA_TABLES = Object.freeze(${JSON.stringify(dataTables)});
 
   // Built fresh per system-per-tick call from that tick's JSON snapshot
   // (docs/adr/0005) — isActionDown/wasActionPressed/wasActionReleased are
@@ -216,6 +218,7 @@ export function buildModulePrelude(
     moduleName: MODULE_NAME,
     engineVersion: ENGINE_VERSION,
     config: CONFIG,
+    dataTables: DATA_TABLES,
 
     defineComponent: function (name, schema, defaults) {
       var realName = __forge_defineComponent(name, JSON.stringify(schema), JSON.stringify(defaults));

@@ -78,12 +78,17 @@ export interface FakeExecutionContext extends GraphNodeExecutionContext {
   readonly warnings: Array<{ message: string; data?: Record<string, unknown> }>;
 }
 
-export function makeFakeContext(overrides?: { world?: WorldApi; events?: EventBus }): FakeExecutionContext {
+export function makeFakeContext(overrides?: {
+  world?: WorldApi;
+  events?: EventBus;
+  dataTables?: Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>;
+}): FakeExecutionContext {
   const nextCalls: string[] = [];
   const warnings: Array<{ message: string; data?: Record<string, unknown> }> = [];
   return {
     world: overrides?.world ?? makeFakeWorld(),
     events: overrides?.events ?? makeFakeEvents(),
+    dataTables: overrides?.dataTables ?? {},
     nextCalls,
     warnings,
     next(flowOutput) {

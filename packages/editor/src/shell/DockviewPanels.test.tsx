@@ -11,7 +11,7 @@ import {
   QuestsPanelContainer,
 } from "./DockviewPanels";
 
-const EMPTY_DOCUMENT = { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {}, quests: {} };
+const EMPTY_DOCUMENT = { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {}, quests: {}, dataTables: {} };
 
 describe("ModulesPanelContainer — marketplace-installed modules", () => {
   beforeEach(() => {

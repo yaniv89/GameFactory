@@ -112,6 +112,7 @@ function buildFixtureProjectData(guestBundleSource: string): PlayerProjectData {
         guestBundleSource,
       },
     ],
+    dataTables: {},
     startSceneId: "scene-1",
   };
 }

@@ -56,6 +56,43 @@ const FIELD_NAME_SCHEMA: ObjectSchema = { type: "object", properties: { field: {
  */
 const CONSTANT_NUMBER_SCHEMA: ObjectSchema = { type: "object", properties: { value: { type: "number", title: "Value", default: 0 } } };
 
+/**
+ * docs/adr/0018 Decision 1's four quest node types
+ * (`@forge/graph-nodes-core`'s `nodes/quests.ts`) — added here so
+ * `NODE_REGISTRY`'s own construction-time check ("no editor metadata
+ * registered for node type") doesn't throw. `questId`/`objectiveId` are
+ * plain strings today (an author types the same id `QuestsPanel` (M8)
+ * shows), not a dropdown resolved against the project's authored quest
+ * set — the same "a v1 form, purely additive editor metadata to extend
+ * later" trim `CONSTANT_NUMBER_SCHEMA`'s own doc comment already takes for
+ * a different field, not a silent omission.
+ */
+const QUEST_ID_SCHEMA: ObjectSchema = { type: "object", properties: { questId: { type: "string", title: "Quest ID", minLength: 1 } } };
+const QUEST_OBJECTIVE_SCHEMA: ObjectSchema = {
+  type: "object",
+  properties: {
+    questId: { type: "string", title: "Quest ID", minLength: 1 },
+    objectiveId: { type: "string", title: "Objective ID", minLength: 1 },
+  },
+};
+
+/**
+ * docs/adr/0018 Decision 3's two data-table node types
+ * (`@forge/graph-nodes-core`'s `nodes/dataTables.ts`, M11) — same v1-form
+ * trim as `QUEST_ID_SCHEMA` above: `table`/`keyColumn` are plain strings
+ * an author types to match a table/column id from M12's own
+ * `DataTablesPanel`, not yet a dropdown resolved against the project's
+ * authored table set.
+ */
+const TABLE_ID_SCHEMA: ObjectSchema = { type: "object", properties: { table: { type: "string", title: "Table ID", minLength: 1 } } };
+const LOOKUP_ROW_SCHEMA: ObjectSchema = {
+  type: "object",
+  properties: {
+    table: { type: "string", title: "Table ID", minLength: 1 },
+    keyColumn: { type: "string", title: "Key column", minLength: 1 },
+  },
+};
+
 /** Splits/joins a comma-separated component list — the small, honest boundary `types.ts`'s own doc comment on `core:forEachEntity` already calls out (no array field type in the shared `FieldSchema` set). */
 function splitComponents(value: string): string[] {
   return value
@@ -103,6 +140,12 @@ const CORE_NODE_EDITOR_METADATA: Record<string, GraphNodeEditorMetadata> = {
   "core:constant": { label: "Constant (number)", category: "Data", configSchema: CONSTANT_NUMBER_SCHEMA },
   "core:getField": { label: "Get Field", category: "Data", configSchema: FIELD_NAME_SCHEMA },
   "core:setField": { label: "Set Field", category: "Data", configSchema: FIELD_NAME_SCHEMA },
+  "core:questStart": { label: "Start Quest", category: "Quests", configSchema: QUEST_ID_SCHEMA },
+  "core:questCompleteObjective": { label: "Complete Objective", category: "Quests", configSchema: QUEST_OBJECTIVE_SCHEMA },
+  "core:questIsActive": { label: "Quest Is Active", category: "Quests", configSchema: QUEST_ID_SCHEMA },
+  "core:questIsObjectiveComplete": { label: "Objective Is Complete", category: "Quests", configSchema: QUEST_OBJECTIVE_SCHEMA },
+  "core:lookupRow": { label: "Lookup Row", category: "Data Tables", configSchema: LOOKUP_ROW_SCHEMA },
+  "core:tableRowCount": { label: "Table Row Count", category: "Data Tables", configSchema: TABLE_ID_SCHEMA },
 };
 
 /** One entry per `@forge/graph-nodes-core` definition — the M2 library plus this file's own editor metadata, matching each other 1:1 by construction (both keyed by the same `core:*` type). */

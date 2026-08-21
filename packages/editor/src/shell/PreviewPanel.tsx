@@ -73,6 +73,11 @@ export function PreviewPanel() {
   // graph in GraphsPanel should reach the running preview the same tick
   // an install/uninstall would.
   const graphs = useProjectStore((state) => state.document.graphs);
+  // docs/adr/0018 Decision 3 (M11): the real, live authored data-table
+  // set, re-sent on every scene message exactly like graphs above —
+  // editing a table in DataTablesPanel (M12) should reach the running
+  // preview the same tick a graph edit would.
+  const dataTables = useProjectStore((state) => state.document.dataTables);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent): void => {
@@ -108,6 +113,10 @@ export function PreviewPanel() {
       entities: entities ?? [],
       installedModules: Object.keys(installedModules),
       graphs,
+      // Rows only — the same strip `toExportProjectInput.ts` applies
+      // (`columns`/`name` are editor-only metadata nothing at runtime
+      // reads, per `DataTableDefinition`'s own doc comment).
+      dataTables: Object.fromEntries(Object.entries(dataTables).map(([id, table]) => [id, table.rows])),
       ...(activePack !== undefined ? { activePack } : {}),
       ...(devSaveRef.current ? { devSave: devSaveRef.current } : {}),
     };
@@ -123,7 +132,7 @@ export function PreviewPanel() {
     // general, false positive for this specific, structurally-safe case.
     // nosemgrep: javascript.browser.security.wildcard-postmessage-configuration.wildcard-postmessage-configuration
     iframeRef.current?.contentWindow?.postMessage(message, "*");
-  }, [status, tiles, entities, activePack, installedModules, graphs]);
+  }, [status, tiles, entities, activePack, installedModules, graphs, dataTables]);
 
   return (
     <div className="fg-preview-panel">

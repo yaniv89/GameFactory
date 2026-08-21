@@ -38,6 +38,16 @@ describe("groupNodesByCategory", () => {
     const groups = groupNodesByCategory();
     const total = groups.reduce((sum, group) => sum + group.entries.length, 0);
     expect(total).toBe(Object.keys(NODE_REGISTRY).length);
-    expect(groups.map((group) => group.category).sort()).toEqual(["Comparisons", "Component", "Data", "Entity", "Events", "Flow", "Math"]);
+    expect(groups.map((group) => group.category).sort()).toEqual([
+      "Comparisons",
+      "Component",
+      "Data",
+      "Data Tables",
+      "Entity",
+      "Events",
+      "Flow",
+      "Math",
+      "Quests",
+    ]);
   });
 });

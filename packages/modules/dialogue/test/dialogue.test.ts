@@ -82,6 +82,7 @@ function makeFakeContext(config: Record<string, unknown>) {
 
   const ctx: SetupContext = {
     config,
+    dataTables: {},
     engineVersion: "0.0.0-test",
     moduleName: "@test/dialogue",
     world,

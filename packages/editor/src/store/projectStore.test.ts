@@ -5,7 +5,7 @@ import { migratePersistedProjectState, selectCanRedo, selectCanUndo, useProjectS
 function reset(): void {
   localStorage.clear();
   useProjectStore.setState({
-    document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {}, quests: {} },
+    document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {}, quests: {}, dataTables: {} },
     past: [],
     future: [],
     checkpoints: [],
@@ -866,6 +866,7 @@ describe("migratePersistedProjectState", () => {
         packTerrainRemap: { water: "sand" },
         graphs: { g1: { id: "g1", name: "Boss fight logic", nodes: [], edges: [] } },
         quests: { q1: { id: "q1", name: "Wolf Trouble", description: "", objectives: [] } },
+        dataTables: { t1: { id: "t1", name: "Loot", columns: [{ id: "id", name: "ID", type: "string" }], rows: [{ id: "sword" }] } },
       },
       past: [],
       future: [],
@@ -874,7 +875,7 @@ describe("migratePersistedProjectState", () => {
           id: "c1",
           label: "Before switching to fantasy-pack",
           createdAt: "2026-08-08T00:00:00.000Z",
-          document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {}, quests: {} },
+          document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {}, quests: {}, dataTables: {} },
         },
       ],
     };
@@ -898,6 +899,7 @@ describe("migratePersistedProjectState", () => {
       packTerrainRemap: {},
       graphs: {},
       quests: {},
+      dataTables: {},
     });
     expect(migrated.checkpoints).toEqual([]);
   });

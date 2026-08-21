@@ -199,6 +199,7 @@ export async function bootGameLogic(options: GameLogicOptions): Promise<GameLogi
       version: installedModule.version,
       engineVersion: options.projectData.engineVersion,
       config: installedModule.config,
+      dataTables: options.projectData.dataTables,
       world,
       scheduler,
       events,

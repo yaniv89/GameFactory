@@ -237,6 +237,40 @@ export interface QuestDefinition {
   objectives: QuestObjective[];
 }
 
+/**
+ * A data table's authored shape (docs/adr/0018 Decision 3) — a small,
+ * author-defined lookup table (drop tables, shop stock, stat curves,
+ * localized strings keyed by id, etc.) a graph reads via `core:lookupRow`/
+ * `core:tableRowCount`. Rows are plain JSON objects keyed by column name —
+ * deliberately loose (`Record<string, unknown>`, not one union-typed field
+ * per column) because a JSON-Schema-driven, per-column-typed row shape
+ * would need the same generic-cell-editor machinery a full spreadsheet
+ * component needs, and M12's own `DataTableEditorDialog` (TanStack Table)
+ * is exactly that — the type here just carries what it produces, the same
+ * "the document is a plain snapshot of whatever the editor built" relationship
+ * every other `ProjectDocument` field already has to its own editor UI.
+ *
+ * `columns` is metadata for the editor (M12) and CSV import/export
+ * (header order, declared type for a coherent CSV cell-parse) — nothing at
+ * runtime reads it; `core:lookupRow`/`core:tableRowCount` only ever see
+ * `rows` (via `SetupContext.dataTables`, which strips `columns`/`name`
+ * before a table reaches a module — see `moduleAdapters.ts`).
+ */
+export interface DataTableColumn {
+  readonly id: string;
+  readonly name: string;
+  readonly type: "number" | "string" | "boolean";
+}
+
+export interface DataTableDefinition {
+  readonly id: string;
+  readonly name: string;
+  /** Mutable array holding readonly-fielded elements — same convention as `QuestDefinition.objectives`. */
+  columns: DataTableColumn[];
+  /** Mutable array of mutable plain-object rows — column id -> cell value. Not `readonly` for the same Immer-`Draft<T>`-inside-a-discriminated-union reason `DialogueTreeNode.choices` isn't (docs/adr/0018 Addendum M9): a `readonly` array or a `readonly`-fielded row nested in `ProjectCommand`'s union breaks `projectStore.ts`'s Immer draft typing. */
+  rows: Record<string, unknown>[];
+}
+
 /** docs/SPEC.md Section 7.3's `activePack`/`packOverrides`/`packTerrainRemap`; see `packages/editor/src/store/projectStore.ts` for the full field-by-field rationale — unchanged by the move. */
 export interface ProjectDocument {
   scenes: SceneSummary[];
@@ -249,6 +283,8 @@ export interface ProjectDocument {
   graphs: Record<string, GraphDocument>;
   /** Quest id -> its static definition — docs/adr/0018 Decision 1 (J1's quest system, M7). */
   quests: Record<string, QuestDefinition>;
+  /** Data table id -> its authored definition — docs/adr/0018 Decision 3 (J1's data tables, M11). */
+  dataTables: Record<string, DataTableDefinition>;
 }
 
 /**
@@ -344,5 +380,6 @@ export function migrateDocument(document: Partial<ProjectDocument> | undefined):
     packTerrainRemap: document?.packTerrainRemap ?? {},
     graphs: document?.graphs ?? {},
     quests: document?.quests ?? {},
+    dataTables: document?.dataTables ?? {},
   };
 }

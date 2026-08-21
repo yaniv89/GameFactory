@@ -98,7 +98,7 @@ describe("attachGraph + walkFlow (M5 interpreter)", () => {
     };
     const graph = compileGraph(doc, nodeTypes, warn)!;
     expect(graph).toBeDefined();
-    attachGraph(graph, world, events, warn);
+    attachGraph(graph, world, events, {}, warn);
 
     expect(world.has(42, "Health")).toBe(true);
     events.emit("enemy:died", 42);
@@ -121,7 +121,7 @@ describe("attachGraph + walkFlow (M5 interpreter)", () => {
       ],
     };
     const graph = compileGraph(doc, nodeTypes, warn)!;
-    attachGraph(graph, world, events, warn);
+    attachGraph(graph, world, events, {}, warn);
     events.emit("something:else", 1);
     expect(world.has(1, "Health")).toBe(true);
   });
@@ -151,7 +151,7 @@ describe("attachGraph + walkFlow (M5 interpreter)", () => {
     };
     const graph = compileGraph(doc, nodeTypes, warn)!;
     expect(graph).toBeDefined();
-    attachGraph(graph, world, events, warn);
+    attachGraph(graph, world, events, {}, warn);
 
     expect(world.has(7, "Flag")).toBe(true);
     events.emit("check", 7);
@@ -179,7 +179,7 @@ describe("attachGraph + walkFlow (M5 interpreter)", () => {
       ],
     };
     const graph = compileGraph(doc, nodeTypes, warn)!;
-    attachGraph(graph, world, events, warn);
+    attachGraph(graph, world, events, {}, warn);
     events.emit("check", 8);
     // Falsy condition (getComponent found nothing) took branch's "false" output, which has no
     // wired edge at all — destroy was never reached, so entity 8 still exists.
@@ -221,7 +221,7 @@ describe("attachGraph + walkFlow (M5 interpreter)", () => {
     };
     const graph = compileGraph(doc, localNodeTypes, warn)!;
     expect(graph).toBeDefined();
-    attachGraph(graph, world, events, warn);
+    attachGraph(graph, world, events, {}, warn);
 
     events.emit("spawn:wave", null);
     expect(world.query([]).count).toBe(3);
@@ -258,7 +258,7 @@ describe("attachGraph + walkFlow (M5 interpreter)", () => {
       ],
     };
     const graph = compileGraph(doc, localNodeTypes, warn)!;
-    attachGraph(graph, world, events, warn);
+    attachGraph(graph, world, events, {}, warn);
     events.emit("go", null);
     // repeat's own outputs.count (the resolved, clamped count) has no further
     // downstream consumer wired in this graph on purpose — walkFlow returns
@@ -293,7 +293,7 @@ describe("attachGraph + walkFlow (M5 interpreter)", () => {
     };
     const graph = compileGraph(doc, nodeTypes, warn)!;
     expect(graph).toBeDefined();
-    attachGraph(graph, world, events, warn);
+    attachGraph(graph, world, events, {}, warn);
 
     expect(world.query(["Enemy"]).count).toBe(3);
     events.emit("clear", null);
@@ -310,7 +310,7 @@ describe("attachGraph + walkFlow (M5 interpreter)", () => {
       edges: [],
     };
     const graph = compileGraph(doc, nodeTypes, warn)!;
-    const unsubscribes = attachGraph(graph, world, events, warn);
+    const unsubscribes = attachGraph(graph, world, events, {}, warn);
     expect(unsubscribes).toEqual([]);
     expect(calls.some((c) => c.message.includes("config.event is not a string"))).toBe(true);
   });
@@ -340,7 +340,7 @@ describe("attachGraph + walkFlow (M5 interpreter)", () => {
       edges: [{ id: "e1", source: "trigger", target: "bad", sourceHandle: "flow", targetHandle: "flow" }],
     };
     const graph = compileGraph(doc, localNodeTypes, warn)!;
-    attachGraph(graph, world, events, warn);
+    attachGraph(graph, world, events, {}, warn);
 
     expect(() => events.emit("go", null)).not.toThrow();
     expect(calls.some((c) => c.message.includes("uncaught error"))).toBe(true);
@@ -362,7 +362,7 @@ describe("attachGraph + walkFlow (M5 interpreter)", () => {
       ],
     };
     const graph = compileGraph(doc, nodeTypes, warn)!;
-    const unsubscribes = attachGraph(graph, world, events, warn);
+    const unsubscribes = attachGraph(graph, world, events, {}, warn);
     expect(unsubscribes).toHaveLength(1);
     unsubscribes[0]!();
     events.emit("die", 5);

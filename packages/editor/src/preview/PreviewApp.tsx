@@ -919,7 +919,7 @@ export function PreviewApp() {
       const rig = rigRef.current;
       const gameWorld = gameWorldRef.current;
       if (!rig || !gameWorld) return;
-      const { tiles, entities, activePack, devSave, installedModules = [], graphs } = event.data;
+      const { tiles, entities, activePack, devSave, installedModules = [], graphs, dataTables = {} } = event.data;
       inventoryInstalledRef.current = installedModules.includes("@forge/inventory");
 
       // I1f: the one place a restore actually lands — see
@@ -1040,6 +1040,7 @@ export function PreviewApp() {
           "@forge/graph-runtime",
           { graphs: Object.values(graphs ?? {}) },
           { world: gameWorld.world, events: gameWorld.graphEvents },
+          dataTables,
         );
         graphRuntimeModule.setup(graphRuntime.ctx);
         graphRuntimeAttachedRef.current = true;

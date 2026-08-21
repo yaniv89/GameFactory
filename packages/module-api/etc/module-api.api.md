@@ -71,6 +71,7 @@ export interface GraphNodeDefinition {
 
 // @public
 export interface GraphNodeExecutionContext {
+    readonly dataTables: Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>;
     // (undocumented)
     readonly events: EventBus;
     next(flowOutput: string): void;
@@ -304,6 +305,7 @@ export interface SetupContext {
     addInterceptor<K extends keyof InterceptorMap>(point: K, priority: number, fn: (value: InterceptorMap[K], ctx: InterceptorContext) => InterceptorMap[K]): void;
     addSystem(def: SystemDefinition): void;
     readonly config: Readonly<Record<string, unknown>>;
+    readonly dataTables: Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>;
     // (undocumented)
     defineComponent<T extends ComponentShape>(name: string, schema: ComponentJsonSchema, defaults: T): ComponentHandle<T>;
     defineGraphNode(def: GraphNodeDefinition): void;

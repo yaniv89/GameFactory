@@ -64,6 +64,15 @@ export interface PlayerProjectData {
   readonly scenes: readonly PlayerScene[];
   readonly installedModules: readonly PlayerInstalledModule[];
   /**
+   * Every data table in the project (docs/adr/0018 Decision 3) — table id
+   * -> its rows only (no `columns`/`name`; nothing at runtime reads those,
+   * see `documentTypes.ts`'s own `DataTableDefinition` doc comment).
+   * Delivered to every installed module's own `SetupContext.dataTables`
+   * identically — a project-wide resource, not per-module config, so it
+   * lives here rather than inside any one `PlayerInstalledModule.config`.
+   */
+  readonly dataTables: Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>;
+  /**
    * Which scene to boot into. Always the first scene in practice today —
    * the editor itself has no scene-tab/"active scene" concept yet either
    * (`SceneCanvas.tsx`'s own doc comment) — but named explicitly rather

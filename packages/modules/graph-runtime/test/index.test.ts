@@ -81,6 +81,7 @@ function makeFakeContext(config: Record<string, unknown>, shared?: { worldData: 
 
   const ctx: SetupContext = {
     config,
+    dataTables: {},
     engineVersion: "0.0.0-test",
     moduleName: "@test/graph-runtime",
     world,

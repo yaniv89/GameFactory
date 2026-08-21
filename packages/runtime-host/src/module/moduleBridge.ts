@@ -29,6 +29,8 @@ export interface ModuleBridgeOptions {
   readonly version: string;
   readonly engineVersion: string;
   readonly config: Readonly<Record<string, unknown>>;
+  /** Every data table in the project (docs/adr/0018 Decision 3) — optional, defaulting to `{}`, so every pre-existing call site (test harnesses, `smokeRunner.ts`, `gameLogic.ts`) that has no tables to give a module keeps compiling unchanged. */
+  readonly dataTables?: Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>;
   readonly world: World;
   readonly scheduler: Scheduler;
   readonly events: EventBusImpl;
@@ -140,7 +142,7 @@ export class ModuleBridge {
     const bridge = new ModuleBridge(runtime, options, storageHandler);
     bridge.installNativeFunctions();
     const preludeOutcome = bridge.runtime.eval(
-      buildModulePrelude(options.moduleName, options.engineVersion, options.config),
+      buildModulePrelude(options.moduleName, options.engineVersion, options.config, options.dataTables ?? {}),
     );
     if (!preludeOutcome.ok) {
       bridge.dispose();

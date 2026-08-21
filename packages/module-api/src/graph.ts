@@ -38,6 +38,17 @@ export interface GraphNodeExecutionContext {
   readonly world: WorldApi;
   readonly events: EventBus;
   /**
+   * Every data table in the project (docs/adr/0018 Decision 3) — the
+   * identical value the owning module's own `SetupContext.dataTables`
+   * carries, threaded through by `@forge/graph-runtime`'s interpreter
+   * when it builds this context for a node call. Lets `core:lookupRow`/
+   * `core:tableRowCount` (`@forge/graph-nodes-core`) read project data
+   * directly, the same "graph reads project data without a module in
+   * between" pattern `core:getComponent`/`core:getField` already
+   * establish for components/event payloads.
+   */
+  readonly dataTables: Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>;
+  /**
    * Impure nodes only: tells the interpreter which of this node's own
    * `"flow"`-typed output sockets to continue down. `flowOutput` must
    * name one of `outputs` — the interpreter (M5), not the node itself,

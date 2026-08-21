@@ -111,6 +111,20 @@ export interface SetupContext {
   readonly net?: NetApi;
   /** Always present — logging is baseline infrastructure, not a capability. */
   readonly log: Logger;
+  /**
+   * Every data table in the project (docs/adr/0018 Decision 3), table id
+   * -> its rows, each row a plain JSON object (column name -> value) —
+   * delivered the identical "plain data in" way `config` already is, no
+   * new bridge mechanism. Always present (an empty object if the project
+   * has no tables yet), the same "always present, capability-free"
+   * treatment `storage`/`log` already get: a data table is a shared
+   * project resource any module or graph may read, not something a
+   * project opts a specific module into. `@forge/graph-nodes-core`'s
+   * `core:lookupRow`/`core:tableRowCount` (M11) read this directly, the
+   * same "graph reads project data without a module in between" pattern
+   * `core:getComponent`/`core:getField` already establish.
+   */
+  readonly dataTables: Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>;
 }
 
 export interface TeardownContext {

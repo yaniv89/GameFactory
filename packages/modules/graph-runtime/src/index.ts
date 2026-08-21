@@ -85,7 +85,7 @@ export const graphRuntimeModule: ForgeModule = {
 
     activeUnsubscribes = [];
     for (const graph of compiled) {
-      const unsubscribes = attachGraph(graph, ctx.world, ctx.events, (message, data) => ctx.log.warn(`graph-runtime: ${message}`, data));
+      const unsubscribes = attachGraph(graph, ctx.world, ctx.events, ctx.dataTables, (message, data) => ctx.log.warn(`graph-runtime: ${message}`, data));
       activeUnsubscribes.push(...unsubscribes);
     }
   },

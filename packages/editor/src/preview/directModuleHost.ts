@@ -236,6 +236,7 @@ export function createModuleRuntime(
   moduleName: string,
   config: Readonly<Record<string, unknown>>,
   shared?: { readonly world: World; readonly events: EventBus<Record<string, unknown>> },
+  dataTables?: Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>,
 ): ModuleRuntime {
   const world = shared?.world ?? new World();
   const scheduler = new Scheduler(world);
@@ -254,6 +255,7 @@ export function createModuleRuntime(
 
   const ctx: SetupContext = {
     config,
+    dataTables: dataTables ?? {},
     engineVersion: "0.0.0-preview",
     moduleName,
     world: directWorld,

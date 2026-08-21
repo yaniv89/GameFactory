@@ -60,7 +60,7 @@ describe("useMarketplaceStore.install", () => {
       installedManifests: {},
     });
     useProjectSyncStore.setState({ projectId: "project-1" });
-    useProjectStore.setState({ document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {}, quests: {} }, past: [], future: [] });
+    useProjectStore.setState({ document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {}, quests: {}, dataTables: {} }, past: [], future: [] });
   });
 
   it("resolves eligibility, installs with the pinned version/bundle URL, and caches the manifest for display", async () => {
@@ -108,6 +108,7 @@ describe("useMarketplaceStore.install", () => {
         packTerrainRemap: {},
         graphs: {},
         quests: {},
+        dataTables: {},
       },
     });
 

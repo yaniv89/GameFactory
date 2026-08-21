@@ -12,6 +12,7 @@ function baseDocument(overrides: Partial<ProjectDocument> = {}): ProjectDocument
     packTerrainRemap: {},
     graphs: {},
     quests: {},
+    dataTables: {},
     ...overrides,
   };
 }

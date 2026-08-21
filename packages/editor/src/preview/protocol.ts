@@ -57,6 +57,17 @@ export interface PreviewSceneMessage {
    * means "no graphs authored yet," not "don't run the graph module."
    */
   readonly graphs?: Readonly<Record<string, GraphDocument>>;
+  /**
+   * `ProjectDocument.dataTables` (docs/adr/0018 Decision 3, M11), rows
+   * only — the same shape `toExportProjectInput.ts` strips a
+   * `DataTableDefinition` down to (no `columns`/`name`; nothing at
+   * runtime reads those). Optional like `graphs` above: an absent field
+   * means "no tables authored yet," not "clear whatever the module
+   * already has" — there is no live-update path for this today (like
+   * `graphs`, a changed table only takes effect on the next
+   * `rebuildGraphRuntime`-style full rebuild, not a hot patch).
+   */
+  readonly dataTables?: Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>;
 }
 
 export interface PreviewReadyMessage {
@@ -153,9 +164,22 @@ function isValidGraphDocument(value: unknown): value is GraphDocument {
   return true;
 }
 
+function isValidDataTableRows(value: unknown): value is readonly Readonly<Record<string, unknown>>[] {
+  return Array.isArray(value) && value.every((row) => typeof row === "object" && row !== null && !Array.isArray(row));
+}
+
 export function isPreviewSceneMessage(data: unknown): data is PreviewSceneMessage {
   if (typeof data !== "object" || data === null) return false;
-  const candidate = data as { type?: unknown; tiles?: unknown; entities?: unknown; activePack?: unknown; devSave?: unknown; installedModules?: unknown; graphs?: unknown };
+  const candidate = data as {
+    type?: unknown;
+    tiles?: unknown;
+    entities?: unknown;
+    activePack?: unknown;
+    devSave?: unknown;
+    installedModules?: unknown;
+    graphs?: unknown;
+    dataTables?: unknown;
+  };
   if (candidate.type !== "forge:preview:scene") return false;
   if (!Array.isArray(candidate.tiles) || candidate.tiles.length !== EXPECTED_TILE_COUNT) return false;
   if (!candidate.tiles.every((tile) => typeof tile === "number" && Number.isFinite(tile))) return false;
@@ -168,6 +192,10 @@ export function isPreviewSceneMessage(data: unknown): data is PreviewSceneMessag
   if (candidate.graphs !== undefined) {
     if (typeof candidate.graphs !== "object" || candidate.graphs === null) return false;
     if (!Object.values(candidate.graphs).every(isValidGraphDocument)) return false;
+  }
+  if (candidate.dataTables !== undefined) {
+    if (typeof candidate.dataTables !== "object" || candidate.dataTables === null) return false;
+    if (!Object.values(candidate.dataTables).every(isValidDataTableRows)) return false;
   }
   return candidate.entities.every(isValidEntity);
 }

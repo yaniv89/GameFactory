@@ -27,7 +27,7 @@ describe("PreviewPanel", () => {
   beforeEach(() => {
     useCanvasPreviewStore.setState({ tiles: undefined });
     useProjectStore.setState({
-      document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {}, quests: {} },
+      document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {}, quests: {}, dataTables: {} },
       past: [],
       future: [],
       checkpoints: [],
@@ -83,7 +83,7 @@ describe("PreviewPanel", () => {
 
     dispatchFromIframe({ type: "forge:preview:ready" });
 
-    expect(postMessageSpy).toHaveBeenCalledWith({ type: "forge:preview:scene", tiles: [1, 2, 3], entities, installedModules: [], graphs: {} }, "*");
+    expect(postMessageSpy).toHaveBeenCalledWith({ type: "forge:preview:scene", tiles: [1, 2, 3], entities, installedModules: [], graphs: {}, dataTables: {} }, "*");
   });
 
   it("does not post tiles before the iframe has reported ready", () => {
@@ -109,10 +109,10 @@ describe("PreviewPanel", () => {
       const postMessageSpy = vi.spyOn(getIframe().contentWindow as Window, "postMessage");
       dispatchFromIframe({ type: "forge:preview:ready" });
 
-      expect(postMessageSpy).toHaveBeenNthCalledWith(1, { type: "forge:preview:scene", tiles: [1, 2, 3], entities: [], installedModules: [], graphs: {}, devSave: SAMPLE_SAVE }, "*");
+      expect(postMessageSpy).toHaveBeenNthCalledWith(1, { type: "forge:preview:scene", tiles: [1, 2, 3], entities: [], installedModules: [], graphs: {}, dataTables: {}, devSave: SAMPLE_SAVE }, "*");
 
       act(() => useCanvasPreviewStore.setState({ tiles: [4, 5, 6] }));
-      expect(postMessageSpy).toHaveBeenNthCalledWith(2, { type: "forge:preview:scene", tiles: [4, 5, 6], entities: [], installedModules: [], graphs: {} }, "*");
+      expect(postMessageSpy).toHaveBeenNthCalledWith(2, { type: "forge:preview:scene", tiles: [4, 5, 6], entities: [], installedModules: [], graphs: {}, dataTables: {} }, "*");
     });
 
     it("sends no devSave field when this browser has no dev-preview save", () => {
@@ -120,7 +120,7 @@ describe("PreviewPanel", () => {
       render(<PreviewPanel />);
       const postMessageSpy = vi.spyOn(getIframe().contentWindow as Window, "postMessage");
       dispatchFromIframe({ type: "forge:preview:ready" });
-      expect(postMessageSpy).toHaveBeenCalledWith({ type: "forge:preview:scene", tiles: [1, 2, 3], entities: [], installedModules: [], graphs: {} }, "*");
+      expect(postMessageSpy).toHaveBeenCalledWith({ type: "forge:preview:scene", tiles: [1, 2, 3], entities: [], installedModules: [], graphs: {}, dataTables: {} }, "*");
     });
 
     it("persists a forge:preview:save message from the iframe to this browser's localStorage — the only place the sandboxed preview's save can actually land", () => {

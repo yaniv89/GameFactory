@@ -115,6 +115,14 @@ export function toExportProjectInput(document: ProjectDocument, options: ToExpor
     }),
   );
 
+  // docs/adr/0018 Decision 3: only `rows` cross into the exported/player
+  // shape — `columns`/`name` are editor-only metadata (`DataTableDefinition`'s
+  // own doc comment), never read by `SetupContext.dataTables` consumers.
+  const dataTables: Record<string, readonly Readonly<Record<string, unknown>>[]> = {};
+  for (const [id, table] of Object.entries(document.dataTables)) {
+    dataTables[id] = table.rows;
+  }
+
   return {
     projectId: options.projectId,
     buildId: options.buildId ?? crypto.randomUUID(),
@@ -122,6 +130,7 @@ export function toExportProjectInput(document: ProjectDocument, options: ToExpor
     engineVersion: options.resolveEngineVersion(),
     scenes,
     installedModules,
+    dataTables,
     startSceneId,
   };
 }

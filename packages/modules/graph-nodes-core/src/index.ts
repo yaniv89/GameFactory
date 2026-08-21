@@ -23,6 +23,7 @@ export { addNode, subtractNode, multiplyNode, divideNode } from "./nodes/math";
 export { branchNode, repeatNode, forEachEntityNode, DEFAULT_REPEAT_CEILING, ABSOLUTE_REPEAT_CEILING } from "./nodes/flow";
 export { constantNode, getFieldNode, setFieldNode } from "./nodes/data";
 export { questStartNode, questCompleteObjectiveNode, questIsActiveNode, questIsObjectiveCompleteNode } from "./nodes/quests";
+export { lookupRowNode, tableRowCountNode } from "./nodes/dataTables";
 
 import { createEntityNode, destroyEntityNode } from "./nodes/entity";
 import { getComponentNode, hasComponentNode, setComponentNode } from "./nodes/component";
@@ -32,6 +33,7 @@ import { addNode, subtractNode, multiplyNode, divideNode } from "./nodes/math";
 import { branchNode, repeatNode, forEachEntityNode } from "./nodes/flow";
 import { constantNode, getFieldNode, setFieldNode } from "./nodes/data";
 import { questStartNode, questCompleteObjectiveNode, questIsActiveNode, questIsObjectiveCompleteNode } from "./nodes/quests";
+import { lookupRowNode, tableRowCountNode } from "./nodes/dataTables";
 import type { GraphNodeDefinition } from "@forge/module-api";
 
 /** Every core node definition, for whatever registers them in bulk (M4/M5). */
@@ -63,4 +65,6 @@ export const coreGraphNodes: readonly GraphNodeDefinition[] = [
   questCompleteObjectiveNode,
   questIsActiveNode,
   questIsObjectiveCompleteNode,
+  lookupRowNode,
+  tableRowCountNode,
 ];

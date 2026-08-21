@@ -21,7 +21,7 @@ describe("coreGraphNodes", () => {
     }
   });
 
-  it("registers exactly the v1 node list — docs/adr/0017's own M2 task-split names, plus core:constant/core:getField/core:setField (found missing while actually building a mechanic at M6), plus the four docs/adr/0018 quest nodes (M7)", () => {
+  it("registers exactly the v1 node list — docs/adr/0017's own M2 task-split names, plus core:constant/core:getField/core:setField (found missing while actually building a mechanic at M6), plus the four docs/adr/0018 quest nodes (M7), plus the two docs/adr/0018 data-table nodes (M11)", () => {
     const types = new Set(coreGraphNodes.map((node) => node.type));
     expect(types).toEqual(
       new Set([
@@ -52,6 +52,8 @@ describe("coreGraphNodes", () => {
         "core:questCompleteObjective",
         "core:questIsActive",
         "core:questIsObjectiveComplete",
+        "core:lookupRow",
+        "core:tableRowCount",
       ]),
     );
   });

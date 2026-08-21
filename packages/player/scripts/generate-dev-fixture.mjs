@@ -69,6 +69,7 @@ function buildFixtureProjectData(guestBundleSource) {
         guestBundleSource,
       },
     ],
+    dataTables: {},
     startSceneId: "scene-1",
   };
 }

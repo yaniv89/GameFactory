@@ -71,9 +71,20 @@ function buildGraphRuntimeConfig(document: ProjectDocument): Record<string, unkn
   return { graphs: Object.values(document.graphs) };
 }
 
+/**
+ * `@forge/quests` (docs/adr/0018 Decision 1) has no `configSchema` either —
+ * same reason as graphs: every authored quest in the project is its real
+ * config, a project-wide document field, not something per-module
+ * flat-form-editable.
+ */
+function buildQuestsConfig(document: ProjectDocument): Record<string, unknown> {
+  return { quests: Object.values(document.quests) };
+}
+
 const MODULE_EXPORT_ADAPTERS: Readonly<Record<string, ModuleExportAdapter>> = {
   "@forge/dialogue": (document) => buildDialogueConfig(document),
   "@forge/graph-runtime": (document) => buildGraphRuntimeConfig(document),
+  "@forge/quests": (document) => buildQuestsConfig(document),
 };
 
 /** Resolves what actually goes into `PlayerInstalledModule.config` for one installed module — the adapter above if one exists for `moduleName`, otherwise the installed `FormValues` unchanged. */

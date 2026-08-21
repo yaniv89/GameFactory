@@ -36,6 +36,13 @@ export const FIRST_PARTY_MODULE_MANIFESTS: readonly ModuleManifest[] = [
     summary: "Interprets node graphs authored in the graph editor.",
   },
   {
+    name: "@forge/quests",
+    // No configSchema — same reason dialogue/graph-runtime have none: its
+    // real config (docs/adr/0018, M7) is every authored quest in the
+    // project (see QuestsPanel, M8), not a flat form.
+    summary: "Tracks per-player quest progress, driven by the graph editor.",
+  },
+  {
     name: "@forge/inventory",
     summary: "Per-entity item stacks, capacity limits, and a shop flow.",
     configSchema: {

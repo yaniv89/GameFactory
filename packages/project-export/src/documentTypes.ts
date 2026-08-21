@@ -94,6 +94,15 @@ export const DEFAULT_INSTALLED_MODULES: Record<string, InstalledModuleEntry> = {
    * comment in `packages/modules/graph-runtime/src/index.ts`).
    */
   "@forge/graph-runtime": { config: {} },
+  /**
+   * docs/adr/0018 Decision 1 (J1's quest system). Default-installed for the
+   * identical reason `@forge/graph-runtime` is: `QuestsPanel` (M8) needs to
+   * work without a manual "install this module first" detour, and it's
+   * safe with zero authored quests — `@forge/quests`' own `setup()`
+   * degrades to "register no `Quest_<id>` components" when `config.quests`
+   * is empty (`packages/modules/quests/src/index.ts`'s own `validateQuests`).
+   */
+  "@forge/quests": { config: {} },
 };
 
 /**
@@ -135,6 +144,28 @@ export interface GraphDocument {
   edges: GraphEdgeInstance[];
 }
 
+/**
+ * A quest's *static* shape, authored once in `QuestsPanel` (M8) — the
+ * dynamic half (is it active, which objectives are done) is owned by
+ * `@forge/quests` itself at runtime (docs/adr/0018 Decision 1), not
+ * carried here. Field-for-field the same shape
+ * `packages/modules/quests/src/types.ts`'s `QuestObjectiveConfig`/
+ * `QuestDefinitionConfig` declare — a type-only mirror across the
+ * module-boundary line, the same relationship `DialogueTree` above has
+ * with `@forge/dialogue`'s own `DialogueTreeConfig`.
+ */
+export interface QuestObjective {
+  readonly id: string;
+  readonly description: string;
+}
+
+export interface QuestDefinition {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+  readonly objectives: readonly QuestObjective[];
+}
+
 /** docs/SPEC.md Section 7.3's `activePack`/`packOverrides`/`packTerrainRemap`; see `packages/editor/src/store/projectStore.ts` for the full field-by-field rationale — unchanged by the move. */
 export interface ProjectDocument {
   scenes: SceneSummary[];
@@ -145,6 +176,8 @@ export interface ProjectDocument {
   packTerrainRemap: Record<string, string>;
   /** Graph id -> its document — docs/adr/0017 (J1's node-graph authoring layer, M3). */
   graphs: Record<string, GraphDocument>;
+  /** Quest id -> its static definition — docs/adr/0018 Decision 1 (J1's quest system, M7). */
+  quests: Record<string, QuestDefinition>;
 }
 
 /**
@@ -215,5 +248,6 @@ export function migrateDocument(document: Partial<ProjectDocument> | undefined):
     packOverrides: document?.packOverrides ?? {},
     packTerrainRemap: document?.packTerrainRemap ?? {},
     graphs: document?.graphs ?? {},
+    quests: document?.quests ?? {},
   };
 }

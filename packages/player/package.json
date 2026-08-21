@@ -29,6 +29,7 @@
   "devDependencies": {
     "@forge/dialogue": "workspace:*",
     "@forge/graph-runtime": "workspace:*",
+    "@forge/quests": "workspace:*",
     "@playwright/test": "1.62.0",
     "@types/node": "^26.1.2",
     "@types/jsdom": "^30.0.0",

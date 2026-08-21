@@ -11,6 +11,7 @@ function baseDocument(overrides: Partial<ProjectDocument> = {}): ProjectDocument
     packOverrides: {},
     packTerrainRemap: {},
     graphs: {},
+    quests: {},
     ...overrides,
   };
 }
@@ -151,6 +152,38 @@ describe("toExportProjectInput", () => {
         config: { dropRate: 0.2 },
         guestBundleUrl: "https://cdn.forge.dev/packages/@acme/loot-tables/2.4.1/bundle.js",
         guestBundleSha256Hex: "deadbeef",
+      },
+    ]);
+  });
+
+  it("synthesizes @forge/quests' config from document.quests (docs/adr/0018 Decision 1) — every authored quest, not a flat form", () => {
+    const document = baseDocument({
+      scenes: [{ id: "village", name: "Village", entities: [], tiles: emptyTiles() }],
+      installedModules: { "@forge/quests": { config: {} } },
+      quests: {
+        killWolves: {
+          id: "killWolves",
+          name: "Wolf Trouble",
+          description: "Deal with the wolves near the mill.",
+          objectives: [{ id: "kill3Wolves", description: "Kill 3 wolves" }],
+        },
+      },
+    });
+    const result = toExportProjectInput(document, { projectId: "p1", resolveModuleVersion, resolveEngineVersion });
+    expect(result.installedModules).toEqual([
+      {
+        name: "@forge/quests",
+        version: "1.0.0-quests",
+        config: {
+          quests: [
+            {
+              id: "killWolves",
+              name: "Wolf Trouble",
+              description: "Deal with the wolves near the mill.",
+              objectives: [{ id: "kill3Wolves", description: "Kill 3 wolves" }],
+            },
+          ],
+        },
       },
     ]);
   });

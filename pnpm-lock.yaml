@@ -275,6 +275,19 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@26.1.2)(jsdom@30.0.1)(lightningcss@1.33.0)
 
+  packages/modules/quests:
+    dependencies:
+      '@forge/module-api':
+        specifier: workspace:*
+        version: link:../../module-api
+    devDependencies:
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@26.1.2)(jsdom@30.0.1)(lightningcss@1.33.0)
+
   packages/modules/turn-battle:
     dependencies:
       '@forge/module-api':
@@ -321,6 +334,9 @@ importers:
       '@forge/graph-runtime':
         specifier: workspace:*
         version: link:../modules/graph-runtime
+      '@forge/quests':
+        specifier: workspace:*
+        version: link:../modules/quests
       '@playwright/test':
         specifier: 1.62.0
         version: 1.62.0

@@ -61,7 +61,7 @@ describe("migrateDocument", () => {
     expect(migrated.installedModules).toEqual({});
   });
 
-  it("defaults installedModules to DEFAULT_INSTALLED_MODULES (dialogue + inventory + graph-runtime) when the whole document is missing — a genuinely brand-new project", () => {
+  it("defaults installedModules to DEFAULT_INSTALLED_MODULES (dialogue + inventory + graph-runtime + quests) when the whole document is missing — a genuinely brand-new project", () => {
     const migrated = migrateDocument(undefined);
     expect(migrated.installedModules).toEqual(DEFAULT_INSTALLED_MODULES);
   });
@@ -83,6 +83,7 @@ describe("migrateDocument", () => {
     expect(migrated.packOverrides).toEqual({});
     expect(migrated.packTerrainRemap).toEqual({});
     expect(migrated.graphs).toEqual({});
+    expect(migrated.quests).toEqual({});
   });
 
   it("defaults graphs to {} for a document that predates the node-graph field, without touching an existing graphs map", () => {
@@ -92,6 +93,15 @@ describe("migrateDocument", () => {
       g1: { id: "g1", name: "Boss fight logic", nodes: [], edges: [] },
     };
     expect(migrateDocument({ scenes: [], graphs: existing } as never).graphs).toBe(existing);
+  });
+
+  it("defaults quests to {} for a document that predates docs/adr/0018's quest field, without touching an existing quests map", () => {
+    expect(migrateDocument({ scenes: [] }).quests).toEqual({});
+
+    const existing = {
+      killWolves: { id: "killWolves", name: "Wolf Trouble", description: "", objectives: [{ id: "kill3Wolves", description: "Kill 3 wolves" }] },
+    };
+    expect(migrateDocument({ scenes: [], quests: existing } as never).quests).toBe(existing);
   });
 
   // docs/adr/0015-entity-prefab-component-model.md: a document persisted

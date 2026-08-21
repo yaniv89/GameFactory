@@ -5,7 +5,7 @@ import { migratePersistedProjectState, selectCanRedo, selectCanUndo, useProjectS
 function reset(): void {
   localStorage.clear();
   useProjectStore.setState({
-    document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {} },
+    document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {} },
     past: [],
     future: [],
     checkpoints: [],
@@ -468,6 +468,189 @@ describe("useProjectStore", () => {
   });
 });
 
+describe("graphs: docs/adr/0017's authoring layer (M3)", () => {
+  beforeEach(reset);
+
+  it("createGraph appends a graph with an incrementing default name and makes undo available", () => {
+    useProjectStore.getState().createGraph();
+    useProjectStore.getState().createGraph();
+    const { graphs } = useProjectStore.getState().document;
+    const names = Object.values(graphs).map((graph) => graph.name);
+    expect(names).toEqual(["Graph 1", "Graph 2"]);
+    expect(selectCanUndo(useProjectStore.getState())).toBe(true);
+  });
+
+  it("renameGraph changes the name and is undoable", () => {
+    const graphId = useProjectStore.getState().createGraph();
+    useProjectStore.getState().renameGraph(graphId, "Boss fight logic");
+    expect(useProjectStore.getState().document.graphs[graphId]?.name).toBe("Boss fight logic");
+
+    useProjectStore.getState().undo();
+    expect(useProjectStore.getState().document.graphs[graphId]?.name).toBe("Graph 1");
+  });
+
+  it("renameGraph with the unchanged name is a no-op that does not grow the undo log", () => {
+    const graphId = useProjectStore.getState().createGraph();
+    const pastLength = useProjectStore.getState().past.length;
+    useProjectStore.getState().renameGraph(graphId, "Graph 1");
+    expect(useProjectStore.getState().past).toHaveLength(pastLength);
+  });
+
+  it("deleteGraph removes the graph and undo restores it with all its nodes and edges intact", () => {
+    const graphId = useProjectStore.getState().createGraph();
+    const nodeA = useProjectStore.getState().addGraphNode(graphId, "core:add", { x: 0, y: 0 }, {});
+    const nodeB = useProjectStore.getState().addGraphNode(graphId, "core:branch", { x: 100, y: 0 }, {});
+    useProjectStore.getState().addGraphEdge(graphId, { source: nodeA, sourceHandle: "result", target: nodeB, targetHandle: "condition" });
+
+    useProjectStore.getState().deleteGraph(graphId);
+    expect(useProjectStore.getState().document.graphs[graphId]).toBeUndefined();
+
+    useProjectStore.getState().undo();
+    const restored = useProjectStore.getState().document.graphs[graphId];
+    expect(restored?.nodes).toHaveLength(2);
+    expect(restored?.edges).toHaveLength(1);
+  });
+
+  it("deleteGraph for an id that doesn't exist is a no-op that does not grow the undo log", () => {
+    const pastLength = useProjectStore.getState().past.length;
+    useProjectStore.getState().deleteGraph("no-such-graph");
+    expect(useProjectStore.getState().past).toHaveLength(pastLength);
+  });
+
+  it("addGraphNode places a node with the given type/position/config and makes undo available", () => {
+    const graphId = useProjectStore.getState().createGraph();
+    const nodeId = useProjectStore.getState().addGraphNode(graphId, "core:add", { x: 10, y: 20 }, { foo: "bar" });
+    const node = useProjectStore.getState().document.graphs[graphId]?.nodes[0];
+    expect(node).toEqual({ id: nodeId, type: "core:add", position: { x: 10, y: 20 }, config: { foo: "bar" } });
+    expect(selectCanUndo(useProjectStore.getState())).toBe(true);
+  });
+
+  it("addGraphNode for a graph id that doesn't exist is a no-op", () => {
+    const pastLength = useProjectStore.getState().past.length;
+    useProjectStore.getState().addGraphNode("no-such-graph", "core:add", { x: 0, y: 0 }, {});
+    expect(useProjectStore.getState().past).toHaveLength(pastLength);
+  });
+
+  it("moveGraphNode updates position and is undoable back to the exact prior position", () => {
+    const graphId = useProjectStore.getState().createGraph();
+    const nodeId = useProjectStore.getState().addGraphNode(graphId, "core:add", { x: 0, y: 0 }, {});
+    useProjectStore.getState().moveGraphNode(graphId, nodeId, { x: 50, y: 75 });
+    expect(useProjectStore.getState().document.graphs[graphId]?.nodes[0]?.position).toEqual({ x: 50, y: 75 });
+
+    useProjectStore.getState().undo();
+    expect(useProjectStore.getState().document.graphs[graphId]?.nodes[0]?.position).toEqual({ x: 0, y: 0 });
+  });
+
+  it("moveGraphNode to the same position is a no-op that does not grow the undo log — one command per drag gesture, not per frame", () => {
+    const graphId = useProjectStore.getState().createGraph();
+    const nodeId = useProjectStore.getState().addGraphNode(graphId, "core:add", { x: 0, y: 0 }, {});
+    const pastLength = useProjectStore.getState().past.length;
+    useProjectStore.getState().moveGraphNode(graphId, nodeId, { x: 0, y: 0 });
+    expect(useProjectStore.getState().past).toHaveLength(pastLength);
+  });
+
+  it("configureGraphNode replaces a node's config and is undoable", () => {
+    const graphId = useProjectStore.getState().createGraph();
+    const nodeId = useProjectStore.getState().addGraphNode(graphId, "core:getComponent", { x: 0, y: 0 }, { component: "health" });
+    useProjectStore.getState().configureGraphNode(graphId, nodeId, { component: "mana" });
+    expect(useProjectStore.getState().document.graphs[graphId]?.nodes[0]?.config).toEqual({ component: "mana" });
+
+    useProjectStore.getState().undo();
+    expect(useProjectStore.getState().document.graphs[graphId]?.nodes[0]?.config).toEqual({ component: "health" });
+  });
+
+  it("configureGraphNode with an unchanged value is a no-op that does not grow the undo log", () => {
+    const graphId = useProjectStore.getState().createGraph();
+    const nodeId = useProjectStore.getState().addGraphNode(graphId, "core:getComponent", { x: 0, y: 0 }, { component: "health" });
+    const pastLength = useProjectStore.getState().past.length;
+    useProjectStore.getState().configureGraphNode(graphId, nodeId, { component: "health" });
+    expect(useProjectStore.getState().past).toHaveLength(pastLength);
+  });
+
+  it("addGraphEdge wires two sockets and is undoable", () => {
+    const graphId = useProjectStore.getState().createGraph();
+    const nodeA = useProjectStore.getState().addGraphNode(graphId, "core:add", { x: 0, y: 0 }, {});
+    const nodeB = useProjectStore.getState().addGraphNode(graphId, "core:branch", { x: 100, y: 0 }, {});
+    useProjectStore.getState().addGraphEdge(graphId, { source: nodeA, sourceHandle: "result", target: nodeB, targetHandle: "condition" });
+
+    const edges = useProjectStore.getState().document.graphs[graphId]?.edges;
+    expect(edges).toHaveLength(1);
+    expect(edges?.[0]).toMatchObject({ source: nodeA, sourceHandle: "result", target: nodeB, targetHandle: "condition" });
+
+    useProjectStore.getState().undo();
+    expect(useProjectStore.getState().document.graphs[graphId]?.edges).toHaveLength(0);
+  });
+
+  it("removeGraphEdge removes the edge and undo restores the exact same edge (same id)", () => {
+    const graphId = useProjectStore.getState().createGraph();
+    const nodeA = useProjectStore.getState().addGraphNode(graphId, "core:add", { x: 0, y: 0 }, {});
+    const nodeB = useProjectStore.getState().addGraphNode(graphId, "core:branch", { x: 100, y: 0 }, {});
+    useProjectStore.getState().addGraphEdge(graphId, { source: nodeA, sourceHandle: "result", target: nodeB, targetHandle: "condition" });
+    const edgeId = useProjectStore.getState().document.graphs[graphId]!.edges[0]!.id;
+
+    useProjectStore.getState().removeGraphEdge(graphId, edgeId);
+    expect(useProjectStore.getState().document.graphs[graphId]?.edges).toHaveLength(0);
+
+    useProjectStore.getState().undo();
+    expect(useProjectStore.getState().document.graphs[graphId]?.edges[0]?.id).toBe(edgeId);
+  });
+
+  it("removeGraphNode cascades: any edge touching the removed node is also removed, and undo restores both the node and its edges", () => {
+    const graphId = useProjectStore.getState().createGraph();
+    const nodeA = useProjectStore.getState().addGraphNode(graphId, "core:add", { x: 0, y: 0 }, {});
+    const nodeB = useProjectStore.getState().addGraphNode(graphId, "core:branch", { x: 100, y: 0 }, {});
+    const nodeC = useProjectStore.getState().addGraphNode(graphId, "core:not", { x: 200, y: 0 }, {});
+    useProjectStore.getState().addGraphEdge(graphId, { source: nodeA, sourceHandle: "result", target: nodeB, targetHandle: "condition" });
+    useProjectStore.getState().addGraphEdge(graphId, { source: nodeB, sourceHandle: "true", target: nodeC, targetHandle: "flow" });
+    // An edge that doesn't touch nodeB — proves removal is scoped to the
+    // deleted node's own incident edges, not every edge in the graph.
+    useProjectStore.getState().addGraphEdge(graphId, { source: nodeA, sourceHandle: "result", target: nodeC, targetHandle: "a" });
+
+    useProjectStore.getState().removeGraphNode(graphId, nodeB);
+    const afterRemove = useProjectStore.getState().document.graphs[graphId]!;
+    expect(afterRemove.nodes.map((node) => node.id)).toEqual([nodeA, nodeC]);
+    expect(afterRemove.edges).toHaveLength(1);
+    expect(afterRemove.edges[0]).toMatchObject({ source: nodeA, target: nodeC });
+
+    useProjectStore.getState().undo();
+    const restored = useProjectStore.getState().document.graphs[graphId]!;
+    expect(restored.nodes.map((node) => node.id).sort()).toEqual([nodeA, nodeB, nodeC].sort());
+    expect(restored.edges).toHaveLength(3);
+  });
+
+  it("removeGraphNode on a node with no edges undoes cleanly with an empty restored edge list", () => {
+    const graphId = useProjectStore.getState().createGraph();
+    const nodeId = useProjectStore.getState().addGraphNode(graphId, "core:add", { x: 0, y: 0 }, {});
+    useProjectStore.getState().removeGraphNode(graphId, nodeId);
+    expect(useProjectStore.getState().document.graphs[graphId]?.nodes).toHaveLength(0);
+
+    useProjectStore.getState().undo();
+    expect(useProjectStore.getState().document.graphs[graphId]?.nodes).toHaveLength(1);
+    expect(useProjectStore.getState().document.graphs[graphId]?.nodes[0]?.id).toBe(nodeId);
+  });
+
+  it("undo/redo replays a whole sequence of graph edits in order, matching how scenes already behave", () => {
+    const graphId = useProjectStore.getState().createGraph();
+    const nodeId = useProjectStore.getState().addGraphNode(graphId, "core:add", { x: 0, y: 0 }, {});
+    useProjectStore.getState().moveGraphNode(graphId, nodeId, { x: 10, y: 10 });
+    useProjectStore.getState().renameGraph(graphId, "Renamed");
+
+    useProjectStore.getState().undo();
+    useProjectStore.getState().undo();
+    useProjectStore.getState().undo();
+    useProjectStore.getState().undo();
+    expect(useProjectStore.getState().document.graphs[graphId]).toBeUndefined();
+
+    useProjectStore.getState().redo();
+    useProjectStore.getState().redo();
+    useProjectStore.getState().redo();
+    useProjectStore.getState().redo();
+    const final = useProjectStore.getState().document.graphs[graphId]!;
+    expect(final.name).toBe("Renamed");
+    expect(final.nodes[0]?.position).toEqual({ x: 10, y: 10 });
+  });
+});
+
 describe("migratePersistedProjectState", () => {
   it("fills in activePack/packOverrides for pre-Art-Pack (version 1) persisted state", () => {
     const legacy = {
@@ -557,6 +740,7 @@ describe("migratePersistedProjectState", () => {
         activePack: "@pixelfoundry/fantasy-pack",
         packOverrides: { "a.png": "https://cdn.forge.dev/a.png" },
         packTerrainRemap: { water: "sand" },
+        graphs: { g1: { id: "g1", name: "Boss fight logic", nodes: [], edges: [] } },
       },
       past: [],
       future: [],
@@ -565,7 +749,7 @@ describe("migratePersistedProjectState", () => {
           id: "c1",
           label: "Before switching to fantasy-pack",
           createdAt: "2026-08-08T00:00:00.000Z",
-          document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {} },
+          document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {} },
         },
       ],
     };
@@ -587,6 +771,7 @@ describe("migratePersistedProjectState", () => {
       activePack: undefined,
       packOverrides: {},
       packTerrainRemap: {},
+      graphs: {},
     });
     expect(migrated.checkpoints).toEqual([]);
   });

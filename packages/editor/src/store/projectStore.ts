@@ -8,6 +8,9 @@ import {
   migrateDocument as migrateDocumentShape,
   type EntityDialogue,
   type EntityPlacement,
+  type GraphDocument,
+  type GraphEdgeInstance,
+  type GraphNodeInstance,
   type ProjectDocument,
   type SceneSummary,
 } from "@forge/project-export";
@@ -18,7 +21,7 @@ import type { FormValues } from "../inspector/jsonSchema";
 // themselves moved to @forge/project-export (docs/adr/0009) so the CLI
 // and a future server build worker can depend on the document shape
 // without depending on the whole editor SPA.
-export type { EntityDialogue, EntityPlacement, ProjectDocument, SceneSummary };
+export type { EntityDialogue, EntityPlacement, GraphDocument, GraphEdgeInstance, GraphNodeInstance, ProjectDocument, SceneSummary };
 
 /**
  * docs/SPEC.md Section 11.5's "automatic named checkpoint before
@@ -84,7 +87,33 @@ type ProjectCommand =
   // document was immediately before the restore — same self-inverse
   // shape as every other command, just at document granularity instead
   // of a single field.
-  | { readonly type: "document/replace"; readonly document: ProjectDocument };
+  | { readonly type: "document/replace"; readonly document: ProjectDocument }
+  // docs/adr/0017 (J1's node-graph authoring layer, M3). Same shapes as
+  // the scene/entity commands above: "create"/"rename" are self-inverse
+  // or paired with their own opposite; "delete" is paired with
+  // "restore", which — like document/replace above — carries a whole
+  // snapshot rather than trying to be a second self-inverse shape,
+  // because deleting a graph loses content a bare re-create can't get
+  // back.
+  | { readonly type: "graph/create"; readonly graphId: string; readonly name: string }
+  | { readonly type: "graph/delete"; readonly graphId: string }
+  | { readonly type: "graph/restore"; readonly graph: GraphDocument }
+  | { readonly type: "graph/rename"; readonly graphId: string; readonly name: string }
+  | { readonly type: "graph/add-node"; readonly graphId: string; readonly node: GraphNodeInstance }
+  // Cascades: removing a node also drops any edge touching it (applyCommand's
+  // own job, not the dispatcher's) — so its inverse must restore both the
+  // node and whichever edges were cascaded away, never just the node alone.
+  | { readonly type: "graph/remove-node"; readonly graphId: string; readonly nodeId: string }
+  | {
+      readonly type: "graph/restore-node-and-edges";
+      readonly graphId: string;
+      readonly node: GraphNodeInstance;
+      readonly edges: GraphEdgeInstance[];
+    }
+  | { readonly type: "graph/move-node"; readonly graphId: string; readonly nodeId: string; readonly position: { readonly x: number; readonly y: number } }
+  | { readonly type: "graph/configure-node"; readonly graphId: string; readonly nodeId: string; readonly config: Readonly<Record<string, unknown>> }
+  | { readonly type: "graph/add-edge"; readonly graphId: string; readonly edge: GraphEdgeInstance }
+  | { readonly type: "graph/remove-edge"; readonly graphId: string; readonly edgeId: string };
 
 interface HistoryEntry {
   readonly forward: ProjectCommand;
@@ -186,7 +215,68 @@ function applyCommand(document: ProjectDocument, command: ProjectCommand): void 
       document.activePack = command.document.activePack;
       document.packOverrides = command.document.packOverrides;
       document.packTerrainRemap = command.document.packTerrainRemap;
+      document.graphs = command.document.graphs;
       return;
+    case "graph/create":
+      document.graphs[command.graphId] = { id: command.graphId, name: command.name, nodes: [], edges: [] };
+      return;
+    case "graph/delete":
+      delete document.graphs[command.graphId];
+      return;
+    case "graph/restore":
+      document.graphs[command.graph.id] = command.graph;
+      return;
+    case "graph/rename": {
+      const graph = document.graphs[command.graphId];
+      if (graph) document.graphs[command.graphId] = { ...graph, name: command.name };
+      return;
+    }
+    case "graph/add-node": {
+      const graph = document.graphs[command.graphId];
+      if (graph) graph.nodes.push(command.node);
+      return;
+    }
+    case "graph/remove-node": {
+      const graph = document.graphs[command.graphId];
+      if (!graph) return;
+      const index = graph.nodes.findIndex((node) => node.id === command.nodeId);
+      if (index !== -1) graph.nodes.splice(index, 1);
+      graph.edges = graph.edges.filter((edge) => edge.source !== command.nodeId && edge.target !== command.nodeId);
+      return;
+    }
+    case "graph/restore-node-and-edges": {
+      const graph = document.graphs[command.graphId];
+      if (!graph) return;
+      graph.nodes.push(command.node);
+      graph.edges.push(...command.edges);
+      return;
+    }
+    case "graph/move-node": {
+      const graph = document.graphs[command.graphId];
+      const index = graph?.nodes.findIndex((node) => node.id === command.nodeId) ?? -1;
+      const node = graph?.nodes[index];
+      if (graph && node) graph.nodes[index] = { ...node, position: command.position };
+      return;
+    }
+    case "graph/configure-node": {
+      const graph = document.graphs[command.graphId];
+      const index = graph?.nodes.findIndex((node) => node.id === command.nodeId) ?? -1;
+      const node = graph?.nodes[index];
+      if (graph && node) graph.nodes[index] = { ...node, config: command.config };
+      return;
+    }
+    case "graph/add-edge": {
+      const graph = document.graphs[command.graphId];
+      if (graph) graph.edges.push(command.edge);
+      return;
+    }
+    case "graph/remove-edge": {
+      const graph = document.graphs[command.graphId];
+      if (!graph) return;
+      const index = graph.edges.findIndex((edge) => edge.id === command.edgeId);
+      if (index !== -1) graph.edges.splice(index, 1);
+      return;
+    }
   }
 }
 
@@ -209,6 +299,16 @@ interface ProjectStoreState {
    * should land on "nothing selected", not resume an old focus target).
    */
   selection: Selection | undefined;
+  /**
+   * Which graph `GraphEditorDialog` (a Dialog, not a dockview panel — M3's
+   * plan) is currently showing, `undefined` when it's closed. Transient UI
+   * state, the same treatment `selection` already gets above: not part of
+   * the command log, not persisted — a reload should land with the editor
+   * closed, not reopen wherever a creator left off.
+   */
+  openGraphId: string | undefined;
+  openGraphEditor: (graphId: string) => void;
+  closeGraphEditor: () => void;
   createScene: () => void;
   renameScene: (sceneId: string, name: string) => void;
   selectScene: (sceneId: string | undefined) => void;
@@ -232,6 +332,15 @@ interface ProjectStoreState {
   createCheckpoint: (label: string) => string;
   restoreCheckpoint: (checkpointId: string) => void;
   deleteCheckpoint: (checkpointId: string) => void;
+  createGraph: () => string;
+  renameGraph: (graphId: string, name: string) => void;
+  deleteGraph: (graphId: string) => void;
+  addGraphNode: (graphId: string, type: string, position: { x: number; y: number }, config: Readonly<Record<string, unknown>>) => string;
+  moveGraphNode: (graphId: string, nodeId: string, position: { x: number; y: number }) => void;
+  configureGraphNode: (graphId: string, nodeId: string, config: Readonly<Record<string, unknown>>) => void;
+  removeGraphNode: (graphId: string, nodeId: string) => void;
+  addGraphEdge: (graphId: string, edge: Omit<GraphEdgeInstance, "id">) => void;
+  removeGraphEdge: (graphId: string, edgeId: string) => void;
   undo: () => void;
   redo: () => void;
   /**
@@ -246,7 +355,7 @@ interface ProjectStoreState {
 }
 
 const PERSIST_KEY = "forge:editor:project-document";
-const PERSIST_VERSION = 5;
+const PERSIST_VERSION = 6;
 
 /**
  * Persisted state from before `activePack`/`packOverrides` existed
@@ -308,6 +417,17 @@ export const useProjectStore = create<ProjectStoreState>()(
       future: [],
       checkpoints: [],
       selection: undefined,
+      openGraphId: undefined,
+
+      openGraphEditor: (graphId) =>
+        set((state) => {
+          state.openGraphId = graphId;
+        }),
+
+      closeGraphEditor: () =>
+        set((state) => {
+          state.openGraphId = undefined;
+        }),
 
       createScene: () =>
         set((state) => {
@@ -536,6 +656,119 @@ export const useProjectStore = create<ProjectStoreState>()(
           if (index !== -1) state.checkpoints.splice(index, 1);
         }),
 
+      createGraph: () => {
+        const graphId = crypto.randomUUID();
+        set((state) => {
+          const name = `Graph ${Object.keys(state.document.graphs).length + 1}`;
+          const forward: ProjectCommand = { type: "graph/create", graphId, name };
+          const inverse: ProjectCommand = { type: "graph/delete", graphId };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        });
+        return graphId;
+      },
+
+      renameGraph: (graphId, name) =>
+        set((state) => {
+          const graph = state.document.graphs[graphId];
+          if (!graph || graph.name === name) return;
+          const forward: ProjectCommand = { type: "graph/rename", graphId, name };
+          const inverse: ProjectCommand = { type: "graph/rename", graphId, name: graph.name };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        }),
+
+      deleteGraph: (graphId) =>
+        set((state) => {
+          const graph = state.document.graphs[graphId];
+          if (!graph) return;
+          const forward: ProjectCommand = { type: "graph/delete", graphId };
+          const inverse: ProjectCommand = { type: "graph/restore", graph: current(graph) as GraphDocument };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        }),
+
+      addGraphNode: (graphId, type, position, config) => {
+        const nodeId = crypto.randomUUID();
+        set((state) => {
+          if (!state.document.graphs[graphId]) return;
+          const node: GraphNodeInstance = { id: nodeId, type, position, config };
+          const forward: ProjectCommand = { type: "graph/add-node", graphId, node };
+          const inverse: ProjectCommand = { type: "graph/remove-node", graphId, nodeId };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        });
+        return nodeId;
+      },
+
+      // Committed once per drag gesture (the canvas's own onNodeDragStop),
+      // not per intermediate frame — same "one command per gesture, not
+      // per pixel" discipline paintTile already uses, so dragging a node
+      // across the canvas is one undo step, not hundreds.
+      moveGraphNode: (graphId, nodeId, position) =>
+        set((state) => {
+          const graph = state.document.graphs[graphId];
+          const node = graph?.nodes.find((candidate) => candidate.id === nodeId);
+          if (!graph || !node || (node.position.x === position.x && node.position.y === position.y)) return;
+          const forward: ProjectCommand = { type: "graph/move-node", graphId, nodeId, position };
+          const inverse: ProjectCommand = { type: "graph/move-node", graphId, nodeId, position: node.position };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        }),
+
+      configureGraphNode: (graphId, nodeId, config) =>
+        set((state) => {
+          const graph = state.document.graphs[graphId];
+          const node = graph?.nodes.find((candidate) => candidate.id === nodeId);
+          if (!graph || !node || JSON.stringify(node.config) === JSON.stringify(config)) return;
+          const forward: ProjectCommand = { type: "graph/configure-node", graphId, nodeId, config };
+          const inverse: ProjectCommand = { type: "graph/configure-node", graphId, nodeId, config: node.config };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        }),
+
+      removeGraphNode: (graphId, nodeId) =>
+        set((state) => {
+          const graph = state.document.graphs[graphId];
+          const node = graph?.nodes.find((candidate) => candidate.id === nodeId);
+          if (!graph || !node) return;
+          const cascadedEdges = graph.edges.filter((edge) => edge.source === nodeId || edge.target === nodeId);
+          const forward: ProjectCommand = { type: "graph/remove-node", graphId, nodeId };
+          const inverse: ProjectCommand = { type: "graph/restore-node-and-edges", graphId, node, edges: cascadedEdges };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        }),
+
+      addGraphEdge: (graphId, partialEdge) =>
+        set((state) => {
+          if (!state.document.graphs[graphId]) return;
+          const edge: GraphEdgeInstance = { id: crypto.randomUUID(), ...partialEdge };
+          const forward: ProjectCommand = { type: "graph/add-edge", graphId, edge };
+          const inverse: ProjectCommand = { type: "graph/remove-edge", graphId, edgeId: edge.id };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        }),
+
+      removeGraphEdge: (graphId, edgeId) =>
+        set((state) => {
+          const graph = state.document.graphs[graphId];
+          const edge = graph?.edges.find((candidate) => candidate.id === edgeId);
+          if (!graph || !edge) return;
+          const forward: ProjectCommand = { type: "graph/remove-edge", graphId, edgeId };
+          const inverse: ProjectCommand = { type: "graph/add-edge", graphId, edge };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        }),
+
       undo: () =>
         set((state) => {
           const entry = state.past.pop();
@@ -559,6 +792,7 @@ export const useProjectStore = create<ProjectStoreState>()(
           state.future = [];
           state.checkpoints = [];
           state.selection = undefined;
+          state.openGraphId = undefined;
         }),
     })),
     {

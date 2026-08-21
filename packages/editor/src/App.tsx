@@ -14,7 +14,14 @@ import { buildProjectDocumentExportFile, downloadProjectDocumentExportFile } fro
 import { useMarketplaceStore } from "./project/marketplaceStore";
 import { useProjectSyncStore, type SyncStatus } from "./project/projectSyncStore";
 import { useProjectStore } from "./store/projectStore";
-import { HistoryPanelContainer, InspectorPanelContainer, ModulesPanelContainer, ScenesPanelContainer } from "./shell/DockviewPanels";
+import {
+  GraphEditorDialogContainer,
+  GraphsPanelContainer,
+  HistoryPanelContainer,
+  InspectorPanelContainer,
+  ModulesPanelContainer,
+  ScenesPanelContainer,
+} from "./shell/DockviewPanels";
 import { PreviewPanel } from "./shell/PreviewPanel";
 import { UndoRedoControls } from "./shell/UndoRedoControls";
 import "./App.css";
@@ -26,6 +33,7 @@ const COMPONENTS: Record<string, FC<IDockviewPanelProps>> = {
   history: HistoryPanelContainer,
   canvas: SceneCanvas,
   preview: PreviewPanel,
+  graphs: GraphsPanelContainer,
 };
 
 function onReady(event: DockviewReadyEvent): void {
@@ -55,6 +63,12 @@ function onReady(event: DockviewReadyEvent): void {
     component: "history",
     title: "History",
     position: { direction: "below", referencePanel: inspector.id },
+  });
+  api.addPanel({
+    id: "graphs",
+    component: "graphs",
+    title: "Graphs",
+    position: { direction: "below", referencePanel: scenes.id },
   });
   api.addPanel({
     id: "preview",
@@ -143,6 +157,7 @@ export function App({ projectTitle = "Untitled Project", onCloseProject }: AppPr
       <AssetsLibraryDialogContainer open={assetsOpen} onClose={() => setAssetsOpen(false)} />
       <DescribeItDialogContainer open={describeItOpen} onClose={() => setDescribeItOpen(false)} projectId={projectId} />
       <MarketplaceDialogContainer />
+      <GraphEditorDialogContainer />
       <Dialog open={syncStatus === "conflict"} title="This project changed on the server" onClose={() => {}}>
         <p>
           {syncError ?? "Someone else (or another tab) saved a newer revision"}

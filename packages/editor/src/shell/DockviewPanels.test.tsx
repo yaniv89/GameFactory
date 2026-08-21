@@ -1,10 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { useMarketplaceStore } from "../project/marketplaceStore";
 import { useProjectStore } from "../store/projectStore";
-import { InspectorPanelContainer, ModulesPanelContainer } from "./DockviewPanels";
+import { GraphEditorDialogContainer, GraphsPanelContainer, InspectorPanelContainer, ModulesPanelContainer } from "./DockviewPanels";
 
-const EMPTY_DOCUMENT = { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {} };
+const EMPTY_DOCUMENT = { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {} };
 
 describe("ModulesPanelContainer — marketplace-installed modules", () => {
   beforeEach(() => {
@@ -90,5 +90,61 @@ describe("InspectorPanelContainer — configuring a marketplace-installed module
     render(<InspectorPanelContainer />);
 
     expect(screen.getByText("Nothing selected")).toBeInTheDocument();
+  });
+});
+
+describe("GraphsPanelContainer / GraphEditorDialogContainer — docs/adr/0017 (M3)", () => {
+  beforeEach(() => {
+    useProjectStore.setState({ document: EMPTY_DOCUMENT, past: [], future: [], selection: undefined, openGraphId: undefined });
+  });
+
+  it("shows the empty state with no graphs, and creating one makes it appear with 0 nodes", () => {
+    render(<GraphsPanelContainer />);
+    expect(screen.getByText("No graphs yet")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Create a graph" }));
+    expect(screen.getByDisplayValue("Graph 1")).toBeInTheDocument();
+    expect(screen.getByText("0 nodes")).toBeInTheDocument();
+  });
+
+  it("Open on a graph row sets openGraphId, which GraphEditorDialogContainer picks up and renders", () => {
+    useProjectStore.getState().createGraph();
+    const graphId = Object.keys(useProjectStore.getState().document.graphs)[0]!;
+
+    const { rerender } = render(
+      <>
+        <GraphsPanelContainer />
+        <GraphEditorDialogContainer />
+      </>,
+    );
+    expect(screen.queryByText(/^Graph —/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    rerender(
+      <>
+        <GraphsPanelContainer />
+        <GraphEditorDialogContainer />
+      </>,
+    );
+    expect(useProjectStore.getState().openGraphId).toBe(graphId);
+    expect(screen.getByText("Graph — Graph 1")).toBeInTheDocument();
+  });
+
+  it("GraphEditorDialogContainer renders nothing when openGraphId points at a graph that no longer exists", () => {
+    useProjectStore.setState({ openGraphId: "deleted-graph" });
+    render(<GraphEditorDialogContainer />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("adding a node through the dialog is real, undoable project-document state — not local-only UI state", () => {
+    useProjectStore.getState().createGraph();
+    const graphId = Object.keys(useProjectStore.getState().document.graphs)[0]!;
+    useProjectStore.getState().openGraphEditor(graphId);
+
+    render(<GraphEditorDialogContainer />);
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    expect(useProjectStore.getState().document.graphs[graphId]?.nodes).toHaveLength(1);
+    expect(useProjectStore.getState().document.graphs[graphId]?.nodes[0]?.type).toBe("core:add");
   });
 });

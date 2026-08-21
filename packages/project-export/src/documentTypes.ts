@@ -85,6 +85,45 @@ export const DEFAULT_INSTALLED_MODULES: Record<string, InstalledModuleEntry> = {
   "@forge/inventory": { config: {} },
 };
 
+/**
+ * One placed node in an authored graph — docs/adr/0017 Decision 1's "the
+ * editor's own React Flow document (nodes, typed sockets, edges, per-node
+ * config values)... is JSON." `type` matches a `GraphNodeDefinition.type`
+ * from `@forge/graph-nodes-core` (M2) or, once M4 ships, a third-party
+ * module's own registered node type — this package never imports either,
+ * so it stays a plain string here, the same "referenced by id, not by
+ * import" relationship `EntityPlacement.prefabId` already has with
+ * `@forge/core`'s prefab registry.
+ */
+export interface GraphNodeInstance {
+  readonly id: string;
+  readonly type: string;
+  readonly position: { readonly x: number; readonly y: number };
+  readonly config: Readonly<Record<string, unknown>>;
+}
+
+/** One wire between two node sockets, addressed by node id + the socket's own `name` (`GraphSocketDefinition.name`) on each side. */
+export interface GraphEdgeInstance {
+  readonly id: string;
+  readonly source: string;
+  readonly sourceHandle: string;
+  readonly target: string;
+  readonly targetHandle: string;
+}
+
+/**
+ * A project can have many graphs (docs/adr/0017 Decision 2 — one quest,
+ * one mechanic, one branching dialogue tree each) — this is one of them,
+ * not the whole authored set.
+ */
+export interface GraphDocument {
+  readonly id: string;
+  readonly name: string;
+  /** Mutable arrays holding readonly-fielded elements — same convention as `SceneSummary.entities`/`.tiles`: the editor's `applyCommand` pushes/splices in place; individual elements are replaced wholesale on change, never patched. */
+  nodes: GraphNodeInstance[];
+  edges: GraphEdgeInstance[];
+}
+
 /** docs/SPEC.md Section 7.3's `activePack`/`packOverrides`/`packTerrainRemap`; see `packages/editor/src/store/projectStore.ts` for the full field-by-field rationale — unchanged by the move. */
 export interface ProjectDocument {
   scenes: SceneSummary[];
@@ -93,6 +132,8 @@ export interface ProjectDocument {
   activePack: string | undefined;
   packOverrides: Record<string, string>;
   packTerrainRemap: Record<string, string>;
+  /** Graph id -> its document — docs/adr/0017 (J1's node-graph authoring layer, M3). */
+  graphs: Record<string, GraphDocument>;
 }
 
 /**
@@ -162,5 +203,6 @@ export function migrateDocument(document: Partial<ProjectDocument> | undefined):
     activePack: document?.activePack,
     packOverrides: document?.packOverrides ?? {},
     packTerrainRemap: document?.packTerrainRemap ?? {},
+    graphs: document?.graphs ?? {},
   };
 }

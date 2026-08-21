@@ -101,3 +101,24 @@ li.fg-modules-list__row {
   gap: var(--space-2);
   flex: 0 0 auto;
 }
+
+li.fg-graphs-list__row {
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.fg-graphs-list__name {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.fg-graphs-list__actions {
+  display: flex;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}

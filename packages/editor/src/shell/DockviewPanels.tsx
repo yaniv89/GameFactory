@@ -6,6 +6,8 @@ import { defaultsFromSchema } from "../inspector/jsonSchema";
 import { ModuleInspector } from "../inspector/ModuleInspector";
 import { SceneInspector } from "../inspector/SceneInspector";
 import { FIRST_PARTY_MODULE_MANIFESTS, type ModuleManifest } from "../modules/moduleManifests";
+import { GraphEditorDialog } from "../graph/GraphEditorDialog";
+import { GraphsPanel } from "../panels/GraphsPanel";
 import { HistoryPanel } from "../panels/HistoryPanel";
 import { InspectorPanel } from "../panels/InspectorPanel";
 import { ModulesPanel } from "../panels/ModulesPanel";
@@ -267,5 +269,69 @@ export function HistoryPanelContainer() {
         </p>
       </Dialog>
     </>
+  );
+}
+
+/**
+ * docs/adr/0017 / J1 (M3): CRUD over `document.graphs`, all undoable
+ * through the same command log as scenes and modules. "Open" sets
+ * `openGraphId`, which `GraphEditorDialogContainer` (rendered as a
+ * sibling of the dockview tree in `App.tsx`, the same "Dialog for a
+ * focused editing session" shape `PackSwapDialogContainer` already uses)
+ * subscribes to independently — a dockview panel has no direct prop
+ * channel to a sibling dialog, so this goes through the store the same
+ * way `MarketplaceDialogContainer`'s own open/close state already does.
+ */
+export function GraphsPanelContainer() {
+  const graphs = useProjectStore((state) => state.document.graphs);
+  const createGraph = useProjectStore((state) => state.createGraph);
+  const renameGraph = useProjectStore((state) => state.renameGraph);
+  const deleteGraph = useProjectStore((state) => state.deleteGraph);
+  const openGraphEditor = useProjectStore((state) => state.openGraphEditor);
+
+  const summaries = Object.values(graphs).map((graph) => ({ id: graph.id, name: graph.name, nodeCount: graph.nodes.length }));
+
+  return (
+    <GraphsPanel
+      state={summaries.length > 0 ? "populated" : "empty"}
+      graphs={summaries}
+      onCreateGraph={createGraph}
+      onRenameGraph={renameGraph}
+      onOpenGraph={openGraphEditor}
+      onDeleteGraph={deleteGraph}
+    />
+  );
+}
+
+/** The Dialog counterpart of `GraphsPanelContainer`'s "Open" action — see its own doc comment for why this lives at the App.tsx sibling level rather than inside the dockview tree. */
+export function GraphEditorDialogContainer() {
+  const openGraphId = useProjectStore((state) => state.openGraphId);
+  const graph = useProjectStore((state) => (state.openGraphId ? state.document.graphs[state.openGraphId] : undefined));
+  const closeGraphEditor = useProjectStore((state) => state.closeGraphEditor);
+  const renameGraph = useProjectStore((state) => state.renameGraph);
+  const addGraphNode = useProjectStore((state) => state.addGraphNode);
+  const moveGraphNode = useProjectStore((state) => state.moveGraphNode);
+  const configureGraphNode = useProjectStore((state) => state.configureGraphNode);
+  const removeGraphNode = useProjectStore((state) => state.removeGraphNode);
+  const addGraphEdge = useProjectStore((state) => state.addGraphEdge);
+  const removeGraphEdge = useProjectStore((state) => state.removeGraphEdge);
+
+  if (!openGraphId || !graph) return null;
+
+  return (
+    <GraphEditorDialog
+      open
+      onClose={closeGraphEditor}
+      graphName={graph.name}
+      nodes={graph.nodes}
+      edges={graph.edges}
+      onRenameGraph={(name) => renameGraph(openGraphId, name)}
+      onAddNode={(type, position, config) => addGraphNode(openGraphId, type, position, config)}
+      onMoveNode={(nodeId, position) => moveGraphNode(openGraphId, nodeId, position)}
+      onConfigureNode={(nodeId, config) => configureGraphNode(openGraphId, nodeId, config)}
+      onRemoveNode={(nodeId) => removeGraphNode(openGraphId, nodeId)}
+      onAddEdge={(edge) => addGraphEdge(openGraphId, edge)}
+      onRemoveEdge={(edgeId) => removeGraphEdge(openGraphId, edgeId)}
+    />
   );
 }

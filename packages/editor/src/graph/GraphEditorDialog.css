@@ -1,0 +1,86 @@
+.fg-graph-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(90vw, 1200px);
+  height: min(80vh, 800px);
+}
+
+.fg-graph-editor__header {
+  max-width: 320px;
+}
+
+.fg-graph-editor__body {
+  display: grid;
+  grid-template-columns: 200px 1fr 280px;
+  gap: var(--space-3);
+  flex: 1;
+  min-height: 0;
+}
+
+.fg-graph-editor__palette {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  background: var(--surface-chrome);
+  border-radius: var(--radius-md);
+}
+
+.fg-graph-editor__palette-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.fg-graph-editor__palette-heading {
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin: 0;
+}
+
+.fg-graph-editor__canvas {
+  /* The lit worktable (CLAUDE.md 5.1): the canvas itself sits in a
+     slightly warm, lighter field than the cooler chrome around it. */
+  background: var(--surface-canvas);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.fg-graph-editor__inspector {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  background: var(--surface-chrome);
+  border-radius: var(--radius-md);
+}
+
+.fg-graph-editor__outline {
+  border-block-end: 1px solid var(--line-subtle);
+  padding-block-end: var(--space-2);
+}
+
+.fg-graph-editor__node-config {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.fg-graph-editor__connect-picker {
+  border-block-start: 1px solid var(--line-subtle);
+  padding-block-start: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.fg-graph-editor__connect-picker-outputs,
+.fg-graph-editor__connect-picker-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}

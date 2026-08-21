@@ -82,6 +82,16 @@ describe("migrateDocument", () => {
     expect(migrated.activePack).toBeUndefined();
     expect(migrated.packOverrides).toEqual({});
     expect(migrated.packTerrainRemap).toEqual({});
+    expect(migrated.graphs).toEqual({});
+  });
+
+  it("defaults graphs to {} for a document that predates the node-graph field, without touching an existing graphs map", () => {
+    expect(migrateDocument({ scenes: [] }).graphs).toEqual({});
+
+    const existing = {
+      g1: { id: "g1", name: "Boss fight logic", nodes: [], edges: [] },
+    };
+    expect(migrateDocument({ scenes: [], graphs: existing } as never).graphs).toBe(existing);
   });
 
   // docs/adr/0015-entity-prefab-component-model.md: a document persisted

@@ -10,6 +10,7 @@ function baseDocument(overrides: Partial<ProjectDocument> = {}): ProjectDocument
     activePack: undefined,
     packOverrides: {},
     packTerrainRemap: {},
+    graphs: {},
     ...overrides,
   };
 }

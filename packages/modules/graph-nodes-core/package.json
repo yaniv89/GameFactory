@@ -1,0 +1,21 @@
+{
+  "name": "@forge/graph-nodes-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The core ECS primitive node library every graph can use with no module installed (docs/adr/0017 'task split', M2). Built against @forge/module-api only.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@forge/module-api": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.7"
+  }
+}

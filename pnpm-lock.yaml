@@ -230,6 +230,16 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@26.1.2)(jsdom@30.0.1)(lightningcss@1.33.0)
 
+  packages/modules/graph-nodes-core:
+    dependencies:
+      '@forge/module-api':
+        specifier: workspace:*
+        version: link:../../module-api
+    devDependencies:
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@26.1.2)(jsdom@30.0.1)(lightningcss@1.33.0)
+
   packages/modules/inventory:
     dependencies:
       '@forge/module-api':

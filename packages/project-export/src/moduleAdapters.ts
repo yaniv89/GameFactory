@@ -56,8 +56,24 @@ function buildDialogueConfig(document: ProjectDocument): Record<string, unknown>
   };
 }
 
+/**
+ * `@forge/graph-runtime` (docs/adr/0017, M5) has no `configSchema` either
+ * — same reason as dialogue's trees: every authored graph in the project
+ * is its real config, not something flat-form-editable. `GraphDocument`'s
+ * `nodes`/`edges` carry an editor-only `position` field the runtime's own
+ * `GraphDocumentData` doesn't declare; passing the documents through as-is
+ * is still correct (the extra field round-trips through JSON and is
+ * simply never read on the interpreter side — `compileGraph.ts` only
+ * looks at `id`/`type`/`config` per node), so no separate stripping step
+ * is needed.
+ */
+function buildGraphRuntimeConfig(document: ProjectDocument): Record<string, unknown> {
+  return { graphs: Object.values(document.graphs) };
+}
+
 const MODULE_EXPORT_ADAPTERS: Readonly<Record<string, ModuleExportAdapter>> = {
   "@forge/dialogue": (document) => buildDialogueConfig(document),
+  "@forge/graph-runtime": (document) => buildGraphRuntimeConfig(document),
 };
 
 /** Resolves what actually goes into `PlayerInstalledModule.config` for one installed module — the adapter above if one exists for `moduleName`, otherwise the installed `FormValues` unchanged. */

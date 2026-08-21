@@ -62,23 +62,32 @@ export const repeatNode: GraphNodeDefinition = {
  * The other Decision 3 bounded construct: iteration is capped by the
  * query's own naturally-bounded result set (a world's entity count is
  * itself bounded), never by a runtime check that could be gotten wrong.
- * Same interpreter-owns-the-walk split as `core:repeat` above — this node
- * resolves the matched entity list and hands it back as data; visiting
- * each one is M5's job.
+ * Same interpreter-owns-the-walk split as `core:repeat` above — this
+ * node's own `execute()` only resolves the matched entity list once;
+ * walking the loop body once per entity, with `entity` bound to the
+ * current one, is `@forge/graph-runtime`'s (M5's) interpreter job
+ * (`interpreter.ts`'s own `LoopBinding` mechanism) — a single `execute()`
+ * call can't re-enter the graph N times on its own, and this node
+ * doesn't pretend it does: `entity` is declared here as an output socket
+ * so the editor can wire it, but this `execute()` never populates it
+ * itself (the interpreter overwrites it per iteration, the same
+ * "declared here, actually supplied by the interpreter" treatment
+ * `core:onEvent`'s own `payload` input already gets, just on the output
+ * side instead).
  *
  * The `entities` output is `"any"` rather than a dedicated array socket
  * type — deliberately: `GraphSocketType` (docs/adr/0017 Decision 4) is a
  * small, v1 set with no array/list type of its own, and inventing one
  * here would be exactly the kind of module-api surface decision this
- * package is provisional specifically so it *doesn't* make unilaterally
- * (see `types.ts`'s own header comment). It's a real, stated scope trim,
- * not a silently-guessed shape.
+ * package doesn't get to make unilaterally. It's a real, stated scope
+ * trim, not a silently-guessed shape.
  */
 export const forEachEntityNode: GraphNodeDefinition = {
   type: "core:forEachEntity",
   inputs: [{ name: "flow", type: "flow" }],
   outputs: [
     { name: "flow", type: "flow" },
+    { name: "entity", type: "entity" },
     { name: "entities", type: "any" },
   ],
   execute(ctx, _inputs, config) {

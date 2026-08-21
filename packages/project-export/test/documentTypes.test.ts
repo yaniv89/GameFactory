@@ -61,7 +61,7 @@ describe("migrateDocument", () => {
     expect(migrated.installedModules).toEqual({});
   });
 
-  it("defaults installedModules to DEFAULT_INSTALLED_MODULES (dialogue + inventory) when the whole document is missing — a genuinely brand-new project", () => {
+  it("defaults installedModules to DEFAULT_INSTALLED_MODULES (dialogue + inventory + graph-runtime) when the whole document is missing — a genuinely brand-new project", () => {
     const migrated = migrateDocument(undefined);
     expect(migrated.installedModules).toEqual(DEFAULT_INSTALLED_MODULES);
   });

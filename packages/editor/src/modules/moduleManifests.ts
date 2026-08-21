@@ -29,6 +29,13 @@ export const FIRST_PARTY_MODULE_MANIFESTS: readonly ModuleManifest[] = [
     summary: "Dialogue trees with translatable, filterable lines.",
   },
   {
+    name: "@forge/graph-runtime",
+    // No configSchema — same reason dialogue has none: its real config
+    // (docs/adr/0017, M5) is every authored graph in the project (see
+    // GraphsPanel), not a flat form.
+    summary: "Interprets node graphs authored in the graph editor.",
+  },
+  {
     name: "@forge/inventory",
     summary: "Per-entity item stacks, capacity limits, and a shop flow.",
     configSchema: {

@@ -83,6 +83,17 @@ export interface InstalledModuleEntry {
 export const DEFAULT_INSTALLED_MODULES: Record<string, InstalledModuleEntry> = {
   "@forge/dialogue": { config: {} },
   "@forge/inventory": { config: {} },
+  /**
+   * docs/adr/0017 (J1's node-graph authoring layer). Default-installed for
+   * the same reason dialogue/inventory are: M6's own exit criterion is a
+   * non-programmer building a mechanic via the graph editor alone, and
+   * that can't require a manual "install this module first" detour before
+   * `GraphsPanel` does anything. Safe with zero authored graphs, too —
+   * `@forge/graph-runtime`'s `setup()` degrades to "register the core node
+   * types, attach nothing" when `config.graphs` is empty (see its own doc
+   * comment in `packages/modules/graph-runtime/src/index.ts`).
+   */
+  "@forge/graph-runtime": { config: {} },
 };
 
 /**

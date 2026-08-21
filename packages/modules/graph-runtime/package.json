@@ -1,0 +1,23 @@
+{
+  "name": "@forge/graph-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "description": "First-party module (docs/adr/0017) that interprets compiled node-graph documents. Built against @forge/module-api and @forge/graph-nodes-core only.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/build-guest-bundle.mjs",
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@forge/module-api": "workspace:*",
+    "@forge/graph-nodes-core": "workspace:*"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12",
+    "vitest": "^3.2.7"
+  }
+}

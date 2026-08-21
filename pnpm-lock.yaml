@@ -246,6 +246,22 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@26.1.2)(jsdom@30.0.1)(lightningcss@1.33.0)
 
+  packages/modules/graph-runtime:
+    dependencies:
+      '@forge/graph-nodes-core':
+        specifier: workspace:*
+        version: link:../graph-nodes-core
+      '@forge/module-api':
+        specifier: workspace:*
+        version: link:../../module-api
+    devDependencies:
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@26.1.2)(jsdom@30.0.1)(lightningcss@1.33.0)
+
   packages/modules/inventory:
     dependencies:
       '@forge/module-api':
@@ -299,6 +315,9 @@ importers:
       '@forge/dialogue':
         specifier: workspace:*
         version: link:../modules/dialogue
+      '@forge/graph-runtime':
+        specifier: workspace:*
+        version: link:../modules/graph-runtime
       '@playwright/test':
         specifier: 1.62.0
         version: 1.62.0

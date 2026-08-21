@@ -64,6 +64,19 @@ for (const file of listSourceFiles(join(ROOT, "packages/module-api/src"))) {
 }
 
 // --- 2. packages/modules/*: only @forge/module-api or relative imports. ---
+//
+// One narrow, explicitly justified exception: @forge/graph-runtime (M5,
+// docs/adr/0017) may additionally import @forge/graph-nodes-core. That
+// package is itself checked by this same rule (built against
+// @forge/module-api only), so depending on it is equivalent in spirit to
+// depending on module-api directly — and any third party could equally
+// depend on, or reimplement, the same core node library. This is a
+// per-package allowance, not a loosening of the rule itself: no other
+// entry may be added here without the same reasoning holding.
+const EXTRA_ALLOWED_IMPORTS = {
+  "graph-runtime": ["@forge/graph-nodes-core"],
+};
+
 const modulesDir = join(ROOT, "packages/modules");
 for (const moduleName of readdirSync(modulesDir)) {
   const srcDir = join(modulesDir, moduleName, "src");
@@ -73,11 +86,13 @@ for (const moduleName of readdirSync(modulesDir)) {
   } catch {
     continue;
   }
+  const extraAllowed = EXTRA_ALLOWED_IMPORTS[moduleName] ?? [];
   for (const file of files) {
     for (const spec of importsOf(file)) {
       const isRelative = spec.startsWith(".") || spec.startsWith("/");
       const isModuleApi = spec === "@forge/module-api";
-      if (!isRelative && !isModuleApi) {
+      const isExtraAllowed = extraAllowed.includes(spec);
+      if (!isRelative && !isModuleApi && !isExtraAllowed) {
         console.error(
           `check-module-boundaries: packages/modules/${moduleName} may only import "@forge/module-api" or relative files — ${file.replace(ROOT, "")} imports "${spec}"`,
         );

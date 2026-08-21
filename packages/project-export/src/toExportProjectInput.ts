@@ -73,8 +73,10 @@ export function toExportProjectInput(document: ProjectDocument, options: ToExpor
     for (const scene of document.scenes) {
       const entityWithDialogue = scene.entities.find((entity) => entity.dialogue);
       if (entityWithDialogue) {
+        const firstLine = entityWithDialogue.dialogue!.nodes[0];
+        const preview = firstLine ? `"${firstLine.speaker}: ${firstLine.text}"` : "(empty tree)";
         throw new Error(
-          `toExportProjectInput: scene "${scene.name}" has an entity with dialogue authored ("${entityWithDialogue.dialogue!.speaker}: ${entityWithDialogue.dialogue!.text}"), but "@forge/dialogue" is not installed for this project. Install it from the Modules panel, or remove the dialogue from this entity, before exporting.`,
+          `toExportProjectInput: scene "${scene.name}" has an entity with dialogue authored (${preview}), but "@forge/dialogue" is not installed for this project. Install it from the Modules panel, or remove the dialogue from this entity, before exporting.`,
         );
       }
     }

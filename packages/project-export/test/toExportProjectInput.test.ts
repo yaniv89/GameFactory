@@ -63,7 +63,7 @@ describe("toExportProjectInput", () => {
           tiles: emptyTiles(),
           entities: [
             { id: "player-1", prefabId: "player-start", tileX: 2, tileY: 3 },
-            { id: "npc-1", prefabId: "npc", tileX: 5, tileY: 5, dialogue: { speaker: "Elder", text: "Welcome." } },
+            { id: "npc-1", prefabId: "npc", tileX: 5, tileY: 5, dialogue: { nodes: [{ speaker: "Elder", text: "Welcome." }] } },
             { id: "npc-2", prefabId: "npc", tileX: 6, tileY: 6 },
           ],
         },
@@ -74,7 +74,7 @@ describe("toExportProjectInput", () => {
     const [scene] = result.scenes;
     expect(scene!.entities).toEqual([
       { id: "player-1", prefabId: "player-start", tileX: 2, tileY: 3 },
-      { id: "npc-1", prefabId: "npc", tileX: 5, tileY: 5, dialogue: { speaker: "Elder", text: "Welcome." } },
+      { id: "npc-1", prefabId: "npc", tileX: 5, tileY: 5, dialogue: { nodes: [{ speaker: "Elder", text: "Welcome." }] } },
       { id: "npc-2", prefabId: "npc", tileX: 6, tileY: 6 },
     ]);
     // exactOptionalPropertyTypes: npc-2 must have no "dialogue" key at all, not dialogue: undefined.
@@ -196,7 +196,7 @@ describe("toExportProjectInput", () => {
           name: "Village",
           tiles: emptyTiles(),
           entities: [
-            { id: "npc-elder", prefabId: "npc", tileX: 1, tileY: 1, dialogue: { speaker: "Elder", text: "Welcome." } },
+            { id: "npc-elder", prefabId: "npc", tileX: 1, tileY: 1, dialogue: { nodes: [{ speaker: "Elder", text: "Welcome." }] } },
             { id: "npc-silent", prefabId: "npc", tileX: 2, tileY: 2 },
           ],
         },
@@ -205,7 +205,7 @@ describe("toExportProjectInput", () => {
           name: "Cave",
           tiles: emptyTiles(),
           entities: [
-            { id: "npc-hermit", prefabId: "npc", tileX: 3, tileY: 3, dialogue: { speaker: "Hermit", text: "Go away." } },
+            { id: "npc-hermit", prefabId: "npc", tileX: 3, tileY: 3, dialogue: { nodes: [{ speaker: "Hermit", text: "Go away." }] } },
           ],
         },
       ],
@@ -244,7 +244,7 @@ describe("toExportProjectInput", () => {
           id: "village",
           name: "Village",
           tiles: emptyTiles(),
-          entities: [{ id: "npc-1", prefabId: "npc", tileX: 5, tileY: 5, dialogue: { speaker: "Elder", text: "Welcome." } }],
+          entities: [{ id: "npc-1", prefabId: "npc", tileX: 5, tileY: 5, dialogue: { nodes: [{ speaker: "Elder", text: "Welcome." }] } }],
         },
       ],
     });
@@ -268,7 +268,7 @@ describe("toExportProjectInput", () => {
           id: "village",
           name: "Village",
           tiles: emptyTiles(),
-          entities: [{ id: "npc-1", prefabId: "npc", tileX: 5, tileY: 5, dialogue: { speaker: "Elder", text: "Welcome." } }],
+          entities: [{ id: "npc-1", prefabId: "npc", tileX: 5, tileY: 5, dialogue: { nodes: [{ speaker: "Elder", text: "Welcome." }] } }],
         },
       ],
     });
@@ -283,7 +283,7 @@ describe("toExportProjectInput", () => {
           id: "cave",
           name: "Cave",
           tiles: emptyTiles(),
-          entities: [{ id: "npc-1", prefabId: "npc", tileX: 5, tileY: 5, dialogue: { speaker: "Hermit", text: "Go away." } }],
+          entities: [{ id: "npc-1", prefabId: "npc", tileX: 5, tileY: 5, dialogue: { nodes: [{ speaker: "Hermit", text: "Go away." }] } }],
         },
       ],
     });

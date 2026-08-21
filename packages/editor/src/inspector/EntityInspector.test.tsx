@@ -14,14 +14,14 @@ describe("EntityInspector", () => {
     expect(screen.getByLabelText("Line")).toBeInTheDocument();
   });
 
-  it("pre-fills the form with the npc's existing dialogue", () => {
-    const npcWithDialogue: EntityPlacement = { ...NPC, dialogue: { speaker: "Shopkeeper", text: "Welcome!" } };
+  it("pre-fills the form with the npc's existing dialogue (its first node)", () => {
+    const npcWithDialogue: EntityPlacement = { ...NPC, dialogue: { nodes: [{ speaker: "Shopkeeper", text: "Welcome!" }] } };
     render(<EntityInspector entity={npcWithDialogue} onConfigureDialogue={() => {}} onRemove={() => {}} />);
     expect(screen.getByLabelText("Speaker")).toHaveValue("Shopkeeper");
     expect(screen.getByLabelText("Line")).toHaveValue("Welcome!");
   });
 
-  it("calls onConfigureDialogue with the entity id and new dialogue once blurred", async () => {
+  it("calls onConfigureDialogue with the entity id and a one-node tree once blurred", async () => {
     const onConfigureDialogue = vi.fn();
     render(<EntityInspector entity={NPC} onConfigureDialogue={onConfigureDialogue} onRemove={() => {}} />);
 
@@ -29,7 +29,32 @@ describe("EntityInspector", () => {
     await userEvent.type(screen.getByLabelText("Line"), "Welcome to my shop!");
     await userEvent.tab();
 
-    expect(onConfigureDialogue).toHaveBeenCalledWith("e1", { speaker: "Shopkeeper", text: "Welcome to my shop!" });
+    expect(onConfigureDialogue).toHaveBeenCalledWith("e1", { nodes: [{ speaker: "Shopkeeper", text: "Welcome to my shop!" }] });
+  });
+
+  it("editing the first line leaves further nodes and that node's own choices untouched", async () => {
+    const onConfigureDialogue = vi.fn();
+    const branching: EntityPlacement = {
+      ...NPC,
+      dialogue: {
+        nodes: [
+          { speaker: "Elder", text: "Choose wisely.", choices: [{ id: "yes", text: "I will.", next: 1 }] },
+          { speaker: "Elder", text: "Good choice." },
+        ],
+      },
+    };
+    render(<EntityInspector entity={branching} onConfigureDialogue={onConfigureDialogue} onRemove={() => {}} />);
+
+    await userEvent.clear(screen.getByLabelText("Line"));
+    await userEvent.type(screen.getByLabelText("Line"), "Choose carefully.");
+    await userEvent.tab();
+
+    expect(onConfigureDialogue).toHaveBeenCalledWith("e1", {
+      nodes: [
+        { speaker: "Elder", text: "Choose carefully.", choices: [{ id: "yes", text: "I will.", next: 1 }] },
+        { speaker: "Elder", text: "Good choice." },
+      ],
+    });
   });
 
   it("shows no dialogue form for a player-start, only an informational hint", () => {

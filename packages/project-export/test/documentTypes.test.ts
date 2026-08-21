@@ -124,7 +124,7 @@ describe("migrateDocument", () => {
     expect(migrated.scenes[0]!.entities).toEqual([{ id: "e1", prefabId: "player-start", tileX: 3, tileY: 4 }]);
   });
 
-  it("renames a legacy npc entity's kind to prefabId, preserving dialogue", () => {
+  it("renames a legacy npc entity's kind to prefabId, migrating its legacy one-line dialogue to a one-node tree", () => {
     const migrated = migrateDocument({
       scenes: [
         {
@@ -139,8 +139,45 @@ describe("migrateDocument", () => {
     });
 
     expect(migrated.scenes[0]!.entities).toEqual([
-      { id: "e2", prefabId: "npc", tileX: 5, tileY: 5, dialogue: { speaker: "Elder", text: "Welcome." } },
+      { id: "e2", prefabId: "npc", tileX: 5, tileY: 5, dialogue: { nodes: [{ speaker: "Elder", text: "Welcome." }] } },
     ]);
+  });
+
+  it("passes an already-widened (real tree) dialogue through unchanged, without re-wrapping it", () => {
+    const migrated = migrateDocument({
+      scenes: [
+        {
+          id: "s1",
+          name: "Scene 1",
+          entities: [
+            {
+              id: "e2",
+              prefabId: "npc",
+              tileX: 5,
+              tileY: 5,
+              dialogue: {
+                nodes: [
+                  { speaker: "Elder", text: "Choose wisely.", choices: [{ id: "yes", text: "I will.", next: -1 }] },
+                ],
+              },
+            } as never,
+          ],
+        } as never,
+      ],
+      installedModules: {},
+    });
+
+    expect(migrated.scenes[0]!.entities[0]!.dialogue).toEqual({
+      nodes: [{ speaker: "Elder", text: "Choose wisely.", choices: [{ id: "yes", text: "I will.", next: -1 }] }],
+    });
+  });
+
+  it("an entity with no dialogue authored migrates with no dialogue key at all", () => {
+    const migrated = migrateDocument({
+      scenes: [{ id: "s1", name: "Scene 1", entities: [{ id: "e1", prefabId: "npc", tileX: 1, tileY: 1 } as never] } as never],
+      installedModules: {},
+    });
+    expect("dialogue" in migrated.scenes[0]!.entities[0]!).toBe(false);
   });
 
   it("passes a current-shape entity (prefabId already present) through unchanged", () => {

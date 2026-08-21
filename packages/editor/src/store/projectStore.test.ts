@@ -432,9 +432,9 @@ describe("useProjectStore", () => {
     useProjectStore.getState().placeNpc(sceneId, 5, 5);
     const entityId = useProjectStore.getState().document.scenes[0]!.entities[0]!.id;
 
-    useProjectStore.getState().configureEntityDialogue(sceneId, entityId, { speaker: "Shopkeeper", text: "Welcome!" });
+    useProjectStore.getState().configureEntityDialogue(sceneId, entityId, { nodes: [{ speaker: "Shopkeeper", text: "Welcome!" }] });
     let entity = useProjectStore.getState().document.scenes[0]!.entities[0]!;
-    expect(entity.dialogue).toEqual({ speaker: "Shopkeeper", text: "Welcome!" });
+    expect(entity.dialogue).toEqual({ nodes: [{ speaker: "Shopkeeper", text: "Welcome!" }] });
 
     useProjectStore.getState().undo();
     entity = useProjectStore.getState().document.scenes[0]!.entities[0]!;
@@ -446,7 +446,7 @@ describe("useProjectStore", () => {
     const sceneId = useProjectStore.getState().document.scenes[0]?.id as string;
     useProjectStore.getState().placeNpc(sceneId, 5, 5);
     const entityId = useProjectStore.getState().document.scenes[0]!.entities[0]!.id;
-    const dialogue = { speaker: "Shopkeeper", text: "Welcome!" };
+    const dialogue = { nodes: [{ speaker: "Shopkeeper", text: "Welcome!" }] };
 
     useProjectStore.getState().configureEntityDialogue(sceneId, entityId, dialogue);
     const pastLength = useProjectStore.getState().past.length;

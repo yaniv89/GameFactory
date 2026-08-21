@@ -88,6 +88,26 @@ export type PreviewToEditorMessage = PreviewReadyMessage | PreviewErrorMessage |
 
 const EXPECTED_TILE_COUNT = GRID_WIDTH * GRID_HEIGHT;
 
+/** One choice out of a `DialogueTreeNode` (docs/adr/0018 Decision 2) — `{id, text, next}`. */
+function isValidDialogueChoice(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.id === "string" && typeof candidate.text === "string" && typeof candidate.next === "number" && Number.isFinite(candidate.next);
+}
+
+/** One line of a `DialogueTreeNode` — `speaker`/`text` required, `choices`/`locale`/`autoAdvanceSec` optional. */
+function isValidDialogueNode(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.speaker !== "string" || typeof candidate.text !== "string") return false;
+  if (candidate.locale !== undefined && typeof candidate.locale !== "string") return false;
+  if (candidate.autoAdvanceSec !== undefined && typeof candidate.autoAdvanceSec !== "number") return false;
+  if (candidate.choices !== undefined) {
+    if (!Array.isArray(candidate.choices) || !candidate.choices.every(isValidDialogueChoice)) return false;
+  }
+  return true;
+}
+
 function isValidEntity(value: unknown): value is EntityPlacement {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Record<string, unknown>;
@@ -98,7 +118,10 @@ function isValidEntity(value: unknown): value is EntityPlacement {
   if (candidate.dialogue !== undefined) {
     if (typeof candidate.dialogue !== "object" || candidate.dialogue === null) return false;
     const dialogue = candidate.dialogue as Record<string, unknown>;
-    if (typeof dialogue.speaker !== "string" || typeof dialogue.text !== "string") return false;
+    // docs/adr/0018 Decision 2: a real branching tree, not a one-liner —
+    // at least one node, every node individually well-formed.
+    if (!Array.isArray(dialogue.nodes) || dialogue.nodes.length === 0) return false;
+    if (!dialogue.nodes.every(isValidDialogueNode)) return false;
   }
   return true;
 }

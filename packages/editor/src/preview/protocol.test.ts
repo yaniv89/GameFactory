@@ -4,7 +4,7 @@ import type { EntityPlacement } from "../store/projectStore";
 import { isPreviewSceneMessage, isPreviewToEditorMessage } from "./protocol";
 
 const VALID_TILES = new Array(GRID_WIDTH * GRID_HEIGHT).fill(0);
-const NPC: EntityPlacement = { id: "e1", prefabId: "npc", tileX: 3, tileY: 4, dialogue: { speaker: "NPC", text: "Hi" } };
+const NPC: EntityPlacement = { id: "e1", prefabId: "npc", tileX: 3, tileY: 4, dialogue: { nodes: [{ speaker: "NPC", text: "Hi" }] } };
 const PLAYER_START: EntityPlacement = { id: "e2", prefabId: "player-start", tileX: 1, tileY: 1 };
 
 describe("isPreviewSceneMessage", () => {
@@ -52,8 +52,39 @@ describe("isPreviewSceneMessage", () => {
     expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [bad] })).toBe(false);
   });
 
-  it("rejects an entity whose dialogue is missing a text field", () => {
+  it("rejects an entity whose dialogue has no nodes array", () => {
     const bad = { ...NPC, dialogue: { speaker: "NPC" } };
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [bad] })).toBe(false);
+  });
+
+  it("rejects an entity whose dialogue node is missing a text field", () => {
+    const bad = { ...NPC, dialogue: { nodes: [{ speaker: "NPC" }] } };
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [bad] })).toBe(false);
+  });
+
+  it("rejects an entity whose dialogue nodes array is empty", () => {
+    const bad = { ...NPC, dialogue: { nodes: [] } };
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [bad] })).toBe(false);
+  });
+
+  it("accepts a dialogue tree with a choice pointing at another node", () => {
+    const branching = {
+      ...NPC,
+      dialogue: {
+        nodes: [
+          { speaker: "Elder", text: "Choose wisely.", choices: [{ id: "yes", text: "I will.", next: 1 }] },
+          { speaker: "Elder", text: "Good choice." },
+        ],
+      },
+    };
+    expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [branching] })).toBe(true);
+  });
+
+  it("rejects a dialogue node whose choices array has a malformed entry", () => {
+    const bad = {
+      ...NPC,
+      dialogue: { nodes: [{ speaker: "Elder", text: "Choose.", choices: [{ id: "yes", text: "I will." }] }] },
+    };
     expect(isPreviewSceneMessage({ type: "forge:preview:scene", tiles: VALID_TILES, entities: [bad] })).toBe(false);
   });
 

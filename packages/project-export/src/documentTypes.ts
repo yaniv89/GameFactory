@@ -15,9 +15,79 @@ export function emptyTiles(): number[] {
   return new Array(GRID_WIDTH * GRID_HEIGHT).fill(0);
 }
 
-export interface EntityDialogue {
+/**
+ * One choice out of a `DialogueTreeNode` — field-for-field the same shape
+ * `@forge/dialogue`'s own `DialogueChoiceConfig` declares.
+ * `next` indexes into the owning tree's own `nodes` array; `-1` ends the
+ * dialogue.
+ */
+export interface DialogueTreeChoice {
+  readonly id: string;
+  readonly text: string;
+  readonly next: number;
+}
+
+/**
+ * A single line in a branching conversation — field-for-field the same
+ * shape `@forge/dialogue`'s own `DialogueNodeConfig` declares
+ * (docs/adr/0018 Decision 2): `speaker`, `text`, an optional `locale`, an
+ * optional `choices` array, an optional `autoAdvanceSec`.
+ *
+ * This ADR's own text called for a direct type alias of
+ * `DialogueNodeConfig` rather than a duplicate declaration — `@forge/dialogue`
+ * is built against `@forge/module-api` only regardless of who else imports
+ * its plain types, so `project-export` carries none of `GraphDocument`'s
+ * module-boundary restriction. That plan hit a real, discovered-while-
+ * implementing snag: `DialogueChoiceConfig`'s own `choices` field (and
+ * `EntityDialogue.nodes` below) is a `readonly` array, and `ProjectCommand`
+ * values carrying an `EntityDialogue` flow through Immer's
+ * `set((state) => ...)` drafts (`projectStore.ts`) — Immer's `Draft<T>`
+ * cannot map a `readonly` array field nested inside a discriminated-union-
+ * typed command into its own mutable draft array type, so a direct alias
+ * doesn't typecheck against the store's own command union. Independently
+ * declaring this shape (mutable `choices` array, otherwise identical)
+ * sidesteps that constraint the same way `GraphDocument`'s own doc comment
+ * already accepts for a different reason — still a type-only mirror kept
+ * in sync by hand, just for an Immer-compatibility reason instead of a
+ * module-boundary one.
+ */
+export interface DialogueTreeNode {
   readonly speaker: string;
   readonly text: string;
+  readonly locale?: string;
+  /** Mutable array — see this interface's own doc comment for why (Immer draft compatibility, not an editing-pattern statement). Omit or leave empty to end the dialogue after this line. */
+  choices?: DialogueTreeChoice[];
+  /** Seconds before auto-advancing to `choices[0]` (or ending, if there are no choices). Omit to require an explicit "dialogue:choose"/"dialogue:advance" event. */
+  readonly autoAdvanceSec?: number;
+}
+
+/**
+ * A full branching conversation authored on one entity (docs/adr/0018
+ * Decision 2) — replaces the pre-ADR `{speaker, text}` one-liner.
+ * Deliberately has no `id` field of its own: the exported
+ * `@forge/dialogue` tree's `id` is always synthesized as the owning
+ * `EntityPlacement.id` at export time (`buildDialogueTreesFromEntities`,
+ * `moduleAdapters.ts`) — the same `treeId == placementId` convention
+ * `PreviewApp.tsx`'s `rebuildDialogueRuntime` and `@forge/player`'s
+ * `gameLogic.ts` already rely on. A second, independently-authored id
+ * here could only ever agree with or silently diverge from that
+ * convention; not carrying one avoids the divergence case entirely.
+ */
+export interface EntityDialogue {
+  /**
+   * A plain mutable array, not `readonly DialogueTreeNode[]` — matching
+   * `GraphDocument.nodes`/`SceneSummary.entities`/`.tiles`'s own
+   * convention, and for the identical mechanical reason: `ProjectCommand`
+   * values flow through Immer's `set((state) => ...)` drafts
+   * (`projectStore.ts`), and Immer's `Draft<T>` cannot map a `readonly`
+   * array field inside a discriminated-union-typed command into its own
+   * mutable draft array type. Edited wholesale via the existing
+   * `entity/configure` command either way (M10 is a whole-tree form, not
+   * a node-CRUD canvas like `GraphEditorDialog`'s) — this is a type-
+   * system constraint, not a statement that per-node mutation happens
+   * here.
+   */
+  nodes: DialogueTreeNode[];
 }
 
 export interface EntityPlacement {
@@ -208,14 +278,38 @@ function migrateInstalledModuleEntry(value: LegacyModuleConfig | InstalledModule
  * in `@forge/core`), so this migration is a pure field rename, not a value
  * remap — it changes no entity's rendered behavior.
  */
-type LegacyEntityPlacement = Omit<EntityPlacement, "prefabId"> & { readonly kind?: "player-start" | "npc" };
+type LegacyEntityPlacement = Omit<EntityPlacement, "prefabId" | "dialogue"> & {
+  readonly kind?: "player-start" | "npc";
+  readonly dialogue?: EntityDialogue | LegacyEntityDialogue;
+};
+
+/**
+ * A document persisted before docs/adr/0018 widened `EntityDialogue`
+ * carried `{speaker, text}` directly — one line, no branching. Converting
+ * it to a one-node tree with no `choices` is lossless: `@forge/dialogue`
+ * already ends a dialogue after any node with no choices
+ * (`dialogueModule`'s own `showNode`), the exact behavior a bare
+ * `{speaker, text}` line always had.
+ */
+type LegacyEntityDialogue = { readonly speaker: string; readonly text: string };
+
+function isLegacyEntityDialogue(dialogue: EntityDialogue | LegacyEntityDialogue): dialogue is LegacyEntityDialogue {
+  return !("nodes" in dialogue);
+}
+
+function migrateEntityDialogue(dialogue: EntityDialogue | LegacyEntityDialogue | undefined): EntityDialogue | undefined {
+  if (!dialogue) return undefined;
+  if (isLegacyEntityDialogue(dialogue)) return { nodes: [{ speaker: dialogue.speaker, text: dialogue.text }] };
+  return dialogue;
+}
 
 function migrateEntityPlacement(entity: LegacyEntityPlacement): EntityPlacement {
-  if ("prefabId" in entity && typeof (entity as Partial<EntityPlacement>).prefabId === "string") {
-    return entity as EntityPlacement;
-  }
-  const { kind, ...rest } = entity;
-  return { ...rest, prefabId: kind ?? "npc" };
+  const { kind, dialogue: legacyDialogue, ...rest } = entity;
+  const existingPrefabId = (entity as Partial<EntityPlacement>).prefabId;
+  const prefabId = typeof existingPrefabId === "string" ? existingPrefabId : (kind ?? "npc");
+  const dialogue = migrateEntityDialogue(legacyDialogue);
+  // exactOptionalPropertyTypes: only assign `dialogue` when there actually is one.
+  return dialogue !== undefined ? { ...rest, prefabId, dialogue } : { ...rest, prefabId };
 }
 
 /**

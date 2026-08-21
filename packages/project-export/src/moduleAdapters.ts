@@ -1,4 +1,4 @@
-import type { EntityPlacement, ProjectDocument } from "./documentTypes.js";
+import type { DialogueTreeNode, EntityPlacement, ProjectDocument } from "./documentTypes.js";
 
 /**
  * Per-module export adapters (docs/adr/0009 decision 2), keyed by module
@@ -14,7 +14,7 @@ type ModuleExportAdapter = (document: ProjectDocument, config: Record<string, un
 
 export interface DialogueTree {
   readonly id: string;
-  readonly nodes: readonly { readonly speaker: string; readonly text: string }[];
+  readonly nodes: readonly DialogueTreeNode[];
 }
 
 /**
@@ -29,6 +29,13 @@ export interface DialogueTree {
  * once for the whole project) so the preview — which only ever cares
  * about its own single active scene — can call this directly instead of
  * carrying its own independent copy of the same logic.
+ *
+ * docs/adr/0018 Decision 2: `entity.dialogue.nodes` is passed straight
+ * through — the authored tree, not synthesized from a one-line shape
+ * anymore. `EntityDialogue`'s own `nodes` field is already exactly
+ * `@forge/dialogue`'s own wire shape (`DialogueTreeNode` is a direct
+ * alias of `DialogueNodeConfig`), so there is nothing left to transform
+ * here beyond attaching the `id`.
  */
 export function buildDialogueTreesFromEntities(entities: readonly EntityPlacement[]): readonly DialogueTree[] {
   // Any prefab with dialogue set becomes a tree — not gated on a specific
@@ -40,7 +47,7 @@ export function buildDialogueTreesFromEntities(entities: readonly EntityPlacemen
     .filter((entity): entity is EntityPlacement & { dialogue: NonNullable<EntityPlacement["dialogue"]> } =>
       entity.dialogue !== undefined,
     )
-    .map((entity) => ({ id: entity.id, nodes: [{ speaker: entity.dialogue.speaker, text: entity.dialogue.text }] }));
+    .map((entity) => ({ id: entity.id, nodes: entity.dialogue.nodes }));
 }
 
 /**

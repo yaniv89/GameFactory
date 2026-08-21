@@ -4,7 +4,18 @@ import type { ObjectSchema } from "./jsonSchema";
 import type { EntityDialogue, EntityPlacement } from "../store/projectStore";
 import "./EntityInspector.css";
 
-/** An NPC's one-line dialogue (Phase 7) — the simplest real shape @forge/dialogue's DialogueNodeConfig supports: a single speaker/text node, no choices, no branching. */
+/**
+ * A quick edit for a dialogue tree's first line only — speaker/text of
+ * `dialogue.nodes[0]`. docs/adr/0018 Decision 2 widened `EntityDialogue`
+ * to a real branching tree; the full authoring surface for choices/
+ * multi-node trees is `DialogueTreeEditorDialog` (M10), not built yet.
+ * This form is deliberately narrower than that, not a replacement for
+ * it: editing here only ever touches node 0's `speaker`/`text`, leaving
+ * any existing `choices`/`locale`/`autoAdvanceSec` on that node and any
+ * further nodes completely untouched — a project someone already
+ * authored a branching tree in (by hand, or once M10 exists) doesn't
+ * lose that structure just because this quick form was used afterward.
+ */
 export const NPC_DIALOGUE_SCHEMA: ObjectSchema = {
   type: "object",
   properties: {
@@ -21,15 +32,19 @@ export interface EntityInspectorProps {
 }
 
 export function EntityInspector({ entity, onConfigureDialogue, onRemove }: EntityInspectorProps) {
+  const nodes = entity.dialogue?.nodes ?? [];
+  const firstNode = nodes[0];
+
   return (
     <div className="fg-entity-inspector">
       {entity.prefabId === "npc" && (
         <JsonSchemaForm
           schema={NPC_DIALOGUE_SCHEMA}
-          values={{ speaker: entity.dialogue?.speaker ?? "", text: entity.dialogue?.text ?? "" }}
-          onSubmit={(values) =>
-            onConfigureDialogue(entity.id, { speaker: values.speaker as string, text: values.text as string })
-          }
+          values={{ speaker: firstNode?.speaker ?? "", text: firstNode?.text ?? "" }}
+          onSubmit={(values) => {
+            const updatedFirst = { ...firstNode, speaker: values.speaker as string, text: values.text as string };
+            onConfigureDialogue(entity.id, { nodes: [updatedFirst, ...nodes.slice(1)] });
+          }}
         />
       )}
       {entity.prefabId === "player-start" && (

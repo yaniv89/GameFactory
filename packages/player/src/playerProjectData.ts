@@ -23,9 +23,13 @@ export interface PlayerEntityPlacement {
    * Kept here anyway (not dropped) so a `PlayerProjectData` stays
    * self-describing without cross-referencing module config to answer
    * "does this NPC talk" — a deliberate, explained duplication, not an
-   * oversight.
+   * oversight. `unknown` rather than a shaped type: since only presence
+   * is ever read, this field's actual shape is free to evolve on the
+   * editor/export side (docs/adr/0018 Decision 2 widened it from
+   * `{speaker, text}` to a real branching tree) without this package
+   * needing a matching change it would never use.
    */
-  readonly dialogue?: { readonly speaker: string; readonly text: string };
+  readonly dialogue?: unknown;
 }
 
 export interface PlayerScene {

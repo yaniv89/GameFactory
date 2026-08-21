@@ -9,7 +9,24 @@ namespace Forge.Functions.ArtGen;
 public sealed record ClaimedGenerationRequest(Guid Id, Guid WorkspaceId, string ExpandedPrompt, string Category);
 
 /// <summary>One successfully processed variation, ready to record against a <see cref="GenerationRequest"/> — the blob path <see cref="ArtGenOrchestrator"/> already uploaded to, plus the real dimensions <c>AssetRunner</c> decoded.</summary>
-public sealed record CompletedVariation(string ProcessedBlobPath, int Width, int Height);
+/// <summary>
+/// N8: <see cref="VariationId"/> must be the exact id
+/// <see cref="ArtGenOrchestrator"/> already used to build
+/// <see cref="ProcessedBlobPath"/> and to actually upload the bytes
+/// there (<c>IArtGenerationStorage.UploadVariationAsync</c>'s own third
+/// parameter) — <see cref="ArtGenScanner.MarkReadyAsync"/> must give the
+/// inserted <see cref="GenerationVariation"/> row that same id, not a
+/// freshly generated one, or the row's own primary key silently stops
+/// matching the blob it's supposed to point at. Found by N8's own
+/// full-chain exit-criteria test: every prior test either read
+/// <see cref="GenerationVariation.ProcessedBlobPath"/> back verbatim
+/// (never re-deriving a path from <c>Id</c>, so the mismatch was
+/// invisible) or seeded a fixture where both values came from the same
+/// local variable by construction. A real "Describe It" run would have
+/// hit this on every single generation: Ready with a real variation,
+/// then a 404 fetching its own thumbnail.
+/// </summary>
+public sealed record CompletedVariation(Guid VariationId, string ProcessedBlobPath, int Width, int Height);
 
 /// <summary>
 /// docs/adr/0016 Decision 6's claim/complete lifecycle against
@@ -84,7 +101,7 @@ public sealed class ArtGenScanner(ForgeDbContext db)
         {
             db.GenerationVariations.Add(new GenerationVariation
             {
-                Id = Guid.NewGuid(),
+                Id = variation.VariationId,
                 GenerationRequestId = requestId,
                 ProcessedBlobPath = variation.ProcessedBlobPath,
                 Width = variation.Width,

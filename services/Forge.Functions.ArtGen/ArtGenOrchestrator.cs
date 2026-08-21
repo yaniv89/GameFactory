@@ -128,7 +128,7 @@ public sealed class ArtGenOrchestrator(ArtGenScanner scanner, IArtGenerationClie
                 throw new ArtGenHarnessException($"Failed to upload a generated variation for request '{claimed.Id}'.", ex);
             }
 
-            completed.Add(new CompletedVariation($"{claimed.WorkspaceId}/{claimed.Id}/{variationId}.png", finalWidth, finalHeight));
+            completed.Add(new CompletedVariation(variationId, $"{claimed.WorkspaceId}/{claimed.Id}/{variationId}.png", finalWidth, finalHeight));
         }
 
         if (completed.Count == 0)

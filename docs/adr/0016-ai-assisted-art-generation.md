@@ -358,3 +358,61 @@ paragraph; summarized here:
   there is no concrete exploit beyond what a creator could already get by
   typing something unusual directly, so adding complexity here would be
   defense against a threat this review couldn't actually construct.
+
+## Addendum (N8): exit criteria — and a real bug only the full chain caught
+
+`ArtGenerationExitCriteriaTests.cs` drives the entire pipeline in one
+continuous run for both categories — real HTTP Create, real HTTP
+Confirm, the real `ArtGenOrchestrator` claiming that exact row over a
+real Postgres connection, real HTTP Get/Content, real HTTP Select, and
+the promoted result served back through the *pre-existing, unmodified*
+E4 asset-content endpoint. Every prior N-stage test drove one endpoint
+or one worker method in isolation; nothing until N8 walked the full
+chain the way a real deploy actually would.
+
+That full-chain run immediately caught a real bug no isolated test had
+ever exercised: `ArtGenScanner.MarkReadyAsync` generated a *fresh*
+`Guid.NewGuid()` for each inserted `GenerationVariation.Id`, completely
+independent of the `variationId` `ArtGenOrchestrator` had already used
+to build the blob path and actually upload the bytes there. The
+database row's own primary key never matched the blob it was supposed
+to point at. A real "Describe It" run would have hit this on *every*
+generation: the poll would correctly show `Ready` with a real
+variation, and then fetching that variation's own thumbnail would 404,
+every time — a completely broken feature despite 40+ passing tests
+across N2-N7.
+
+It stayed invisible that long because every existing test either read
+`GenerationVariation.ProcessedBlobPath` back verbatim (never
+re-deriving a path from `Id`, so the mismatch had nothing to surface
+against) or seeded a fixture where both values came from the same local
+variable by construction — `ArtGenOrchestratorTests` checks blob content
+by the stored path string, and `ArtGenerationEndpointsTests`' own seed
+helper sets `Id` and the path's embedded id from one variable. Neither
+shape can ever produce a mismatch; only a real orchestrator run,
+checked through the real HTTP content endpoint by the id the poll
+response itself returned, can.
+
+Fixed at the source: `CompletedVariation` now carries the actual
+`VariationId` `ArtGenOrchestrator` generated, and
+`ArtGenScanner.MarkReadyAsync` uses that id for the inserted row instead
+of generating its own. Full detail and the `IReadOnlyDictionary`-typed
+before/after are in `ArtGenScanner.cs`'s own updated doc comment.
+
+**What N8 proves, and what it honestly doesn't:** every line of code
+Forge itself owns is now exercised end to end and genuinely works —
+the full HTTP surface, the real claim/orchestrate worker lifecycle,
+the real T6 decode-safety pipeline, the real chroma-key port running on
+real pixels, real Azurite blob round-trips through both the generation
+and the asset containers, and the real pre-existing Art Pack
+asset-resolution endpoint treating a generated asset exactly like a
+hand-uploaded one. What it does not and cannot prove in this
+environment: that a real Gemini call produces a real expanded prompt or
+a real image — no Gemini API key exists anywhere in this session (the
+same constraint every N-stage since N2 has stated plainly), and
+`GeminiArtGenerationClient`'s base URL is a hardcoded production
+endpoint, not something a live dev-server run could be pointed away
+from without adding a test-only branch to production code — the kind of
+shortcut this project's own guardrails rule out. `FakeArtGenerationClient`
+stands in for both Gemini calls here, the same as it does everywhere
+else in this test suite.

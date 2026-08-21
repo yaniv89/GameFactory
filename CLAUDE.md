@@ -41,6 +41,8 @@ Violating any of these is grounds for reverting the work. Check this list before
 20. **Never assume a single API instance or a single SignalR hub instance.** Design for N replicas behind a load balancer from day one. SignalR requires a backplane (Redis or Azure SignalR Service) the moment a second instance exists — there is no "add it later" for this one, since it changes the hub's connection model at the root.
 21. **Never let a hot path issue an unbounded number of round-trips.** No N+1 queries, no per-entity network calls inside a loop, no per-request full-table scans. Batch, cache, or denormalize instead, and say which in the PR.
 22. **Never scale by adding hardware to a design that could scale by removing a bad assumption.** Profile first. State the actual bottleneck with numbers before proposing a bigger instance, a read replica, or a cache. See `docs/SPEC.md` Section 5.5 for the standing scalability architecture and Section 18.4 for the enforced budgets.
+### 1.6 The Game
+23. **Never call a game-layer feature done from a passing test suite alone.** Movement, combat, AI, items, mounts, VFX, and anything else a player directly experiences gets played — with real input, for real seconds — and judged honestly against the vertical slice's own bar (Milestone H1h's precedent: responsive input, readable feedback on every meaningful action, a camera and audio that sell the moment) before the task is marked complete. A green build proves the code runs; it doesn't prove the game is fun, or even functional, to a human holding the controls. See Section 5.10 for the concrete bar this guardrail is judged against.
 ---
 ## 2. TECH STACK (PINNED)
 Do not introduce a dependency outside this list without asking. Every new dependency is a supply-chain liability and a bundle-size cost.
@@ -175,6 +177,12 @@ Hebrew and Arabic are launch locales, not a later phase. CSS logical properties 
 Live side-by-side preview with a draggable comparison divider, a truthful compatibility diff, an automatic named checkpoint before applying, and one-click restore. This is the product's most demo-able moment; over-invest in it. See `docs/SPEC.md` Section 11.5.
 ### 5.9 Perceived performance
 Optimistic by default. Skeletons match final layout exactly. Preload on hover/intent. Never block the main thread over 50ms — move parsing/hashing/compression to workers. Progressive project open: a 100-scene project must feel identical to a 3-scene project at open.
+### 5.10 Game-layer feel requirements
+The concrete bar guardrail 23 (Section 1.6) is judged against — so "plays like a game" isn't a vibe check with no floor. Established once by Milestone H1's own H1a-h phases; every mechanic added after it, by any milestone, holds the same line:
+- Every player-initiated action gets visible and/or audible feedback within one frame of input — no dead air between pressing a button and something happening on screen.
+- The camera keeps the acting entity in frame during any real-time interaction (combat, movement).
+- State changes a player cares about (damage, healing, pickups, death) are legible at a glance — a number, a particle, a HUD change — never a silent value flip.
+- New mechanics reuse the existing feedback pipeline (hit-flash, knockback, floating numbers, particle bursts, audio-on-beat) rather than inventing a parallel one per feature.
 ---
 ## 6. HOW TO WORK
 ### 6.1 Session protocol

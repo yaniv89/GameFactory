@@ -48,10 +48,26 @@ public sealed class FakeArtGenerationClient : IArtGenerationClient
         return Task.FromResult(result);
     }
 
+    /// <summary>Set by a test before a call to script the next <see cref="GenerateImageAsync"/> result. Reset to the default (a plausible success carrying PNG-signature-only bytes -- NOT a decodable image; a test exercising the real decode-safety path scripts a real one) after each call.</summary>
+    public Func<GenerateImageRequest, GenerateImageResult>? NextGenerateResult { get; set; }
+
+    /// <summary>Set by a test to make the next <see cref="GenerateImageAsync"/> call throw, simulating a harness failure (network error, provider outage).</summary>
+    public bool ThrowOnNextGenerate { get; set; }
+
     public Task<GenerateImageResult> GenerateImageAsync(GenerateImageRequest request, CancellationToken ct)
     {
         lock (_generateRequests) _generateRequests.Add(request);
-        var fakeImage = new GeneratedImage(Bytes: [0x89, 0x50, 0x4E, 0x47], MimeType: "image/png"); // PNG signature bytes only -- not a decodable image, tests that need a real one build their own.
-        return Task.FromResult(new GenerateImageResult(Declined: false, Images: [fakeImage], DeclineReason: null));
+
+        if (ThrowOnNextGenerate)
+        {
+            ThrowOnNextGenerate = false;
+            throw new HttpRequestException("Simulated Gemini outage.");
+        }
+
+        var fakeImage = new GeneratedImage(Bytes: [0x89, 0x50, 0x4E, 0x47], MimeType: "image/png"); // PNG signature bytes only -- not a decodable image, tests that need a real one script NextGenerateResult.
+        var result = NextGenerateResult?.Invoke(request)
+            ?? new GenerateImageResult(Declined: false, Images: [fakeImage], DeclineReason: null);
+        NextGenerateResult = null;
+        return Task.FromResult(result);
     }
 }

@@ -50,6 +50,7 @@ builder.Services.AddForgeMarketplaceBilling(builder.Configuration);
 builder.Services.AddForgeRegistry();
 builder.Services.AddForgeBundleStorage(builder.Configuration);
 builder.Services.AddForgeAssetStorage(builder.Configuration);
+builder.Services.AddForgeArtGenerationStorage(builder.Configuration);
 builder.Services.AddForgeRealtime(builder.Configuration);
 builder.Services.AddForgePlayServices(builder.Configuration);
 builder.Services.AddForgeArtGeneration(builder.Configuration);

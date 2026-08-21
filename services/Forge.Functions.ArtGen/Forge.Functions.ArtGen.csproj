@@ -1,0 +1,74 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Forge.Functions.ArtGen</RootNamespace>
+    <!-- Required by the Azure Functions Worker SDK build targets below — an isolated-worker Functions app is its own executable host process, not a class library. -->
+    <OutputType>Exe</OutputType>
+    <AzureFunctionsVersion>v4</AzureFunctionsVersion>
+  </PropertyGroup>
+
+  <!--
+    docs/adr/0016 Decision 2/3: this is real as of N3. ArtGenRunner.cs and
+    ArtGenScanner.cs (and ArtGenOrchestrator.cs tying them together) are
+    plain C# with no Azure Functions Worker dependency, so they're fully
+    unit-testable in services/Forge.Tests against a real Postgres
+    Testcontainer and a real Azurite Testcontainer — the same rigor
+    Forge.Functions.Assets's AssetRunner/AssetScanner established for E3.
+
+    The trigger wiring below (Program.cs, ArtGenProcessQueuedFunction.cs)
+    is, same as those two files' own remarks, the one piece that can't be
+    verified any way other than a real CI build — this repo has no Azure
+    Functions Core Tools / storage emulator wired into its test
+    infrastructure. Everything the timer trigger does beyond DI resolution
+    is one call into ArtGenOrchestrator.ProcessNextAsync, which the real
+    tests already cover.
+  -->
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.52.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" Version="4.3.1" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.1.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Forge.Domain\Forge.Domain.csproj" />
+    <ProjectReference Include="..\Forge.Infrastructure\Forge.Infrastructure.csproj" />
+    <!--
+      docs/adr/0016 Decision 3: "Forge.Functions.ArtGen calls into the
+      same [decode-safety] machinery Forge.Functions.Assets already has
+      rather than reimplementing image decode safety a second time" —
+      this ProjectReference is that reuse, concretely: AssetRunner (the
+      only place ImageSharp decode/re-encode happens, docs/adr/0012
+      Decision 4) has zero Functions-Worker-specific dependencies, so
+      referencing it directly here is real code reuse, not a new
+      implementation that happens to agree with the old one. A deliberate
+      choice over moving AssetRunner into Forge.Infrastructure as a
+      shared library: that's the architecturally cleaner long-term home
+      once a *third* caller needs it, but doing that rename now would
+      touch already-shipped, already-tested E3 code this session's own
+      environment has no way to re-verify (no Docker/Testcontainers here
+      — see AssetOrchestratorTests's own "not run in this sandbox" note).
+      Referencing the existing type as-is is the smaller, lower-risk
+      diff. Revisit if this reference direction (one Functions app -> the
+      compiled output of another) ever becomes awkward in practice.
+    -->
+    <ProjectReference Include="..\Forge.Functions.Assets\Forge.Functions.Assets.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="host.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="local.settings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

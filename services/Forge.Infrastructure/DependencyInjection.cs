@@ -274,6 +274,33 @@ public static class DependencyInjection
     }
 
     /// <summary>
+    /// docs/adr/0016 Decision 6: the single-container Blob layout backing
+    /// <see cref="IArtGenerationStorage"/> — see that interface's own doc
+    /// comment for why this is one container, not <see cref="AddForgeAssetStorage"/>'s
+    /// two. Also registered by <c>Forge.Api</c> (N5's content-serving
+    /// endpoint reads it) as well as <c>Forge.Functions.ArtGen</c> (N3's
+    /// worker writes it) — the same "one interface, two callers, one
+    /// resource's whole lifecycle" shape <see cref="IAssetStorage"/>'s own
+    /// doc comment already established.
+    /// </summary>
+    public static IServiceCollection AddForgeArtGenerationStorage(this IServiceCollection services, IConfiguration configuration)
+    {
+        var connectionString = configuration.GetConnectionString("Blob")
+            ?? throw new InvalidOperationException("Missing ConnectionStrings:Blob configuration.");
+        var containerName = configuration["Blob:ArtGenerationsContainer"]
+            ?? throw new InvalidOperationException("Missing Blob:ArtGenerationsContainer configuration.");
+
+        services.AddSingleton<IArtGenerationStorage>(_ =>
+        {
+            var container = new BlobContainerClient(connectionString, containerName);
+            container.CreateIfNotExists();
+            return new AzureBlobArtGenerationStorage(container);
+        });
+
+        return services;
+    }
+
+    /// <summary>
     /// SignalR itself (M7 Phase 1, docs/SPEC.md Section 13.2's
     /// <c>WS /hubs/collab</c>) plus the Redis backplane, non-negotiable
     /// the moment a second API instance exists (CLAUDE.md Section 1.5

@@ -15,6 +15,7 @@ import { useMarketplaceStore } from "./project/marketplaceStore";
 import { useProjectSyncStore, type SyncStatus } from "./project/projectSyncStore";
 import { useProjectStore } from "./store/projectStore";
 import {
+  DialogueTreeEditorDialogContainer,
   GraphEditorDialogContainer,
   GraphsPanelContainer,
   HistoryPanelContainer,
@@ -166,6 +167,7 @@ export function App({ projectTitle = "Untitled Project", onCloseProject }: AppPr
       <DescribeItDialogContainer open={describeItOpen} onClose={() => setDescribeItOpen(false)} projectId={projectId} />
       <MarketplaceDialogContainer />
       <GraphEditorDialogContainer />
+      <DialogueTreeEditorDialogContainer />
       <Dialog open={syncStatus === "conflict"} title="This project changed on the server" onClose={() => {}}>
         <p>
           {syncError ?? "Someone else (or another tab) saved a newer revision"}

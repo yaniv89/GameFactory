@@ -2,7 +2,14 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { useMarketplaceStore } from "../project/marketplaceStore";
 import { useProjectStore } from "../store/projectStore";
-import { GraphEditorDialogContainer, GraphsPanelContainer, InspectorPanelContainer, ModulesPanelContainer, QuestsPanelContainer } from "./DockviewPanels";
+import {
+  DialogueTreeEditorDialogContainer,
+  GraphEditorDialogContainer,
+  GraphsPanelContainer,
+  InspectorPanelContainer,
+  ModulesPanelContainer,
+  QuestsPanelContainer,
+} from "./DockviewPanels";
 
 const EMPTY_DOCUMENT = { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {}, quests: {} };
 
@@ -182,5 +189,51 @@ describe("QuestsPanelContainer — docs/adr/0018 (M8)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Delete quest" }));
     expect(useProjectStore.getState().document.quests).toEqual({});
+  });
+});
+
+describe("DialogueTreeEditorDialogContainer — docs/adr/0018 (M10)", () => {
+  beforeEach(() => {
+    useProjectStore.setState({ document: EMPTY_DOCUMENT, past: [], future: [], selection: undefined, openDialogueEntity: undefined });
+  });
+
+  it("renders nothing when no dialogue editor is open", () => {
+    render(<DialogueTreeEditorDialogContainer />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("renders nothing when openDialogueEntity points at an entity that no longer exists", () => {
+    useProjectStore.setState({ openDialogueEntity: { sceneId: "does-not-exist", entityId: "e1" } });
+    render(<DialogueTreeEditorDialogContainer />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("opens on the entity's own dialogue tree, and an edit lands in real, undoable document state", () => {
+    useProjectStore.getState().createScene();
+    const sceneId = useProjectStore.getState().document.scenes[0]!.id;
+    useProjectStore.getState().placeNpc(sceneId, 5, 5);
+    const entityId = useProjectStore.getState().document.scenes[0]!.entities[0]!.id;
+    useProjectStore.getState().configureEntityDialogue(sceneId, entityId, { nodes: [{ speaker: "Elder", text: "Welcome." }] });
+    useProjectStore.getState().openDialogueEditor(sceneId, entityId);
+
+    render(<DialogueTreeEditorDialogContainer />);
+    expect(screen.getByText("Dialogue — Elder")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add choice" }));
+
+    const dialogue = useProjectStore.getState().document.scenes[0]!.entities[0]!.dialogue;
+    expect(dialogue?.nodes[0]?.choices).toHaveLength(1);
+  });
+
+  it("closing the dialog clears openDialogueEntity", () => {
+    useProjectStore.getState().createScene();
+    const sceneId = useProjectStore.getState().document.scenes[0]!.id;
+    useProjectStore.getState().placeNpc(sceneId, 5, 5);
+    const entityId = useProjectStore.getState().document.scenes[0]!.entities[0]!.id;
+    useProjectStore.getState().openDialogueEditor(sceneId, entityId);
+
+    render(<DialogueTreeEditorDialogContainer />);
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(useProjectStore.getState().openDialogueEntity).toBeUndefined();
   });
 });

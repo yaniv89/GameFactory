@@ -6,6 +6,7 @@ import { defaultsFromSchema } from "../inspector/jsonSchema";
 import { ModuleInspector } from "../inspector/ModuleInspector";
 import { SceneInspector } from "../inspector/SceneInspector";
 import { FIRST_PARTY_MODULE_MANIFESTS, type ModuleManifest } from "../modules/moduleManifests";
+import { DialogueTreeEditorDialog } from "../dialogue/DialogueTreeEditorDialog";
 import { GraphEditorDialog } from "../graph/GraphEditorDialog";
 import { GraphsPanel } from "../panels/GraphsPanel";
 import { HistoryPanel } from "../panels/HistoryPanel";
@@ -126,6 +127,7 @@ export function InspectorPanelContainer() {
   const renameScene = useProjectStore((state) => state.renameScene);
   const configureModule = useProjectStore((state) => state.configureModule);
   const configureEntityDialogue = useProjectStore((state) => state.configureEntityDialogue);
+  const openDialogueEditor = useProjectStore((state) => state.openDialogueEditor);
   const removeEntity = useProjectStore((state) => state.removeEntity);
   const marketplaceManifests = useMarketplaceStore((state) => state.installedManifests);
 
@@ -162,6 +164,7 @@ export function InspectorPanelContainer() {
           <EntityInspector
             entity={entity}
             onConfigureDialogue={(entityId, dialogue) => configureEntityDialogue(selection.sceneId, entityId, dialogue)}
+            onOpenDialogueEditor={(entityId) => openDialogueEditor(selection.sceneId, entityId)}
             onRemove={(entityId) => removeEntity(selection.sceneId, entityId)}
           />
         </InspectorPanel>
@@ -366,6 +369,38 @@ export function GraphEditorDialogContainer() {
       onRemoveNode={(nodeId) => removeGraphNode(openGraphId, nodeId)}
       onAddEdge={(edge) => addGraphEdge(openGraphId, edge)}
       onRemoveEdge={(edgeId) => removeGraphEdge(openGraphId, edgeId)}
+    />
+  );
+}
+
+/**
+ * docs/adr/0018 Decision 2 (M10) — the Dialog counterpart of
+ * `EntityInspector`'s "Edit branching dialogue…" button, the same
+ * App.tsx-sibling-level treatment `GraphEditorDialogContainer` already
+ * gets. Every edit inside the dialog computes a whole new `nodes` array
+ * (`dialogueTreeEditing.ts`) and routes it through the existing
+ * `configureEntityDialogue` action — there are no dedicated per-node
+ * store commands for dialogue, unlike graphs.
+ */
+export function DialogueTreeEditorDialogContainer() {
+  const openDialogueEntity = useProjectStore((state) => state.openDialogueEntity);
+  const entity = useProjectStore((state) => {
+    if (!state.openDialogueEntity) return undefined;
+    const scene = state.document.scenes.find((candidate) => candidate.id === state.openDialogueEntity!.sceneId);
+    return scene?.entities.find((candidate) => candidate.id === state.openDialogueEntity!.entityId);
+  });
+  const closeDialogueEditor = useProjectStore((state) => state.closeDialogueEditor);
+  const configureEntityDialogue = useProjectStore((state) => state.configureEntityDialogue);
+
+  if (!openDialogueEntity || !entity) return null;
+
+  return (
+    <DialogueTreeEditorDialog
+      open
+      onClose={closeDialogueEditor}
+      entityLabel={entity.dialogue?.nodes[0]?.speaker || entity.prefabId}
+      nodes={entity.dialogue?.nodes ?? []}
+      onChange={(nodes) => configureEntityDialogue(openDialogueEntity.sceneId, openDialogueEntity.entityId, { nodes: [...nodes] })}
     />
   );
 }

@@ -69,4 +69,16 @@ describe("EntityInspector", () => {
     await userEvent.click(screen.getByRole("button", { name: "Remove" }));
     expect(onRemove).toHaveBeenCalledWith("e1");
   });
+
+  it("calls onOpenDialogueEditor with the entity id when 'Edit branching dialogue…' is clicked", async () => {
+    const onOpenDialogueEditor = vi.fn();
+    render(<EntityInspector entity={NPC} onConfigureDialogue={() => {}} onOpenDialogueEditor={onOpenDialogueEditor} onRemove={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "Edit branching dialogue…" }));
+    expect(onOpenDialogueEditor).toHaveBeenCalledWith("e1");
+  });
+
+  it("shows no 'Edit branching dialogue…' button for a player-start", () => {
+    render(<EntityInspector entity={PLAYER_START} onConfigureDialogue={() => {}} onRemove={() => {}} />);
+    expect(screen.queryByRole("button", { name: "Edit branching dialogue…" })).not.toBeInTheDocument();
+  });
 });

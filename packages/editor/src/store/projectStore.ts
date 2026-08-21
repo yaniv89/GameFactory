@@ -8,6 +8,8 @@ import {
   migrateDocument as migrateDocumentShape,
   type EntityDialogue,
   type EntityPlacement,
+  type DialogueTreeChoice,
+  type DialogueTreeNode,
   type GraphDocument,
   type GraphEdgeInstance,
   type GraphNodeInstance,
@@ -24,6 +26,8 @@ import type { FormValues } from "../inspector/jsonSchema";
 // and a future server build worker can depend on the document shape
 // without depending on the whole editor SPA.
 export type {
+  DialogueTreeChoice,
+  DialogueTreeNode,
   EntityDialogue,
   EntityPlacement,
   GraphDocument,
@@ -372,6 +376,15 @@ interface ProjectStoreState {
   openGraphId: string | undefined;
   openGraphEditor: (graphId: string) => void;
   closeGraphEditor: () => void;
+  /**
+   * Which entity `DialogueTreeEditorDialog` (docs/adr/0018 Decision 2,
+   * M10 — a `Dialog`, not a dockview panel, same treatment `openGraphId`
+   * already gets) is currently editing, `undefined` when it's closed.
+   * Transient UI state, not part of the command log, not persisted.
+   */
+  openDialogueEntity: { sceneId: string; entityId: string } | undefined;
+  openDialogueEditor: (sceneId: string, entityId: string) => void;
+  closeDialogueEditor: () => void;
   createScene: () => void;
   renameScene: (sceneId: string, name: string) => void;
   selectScene: (sceneId: string | undefined) => void;
@@ -487,6 +500,7 @@ export const useProjectStore = create<ProjectStoreState>()(
       checkpoints: [],
       selection: undefined,
       openGraphId: undefined,
+      openDialogueEntity: undefined,
 
       openGraphEditor: (graphId) =>
         set((state) => {
@@ -496,6 +510,16 @@ export const useProjectStore = create<ProjectStoreState>()(
       closeGraphEditor: () =>
         set((state) => {
           state.openGraphId = undefined;
+        }),
+
+      openDialogueEditor: (sceneId, entityId) =>
+        set((state) => {
+          state.openDialogueEntity = { sceneId, entityId };
+        }),
+
+      closeDialogueEditor: () =>
+        set((state) => {
+          state.openDialogueEntity = undefined;
         }),
 
       createScene: () =>
@@ -628,6 +652,9 @@ export const useProjectStore = create<ProjectStoreState>()(
           state.future = [];
           if (state.selection?.kind === "entity" && state.selection.entityId === entityId) {
             state.selection = undefined;
+          }
+          if (state.openDialogueEntity?.entityId === entityId) {
+            state.openDialogueEntity = undefined;
           }
         }),
 

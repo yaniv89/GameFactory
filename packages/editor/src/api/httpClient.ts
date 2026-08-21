@@ -14,6 +14,16 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly extensions: Record<string, unknown> | undefined,
+    /**
+     * Seconds from a 429 response's own `Retry-After` header
+     * (`RateLimitingMiddleware.cs`'s own `context.Response.Headers.RetryAfter`
+     * write) — `undefined` for every other status, or if the header was
+     * somehow absent on a 429. CLAUDE.md Section 4.8: "Retry-After
+     * surfaced in the UI" — this is the plumbing that makes that
+     * possible; the art-generation dialog (N5) is the first caller that
+     * actually reads it.
+     */
+    readonly retryAfterSeconds: number | undefined = undefined,
   ) {
     super(message);
     this.name = "ApiError";
@@ -38,6 +48,19 @@ async function extractErrorDetail(response: Response): Promise<{ message: string
   } catch {
     return { message: `${response.status} ${response.statusText}`, extensions: undefined };
   }
+}
+
+/** `Retry-After` is always seconds in this codebase (`RateLimitingMiddleware.cs` writes `retryAfterSeconds.ToString()`, never an HTTP-date), so a plain parse is complete — no HTTP-date branch to also handle. */
+function extractRetryAfterSeconds(response: Response): number | undefined {
+  const header = response.headers.get("Retry-After");
+  if (header === null) return undefined;
+  const seconds = Number(header);
+  return Number.isFinite(seconds) ? seconds : undefined;
+}
+
+async function throwApiError(response: Response): Promise<never> {
+  const { message, extensions } = await extractErrorDetail(response);
+  throw new ApiError(message, response.status, extensions, response.status === 429 ? extractRetryAfterSeconds(response) : undefined);
 }
 
 export interface HttpOptions {
@@ -65,8 +88,7 @@ export async function httpJson<T>(path: string, options: HttpOptions = {}): Prom
   }
 
   if (!response.ok) {
-    const { message, extensions } = await extractErrorDetail(response);
-    throw new ApiError(message, response.status, extensions);
+    await throwApiError(response);
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
@@ -91,8 +113,7 @@ export async function httpBlob(path: string): Promise<Blob> {
   }
 
   if (!response.ok) {
-    const { message, extensions } = await extractErrorDetail(response);
-    throw new ApiError(message, response.status, extensions);
+    await throwApiError(response);
   }
   return response.blob();
 }

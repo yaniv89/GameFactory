@@ -69,4 +69,26 @@ describe("httpJson", () => {
     fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     await expect(httpJson("/api/v1/x")).rejects.toBeInstanceOf(NetworkError);
   });
+
+  it("captures Retry-After (seconds) from a 429 response", async () => {
+    // jsonResponse's own fixed Content-Type header would clobber a
+    // Retry-After passed through its init param (it spreads init first,
+    // then always overwrites headers) -- constructed directly here
+    // instead of touching that shared helper's merge behavior.
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "Too many requests." }), {
+        status: 429,
+        headers: { "Content-Type": "application/json", "Retry-After": "42" },
+      }),
+    );
+    const error = (await httpJson("/api/v1/x").catch((e: unknown) => e)) as ApiError;
+    expect(error.status).toBe(429);
+    expect(error.retryAfterSeconds).toBe(42);
+  });
+
+  it("leaves retryAfterSeconds undefined for a non-429 error", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ detail: "Not found." }, { status: 404 }));
+    const error = (await httpJson("/api/v1/x").catch((e: unknown) => e)) as ApiError;
+    expect(error.retryAfterSeconds).toBeUndefined();
+  });
 });

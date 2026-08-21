@@ -1,0 +1,137 @@
+.fg-describe-it {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 26rem;
+  max-width: 32rem;
+}
+
+.fg-describe-it__compose,
+.fg-describe-it__confirm,
+.fg-describe-it__save {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.fg-describe-it__label {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.fg-describe-it__expanded-prompt {
+  margin: 0;
+  padding: var(--space-3);
+  background: var(--surface-raised);
+  border: 1px solid var(--line-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+}
+
+.fg-describe-it__error {
+  color: var(--accent-destroy);
+  font-size: var(--text-sm);
+  margin: 0;
+}
+
+.fg-describe-it__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.fg-describe-it__progress,
+.fg-describe-it__terminal-error,
+.fg-describe-it__saved {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-4);
+}
+
+.fg-describe-it__progress {
+  align-items: center;
+  text-align: center;
+}
+
+.fg-describe-it__state-title {
+  font-size: var(--text-lg);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.fg-describe-it__spinner {
+  width: var(--space-6);
+  height: var(--space-6);
+  border-radius: 50%;
+  border: 3px solid var(--surface-overlay);
+  /* Not --accent-running: that token is reserved exclusively for play
+     mode / a live build / recording (CLAUDE.md Section 5.1) — a queued
+     background generation job is an in-progress state, same treatment
+     AssetsLibraryDialog.css already gives asset processing. */
+  border-top-color: var(--accent-caution);
+  animation: fg-describe-it-spin 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fg-describe-it__spinner {
+    animation: none;
+  }
+}
+
+@keyframes fg-describe-it-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.fg-describe-it__picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.fg-describe-it__variations {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fg-describe-it__variation {
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  background: var(--surface-abyss);
+  border: 2px solid var(--line-default);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.fg-describe-it__variation:hover {
+  border-color: var(--line-strong);
+}
+
+.fg-describe-it__variation--picked {
+  border-color: var(--accent-select);
+}
+
+.fg-describe-it__variation img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.fg-describe-it__variation-placeholder {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

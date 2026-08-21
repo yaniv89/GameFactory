@@ -4,6 +4,7 @@ import "dockview/dist/styles/dockview.css";
 import "./styles/dockview-theme.css";
 import { useState, type FC } from "react";
 import { AssetsLibraryDialogContainer } from "./canvas/AssetsLibraryDialogContainer";
+import { DescribeItDialogContainer } from "./canvas/DescribeItDialogContainer";
 import { PackSwapDialogContainer } from "./canvas/PackSwapDialogContainer";
 import { SceneCanvas } from "./canvas/SceneCanvas";
 import { useAuthStore } from "./auth/authStore";
@@ -78,6 +79,7 @@ export interface AppProps {
 export function App({ projectTitle = "Untitled Project", onCloseProject }: AppProps) {
   const [packSwapOpen, setPackSwapOpen] = useState(false);
   const [assetsOpen, setAssetsOpen] = useState(false);
+  const [describeItOpen, setDescribeItOpen] = useState(false);
   const { projectId, status: syncStatus, error: syncError, conflictActualRevision, saveProject, openProject } = useProjectSyncStore();
   const accessToken = useAuthStore((s) => s.session?.accessToken);
   const openMarketplace = useMarketplaceStore((state) => state.open);
@@ -114,6 +116,11 @@ export function App({ projectTitle = "Untitled Project", onCloseProject }: AppPr
         <Button variant="secondary" onClick={() => setAssetsOpen(true)}>
           Assets
         </Button>
+        {projectId && (
+          <Button variant="secondary" onClick={() => setDescribeItOpen(true)}>
+            Describe It
+          </Button>
+        )}
         <Button variant="secondary" onClick={openMarketplace}>
           Marketplace
         </Button>
@@ -134,6 +141,7 @@ export function App({ projectTitle = "Untitled Project", onCloseProject }: AppPr
       </div>
       <PackSwapDialogContainer open={packSwapOpen} onClose={() => setPackSwapOpen(false)} />
       <AssetsLibraryDialogContainer open={assetsOpen} onClose={() => setAssetsOpen(false)} />
+      <DescribeItDialogContainer open={describeItOpen} onClose={() => setDescribeItOpen(false)} projectId={projectId} />
       <MarketplaceDialogContainer />
       <Dialog open={syncStatus === "conflict"} title="This project changed on the server" onClose={() => {}}>
         <p>

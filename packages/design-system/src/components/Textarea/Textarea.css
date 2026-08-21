@@ -1,0 +1,7 @@
+.fg-textarea {
+  min-height: calc(var(--hit-target-min) * 2);
+  padding: var(--space-2) var(--space-3);
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.4;
+}

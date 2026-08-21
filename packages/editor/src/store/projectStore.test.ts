@@ -5,7 +5,7 @@ import { migratePersistedProjectState, selectCanRedo, selectCanUndo, useProjectS
 function reset(): void {
   localStorage.clear();
   useProjectStore.setState({
-    document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {} },
+    document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {}, quests: {} },
     past: [],
     future: [],
     checkpoints: [],
@@ -651,6 +651,130 @@ describe("graphs: docs/adr/0017's authoring layer (M3)", () => {
   });
 });
 
+describe("quests: docs/adr/0018's quest system (M8)", () => {
+  beforeEach(reset);
+
+  it("createQuest appends a quest with an incrementing default name and makes undo available", () => {
+    const questId = useProjectStore.getState().createQuest();
+    expect(useProjectStore.getState().document.quests[questId]).toEqual({ id: questId, name: "Quest 1", description: "", objectives: [] });
+    expect(selectCanUndo(useProjectStore.getState())).toBe(true);
+
+    const secondId = useProjectStore.getState().createQuest();
+    expect(useProjectStore.getState().document.quests[secondId]?.name).toBe("Quest 2");
+  });
+
+  it("editQuest changes name and description together and is undoable", () => {
+    const questId = useProjectStore.getState().createQuest();
+    useProjectStore.getState().editQuest(questId, "Wolf Trouble", "Deal with the wolves near the mill.");
+    expect(useProjectStore.getState().document.quests[questId]).toMatchObject({ name: "Wolf Trouble", description: "Deal with the wolves near the mill." });
+
+    useProjectStore.getState().undo();
+    expect(useProjectStore.getState().document.quests[questId]).toMatchObject({ name: "Quest 1", description: "" });
+  });
+
+  it("editQuest with both fields unchanged is a no-op that does not grow the undo log", () => {
+    const questId = useProjectStore.getState().createQuest();
+    const pastLength = useProjectStore.getState().past.length;
+    useProjectStore.getState().editQuest(questId, "Quest 1", "");
+    expect(useProjectStore.getState().past).toHaveLength(pastLength);
+  });
+
+  it("deleteQuest removes the quest and undo restores it with all its objectives intact", () => {
+    const questId = useProjectStore.getState().createQuest();
+    useProjectStore.getState().addObjective(questId);
+    useProjectStore.getState().editQuest(questId, "Wolf Trouble", "");
+
+    useProjectStore.getState().deleteQuest(questId);
+    expect(useProjectStore.getState().document.quests[questId]).toBeUndefined();
+
+    useProjectStore.getState().undo();
+    const restored = useProjectStore.getState().document.quests[questId]!;
+    expect(restored.name).toBe("Wolf Trouble");
+    expect(restored.objectives).toHaveLength(1);
+  });
+
+  it("deleteQuest for an id that doesn't exist is a no-op that does not grow the undo log", () => {
+    const pastLength = useProjectStore.getState().past.length;
+    useProjectStore.getState().deleteQuest("does-not-exist");
+    expect(useProjectStore.getState().past).toHaveLength(pastLength);
+  });
+
+  it("addObjective appends a blank objective and makes undo available", () => {
+    const questId = useProjectStore.getState().createQuest();
+    const objectiveId = useProjectStore.getState().addObjective(questId);
+    expect(useProjectStore.getState().document.quests[questId]?.objectives).toEqual([{ id: objectiveId, description: "" }]);
+    expect(selectCanUndo(useProjectStore.getState())).toBe(true);
+  });
+
+  it("addObjective for a quest id that doesn't exist is a no-op", () => {
+    const pastLength = useProjectStore.getState().past.length;
+    useProjectStore.getState().addObjective("does-not-exist");
+    expect(useProjectStore.getState().past).toHaveLength(pastLength);
+  });
+
+  it("editObjective replaces an objective's description and is undoable back to the exact prior value", () => {
+    const questId = useProjectStore.getState().createQuest();
+    const objectiveId = useProjectStore.getState().addObjective(questId);
+    useProjectStore.getState().editObjective(questId, objectiveId, "Kill 3 wolves");
+    expect(useProjectStore.getState().document.quests[questId]?.objectives[0]?.description).toBe("Kill 3 wolves");
+
+    useProjectStore.getState().undo();
+    expect(useProjectStore.getState().document.quests[questId]?.objectives[0]?.description).toBe("");
+  });
+
+  it("editObjective with an unchanged description is a no-op that does not grow the undo log", () => {
+    const questId = useProjectStore.getState().createQuest();
+    const objectiveId = useProjectStore.getState().addObjective(questId);
+    const pastLength = useProjectStore.getState().past.length;
+    useProjectStore.getState().editObjective(questId, objectiveId, "");
+    expect(useProjectStore.getState().past).toHaveLength(pastLength);
+  });
+
+  it("removeObjective removes it and undo restores it at the same index (order preserved)", () => {
+    const questId = useProjectStore.getState().createQuest();
+    const first = useProjectStore.getState().addObjective(questId);
+    const second = useProjectStore.getState().addObjective(questId);
+    useProjectStore.getState().editObjective(questId, first, "First");
+    useProjectStore.getState().editObjective(questId, second, "Second");
+
+    useProjectStore.getState().removeObjective(questId, first);
+    expect(useProjectStore.getState().document.quests[questId]?.objectives.map((o) => o.id)).toEqual([second]);
+
+    useProjectStore.getState().undo();
+    const objectives = useProjectStore.getState().document.quests[questId]?.objectives!;
+    expect(objectives.map((o) => o.id)).toEqual([first, second]);
+    expect(objectives[0]?.description).toBe("First");
+  });
+
+  it("removeObjective for an objective that doesn't exist is a no-op that does not grow the undo log", () => {
+    const questId = useProjectStore.getState().createQuest();
+    const pastLength = useProjectStore.getState().past.length;
+    useProjectStore.getState().removeObjective(questId, "does-not-exist");
+    expect(useProjectStore.getState().past).toHaveLength(pastLength);
+  });
+
+  it("undo/redo replays a whole sequence of quest edits in order, matching how graphs already behave", () => {
+    const questId = useProjectStore.getState().createQuest();
+    const objectiveId = useProjectStore.getState().addObjective(questId);
+    useProjectStore.getState().editObjective(questId, objectiveId, "Kill 3 wolves");
+    useProjectStore.getState().editQuest(questId, "Wolf Trouble", "Deal with the wolves near the mill.");
+
+    useProjectStore.getState().undo();
+    useProjectStore.getState().undo();
+    useProjectStore.getState().undo();
+    useProjectStore.getState().undo();
+    expect(useProjectStore.getState().document.quests[questId]).toBeUndefined();
+
+    useProjectStore.getState().redo();
+    useProjectStore.getState().redo();
+    useProjectStore.getState().redo();
+    useProjectStore.getState().redo();
+    const final = useProjectStore.getState().document.quests[questId]!;
+    expect(final.name).toBe("Wolf Trouble");
+    expect(final.objectives[0]?.description).toBe("Kill 3 wolves");
+  });
+});
+
 describe("migratePersistedProjectState", () => {
   it("fills in activePack/packOverrides for pre-Art-Pack (version 1) persisted state", () => {
     const legacy = {
@@ -741,6 +865,7 @@ describe("migratePersistedProjectState", () => {
         packOverrides: { "a.png": "https://cdn.forge.dev/a.png" },
         packTerrainRemap: { water: "sand" },
         graphs: { g1: { id: "g1", name: "Boss fight logic", nodes: [], edges: [] } },
+        quests: { q1: { id: "q1", name: "Wolf Trouble", description: "", objectives: [] } },
       },
       past: [],
       future: [],
@@ -749,7 +874,7 @@ describe("migratePersistedProjectState", () => {
           id: "c1",
           label: "Before switching to fantasy-pack",
           createdAt: "2026-08-08T00:00:00.000Z",
-          document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {} },
+          document: { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {}, quests: {} },
         },
       ],
     };
@@ -772,6 +897,7 @@ describe("migratePersistedProjectState", () => {
       packOverrides: {},
       packTerrainRemap: {},
       graphs: {},
+      quests: {},
     });
     expect(migrated.checkpoints).toEqual([]);
   });

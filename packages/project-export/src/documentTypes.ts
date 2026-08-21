@@ -163,7 +163,8 @@ export interface QuestDefinition {
   readonly id: string;
   readonly name: string;
   readonly description: string;
-  readonly objectives: readonly QuestObjective[];
+  /** Mutable array holding readonly-fielded elements — same convention as `GraphDocument.nodes`/`.edges`: the editor's `applyCommand` pushes/splices in place; individual elements are replaced wholesale on change, never patched. */
+  objectives: QuestObjective[];
 }
 
 /** docs/SPEC.md Section 7.3's `activePack`/`packOverrides`/`packTerrainRemap`; see `packages/editor/src/store/projectStore.ts` for the full field-by-field rationale — unchanged by the move. */

@@ -20,6 +20,7 @@ import {
   HistoryPanelContainer,
   InspectorPanelContainer,
   ModulesPanelContainer,
+  QuestsPanelContainer,
   ScenesPanelContainer,
 } from "./shell/DockviewPanels";
 import { PreviewPanel } from "./shell/PreviewPanel";
@@ -34,6 +35,7 @@ const COMPONENTS: Record<string, FC<IDockviewPanelProps>> = {
   canvas: SceneCanvas,
   preview: PreviewPanel,
   graphs: GraphsPanelContainer,
+  quests: QuestsPanelContainer,
 };
 
 function onReady(event: DockviewReadyEvent): void {
@@ -68,6 +70,12 @@ function onReady(event: DockviewReadyEvent): void {
     id: "graphs",
     component: "graphs",
     title: "Graphs",
+    position: { direction: "below", referencePanel: scenes.id },
+  });
+  api.addPanel({
+    id: "quests",
+    component: "quests",
+    title: "Quests",
     position: { direction: "below", referencePanel: scenes.id },
   });
   api.addPanel({

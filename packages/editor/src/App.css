@@ -122,3 +122,45 @@ li.fg-graphs-list__row {
   gap: var(--space-2);
   flex: 0 0 auto;
 }
+
+li.fg-quests-list__row {
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.fg-quests-list__header {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.fg-quests-list__header > .fg-json-schema-form {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.fg-quests-list__id {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  user-select: all;
+}
+
+.fg-quests-list__objectives {
+  margin: 0;
+  padding-inline-start: var(--space-4);
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.fg-quests-list__objective-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.fg-quests-list__objective-row > .fg-json-schema-form {
+  flex: 1 1 auto;
+  min-width: 0;
+}

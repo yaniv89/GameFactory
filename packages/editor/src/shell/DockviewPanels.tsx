@@ -11,6 +11,7 @@ import { GraphsPanel } from "../panels/GraphsPanel";
 import { HistoryPanel } from "../panels/HistoryPanel";
 import { InspectorPanel } from "../panels/InspectorPanel";
 import { ModulesPanel } from "../panels/ModulesPanel";
+import { QuestsPanel } from "../panels/QuestsPanel";
 import { ScenesPanel } from "../panels/ScenesPanel";
 import { useMarketplaceStore } from "../project/marketplaceStore";
 import { useProjectSyncStore } from "../project/projectSyncStore";
@@ -299,6 +300,39 @@ export function GraphsPanelContainer() {
       onRenameGraph={renameGraph}
       onOpenGraph={openGraphEditor}
       onDeleteGraph={deleteGraph}
+    />
+  );
+}
+
+/**
+ * docs/adr/0018 Decision 1 (M8): CRUD over `document.quests`, all undoable
+ * through the same command log as scenes/modules/graphs. Unlike
+ * `GraphsPanelContainer`, there is no dialog counterpart — a quest's
+ * *logic* is authored through the unchanged `GraphsPanelContainer`/
+ * `GraphEditorDialogContainer` pair above, referencing this panel's own
+ * quest/objective ids by hand, not through a second editing surface.
+ */
+export function QuestsPanelContainer() {
+  const quests = useProjectStore((state) => state.document.quests);
+  const createQuest = useProjectStore((state) => state.createQuest);
+  const editQuest = useProjectStore((state) => state.editQuest);
+  const deleteQuest = useProjectStore((state) => state.deleteQuest);
+  const addObjective = useProjectStore((state) => state.addObjective);
+  const editObjective = useProjectStore((state) => state.editObjective);
+  const removeObjective = useProjectStore((state) => state.removeObjective);
+
+  const summaries = Object.values(quests);
+
+  return (
+    <QuestsPanel
+      state={summaries.length > 0 ? "populated" : "empty"}
+      quests={summaries}
+      onCreateQuest={createQuest}
+      onEditQuest={editQuest}
+      onDeleteQuest={deleteQuest}
+      onAddObjective={addObjective}
+      onEditObjective={editObjective}
+      onRemoveObjective={removeObjective}
     />
   );
 }

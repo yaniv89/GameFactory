@@ -2,9 +2,9 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { useMarketplaceStore } from "../project/marketplaceStore";
 import { useProjectStore } from "../store/projectStore";
-import { GraphEditorDialogContainer, GraphsPanelContainer, InspectorPanelContainer, ModulesPanelContainer } from "./DockviewPanels";
+import { GraphEditorDialogContainer, GraphsPanelContainer, InspectorPanelContainer, ModulesPanelContainer, QuestsPanelContainer } from "./DockviewPanels";
 
-const EMPTY_DOCUMENT = { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {} };
+const EMPTY_DOCUMENT = { scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {}, quests: {} };
 
 describe("ModulesPanelContainer — marketplace-installed modules", () => {
   beforeEach(() => {
@@ -146,5 +146,41 @@ describe("GraphsPanelContainer / GraphEditorDialogContainer — docs/adr/0017 (M
 
     expect(useProjectStore.getState().document.graphs[graphId]?.nodes).toHaveLength(1);
     expect(useProjectStore.getState().document.graphs[graphId]?.nodes[0]?.type).toBe("core:add");
+  });
+});
+
+describe("QuestsPanelContainer — docs/adr/0018 (M8)", () => {
+  beforeEach(() => {
+    useProjectStore.setState({ document: EMPTY_DOCUMENT, past: [], future: [], selection: undefined });
+  });
+
+  it("shows the empty state with no quests, and creating one makes it appear with no objectives", () => {
+    render(<QuestsPanelContainer />);
+    expect(screen.getByText("No quests yet")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Create a quest" }));
+    expect(screen.getByDisplayValue("Quest 1")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
+  });
+
+  it("adding an objective through the panel is real, undoable project-document state — not local-only UI state", () => {
+    useProjectStore.getState().createQuest();
+    const questId = Object.keys(useProjectStore.getState().document.quests)[0]!;
+
+    render(<QuestsPanelContainer />);
+    fireEvent.click(screen.getByRole("button", { name: "Add objective" }));
+
+    const objectives = useProjectStore.getState().document.quests[questId]?.objectives;
+    expect(objectives).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
+  });
+
+  it("deleting a quest through the panel removes it from the document", () => {
+    useProjectStore.getState().createQuest();
+    render(<QuestsPanelContainer />);
+    expect(screen.getByDisplayValue("Quest 1")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete quest" }));
+    expect(useProjectStore.getState().document.quests).toEqual({});
   });
 });

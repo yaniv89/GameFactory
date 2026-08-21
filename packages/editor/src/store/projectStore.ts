@@ -12,6 +12,8 @@ import {
   type GraphEdgeInstance,
   type GraphNodeInstance,
   type ProjectDocument,
+  type QuestDefinition,
+  type QuestObjective,
   type SceneSummary,
 } from "@forge/project-export";
 import type { FormValues } from "../inspector/jsonSchema";
@@ -21,7 +23,17 @@ import type { FormValues } from "../inspector/jsonSchema";
 // themselves moved to @forge/project-export (docs/adr/0009) so the CLI
 // and a future server build worker can depend on the document shape
 // without depending on the whole editor SPA.
-export type { EntityDialogue, EntityPlacement, GraphDocument, GraphEdgeInstance, GraphNodeInstance, ProjectDocument, SceneSummary };
+export type {
+  EntityDialogue,
+  EntityPlacement,
+  GraphDocument,
+  GraphEdgeInstance,
+  GraphNodeInstance,
+  ProjectDocument,
+  QuestDefinition,
+  QuestObjective,
+  SceneSummary,
+};
 
 /**
  * docs/SPEC.md Section 11.5's "automatic named checkpoint before
@@ -113,7 +125,20 @@ type ProjectCommand =
   | { readonly type: "graph/move-node"; readonly graphId: string; readonly nodeId: string; readonly position: { readonly x: number; readonly y: number } }
   | { readonly type: "graph/configure-node"; readonly graphId: string; readonly nodeId: string; readonly config: Readonly<Record<string, unknown>> }
   | { readonly type: "graph/add-edge"; readonly graphId: string; readonly edge: GraphEdgeInstance }
-  | { readonly type: "graph/remove-edge"; readonly graphId: string; readonly edgeId: string };
+  | { readonly type: "graph/remove-edge"; readonly graphId: string; readonly edgeId: string }
+  // docs/adr/0018 Decision 1 (J1's quest system, M8). Same shapes as the
+  // graph commands above: "create"/"edit" are self-inverse or paired
+  // with their own opposite; "delete"/"remove-objective" are paired with
+  // a "restore" carrying a whole snapshot, the same reasoning graph/delete's
+  // own doc comment gives — a bare re-create can't recover lost content.
+  | { readonly type: "quest/create"; readonly questId: string; readonly name: string }
+  | { readonly type: "quest/delete"; readonly questId: string }
+  | { readonly type: "quest/restore"; readonly quest: QuestDefinition }
+  | { readonly type: "quest/edit"; readonly questId: string; readonly name: string; readonly description: string }
+  | { readonly type: "quest/add-objective"; readonly questId: string; readonly objective: QuestObjective }
+  | { readonly type: "quest/remove-objective"; readonly questId: string; readonly objectiveId: string }
+  | { readonly type: "quest/restore-objective"; readonly questId: string; readonly objective: QuestObjective; readonly index: number }
+  | { readonly type: "quest/edit-objective"; readonly questId: string; readonly objectiveId: string; readonly description: string };
 
 interface HistoryEntry {
   readonly forward: ProjectCommand;
@@ -277,6 +302,44 @@ function applyCommand(document: ProjectDocument, command: ProjectCommand): void 
       if (index !== -1) graph.edges.splice(index, 1);
       return;
     }
+    case "quest/create":
+      document.quests[command.questId] = { id: command.questId, name: command.name, description: "", objectives: [] };
+      return;
+    case "quest/delete":
+      delete document.quests[command.questId];
+      return;
+    case "quest/restore":
+      document.quests[command.quest.id] = command.quest;
+      return;
+    case "quest/edit": {
+      const quest = document.quests[command.questId];
+      if (quest) document.quests[command.questId] = { ...quest, name: command.name, description: command.description };
+      return;
+    }
+    case "quest/add-objective": {
+      const quest = document.quests[command.questId];
+      if (quest) quest.objectives.push(command.objective);
+      return;
+    }
+    case "quest/remove-objective": {
+      const quest = document.quests[command.questId];
+      if (!quest) return;
+      const index = quest.objectives.findIndex((objective) => objective.id === command.objectiveId);
+      if (index !== -1) quest.objectives.splice(index, 1);
+      return;
+    }
+    case "quest/restore-objective": {
+      const quest = document.quests[command.questId];
+      if (quest) quest.objectives.splice(command.index, 0, command.objective);
+      return;
+    }
+    case "quest/edit-objective": {
+      const quest = document.quests[command.questId];
+      const index = quest?.objectives.findIndex((objective) => objective.id === command.objectiveId) ?? -1;
+      const objective = quest?.objectives[index];
+      if (quest && objective) quest.objectives[index] = { ...objective, description: command.description };
+      return;
+    }
   }
 }
 
@@ -341,6 +404,12 @@ interface ProjectStoreState {
   removeGraphNode: (graphId: string, nodeId: string) => void;
   addGraphEdge: (graphId: string, edge: Omit<GraphEdgeInstance, "id">) => void;
   removeGraphEdge: (graphId: string, edgeId: string) => void;
+  createQuest: () => string;
+  editQuest: (questId: string, name: string, description: string) => void;
+  deleteQuest: (questId: string) => void;
+  addObjective: (questId: string) => string;
+  editObjective: (questId: string, objectiveId: string, description: string) => void;
+  removeObjective: (questId: string, objectiveId: string) => void;
   undo: () => void;
   redo: () => void;
   /**
@@ -764,6 +833,80 @@ export const useProjectStore = create<ProjectStoreState>()(
           if (!graph || !edge) return;
           const forward: ProjectCommand = { type: "graph/remove-edge", graphId, edgeId };
           const inverse: ProjectCommand = { type: "graph/add-edge", graphId, edge };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        }),
+
+      createQuest: () => {
+        const questId = crypto.randomUUID();
+        set((state) => {
+          const name = `Quest ${Object.keys(state.document.quests).length + 1}`;
+          const forward: ProjectCommand = { type: "quest/create", questId, name };
+          const inverse: ProjectCommand = { type: "quest/delete", questId };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        });
+        return questId;
+      },
+
+      editQuest: (questId, name, description) =>
+        set((state) => {
+          const quest = state.document.quests[questId];
+          if (!quest || (quest.name === name && quest.description === description)) return;
+          const forward: ProjectCommand = { type: "quest/edit", questId, name, description };
+          const inverse: ProjectCommand = { type: "quest/edit", questId, name: quest.name, description: quest.description };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        }),
+
+      deleteQuest: (questId) =>
+        set((state) => {
+          const quest = state.document.quests[questId];
+          if (!quest) return;
+          const forward: ProjectCommand = { type: "quest/delete", questId };
+          const inverse: ProjectCommand = { type: "quest/restore", quest: current(quest) as QuestDefinition };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        }),
+
+      addObjective: (questId) => {
+        const objectiveId = crypto.randomUUID();
+        set((state) => {
+          if (!state.document.quests[questId]) return;
+          const objective: QuestObjective = { id: objectiveId, description: "" };
+          const forward: ProjectCommand = { type: "quest/add-objective", questId, objective };
+          const inverse: ProjectCommand = { type: "quest/remove-objective", questId, objectiveId };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        });
+        return objectiveId;
+      },
+
+      editObjective: (questId, objectiveId, description) =>
+        set((state) => {
+          const quest = state.document.quests[questId];
+          const objective = quest?.objectives.find((candidate) => candidate.id === objectiveId);
+          if (!quest || !objective || objective.description === description) return;
+          const forward: ProjectCommand = { type: "quest/edit-objective", questId, objectiveId, description };
+          const inverse: ProjectCommand = { type: "quest/edit-objective", questId, objectiveId, description: objective.description };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+        }),
+
+      removeObjective: (questId, objectiveId) =>
+        set((state) => {
+          const quest = state.document.quests[questId];
+          const index = quest?.objectives.findIndex((candidate) => candidate.id === objectiveId) ?? -1;
+          const objective = quest?.objectives[index];
+          if (!quest || !objective) return;
+          const forward: ProjectCommand = { type: "quest/remove-objective", questId, objectiveId };
+          const inverse: ProjectCommand = { type: "quest/restore-objective", questId, objective, index };
           applyCommand(state.document, forward);
           state.past.push({ forward, inverse });
           state.future = [];

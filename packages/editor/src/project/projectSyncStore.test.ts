@@ -10,7 +10,7 @@ vi.mock("../api/projectsApi", () => ({
   restoreRevision: vi.fn(),
 }));
 
-const DOCUMENT = { scenes: [{ id: "s1", name: "village", entities: [], tiles: [] }], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {} };
+const DOCUMENT = { scenes: [{ id: "s1", name: "village", entities: [], tiles: [] }], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {}, quests: {} };
 
 describe("useProjectSyncStore", () => {
   beforeEach(() => {
@@ -25,7 +25,7 @@ describe("useProjectSyncStore", () => {
       error: undefined,
       conflictActualRevision: undefined,
     });
-    useProjectStore.getState().loadDocument({ scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {} });
+    useProjectStore.getState().loadDocument({ scenes: [], installedModules: {}, activePack: undefined, packOverrides: {}, packTerrainRemap: {}, graphs: {}, quests: {} });
     Object.defineProperty(window.navigator, "onLine", { value: true, writable: true, configurable: true });
   });
 

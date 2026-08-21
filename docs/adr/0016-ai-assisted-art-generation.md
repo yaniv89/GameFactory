@@ -311,3 +311,50 @@ quota `SelectGenerationVariationEndpoint` already reuses verbatim from
 gap, but a pre-existing one that predates this feature and affects every
 asset a workspace holds, not just AI-generated ones. Tiering it belongs
 with M5's own billing work, not folded into this ADR's scope.
+
+## Addendum (N7): security review — one real finding, fixed
+
+Full review against `docs/security/THREAT-MODEL.md` T18 and CLAUDE.md
+Section 4, covering prompt injection, abuse, and content-safety on the
+whole generation input surface (N1-N6's code, not just this ADR's
+prose). Full detail lives in THREAT-MODEL.md Section 3.10's own N7
+paragraph; summarized here:
+
+- **One real, exploitable finding (CWE-532):** `GeminiArtGenerationClient`
+  sent the Gemini API key as a `?key=` URL query parameter.
+  `Forge.Api`'s own default logging configuration (`Information`) plus
+  ASP.NET Core's default `HttpClientFactory` request-logging handlers —
+  attached automatically to this client, `Forge.Api`'s first `HttpClient`
+  consumer — meant the key would land in application logs on every real
+  call. Fixed by moving the key to the `x-goog-api-key` header, which the
+  default handlers never log. Verified with a real captured-request test
+  (`GeminiArtGenerationClientTests.cs`), not just reasoned about — the
+  first test coverage this class had at all, since every other test in
+  this project stands in with `FakeArtGenerationClient`.
+- **Verified, not just designed:** Decision 5's system-instruction/
+  user-content separation was checked against the actual outgoing
+  request body (a hostile `UserPrompt` lands only in `contents[0]`, the
+  fixed category instruction only in `system_instruction`, never
+  concatenated) rather than trusted from this ADR's own prose. It held.
+- **Checked and ruled out:** JSON injection via `UserPrompt` (the request
+  body is built from typed records through `System.Text.Json`, never
+  string-concatenated), SSRF (Gemini returns image bytes inline as
+  base64, never a URL this client would then fetch), raw-SQL injection
+  in `ArtGenScanner.ClaimNextAsync` (fully parameterized), and secret
+  leakage through exception messages (`HttpRequestException`'s default
+  message never embeds the request URI or headers, so the one
+  `logger.LogError` call site in `ArtGenProcessQueuedFunction` was
+  already safe).
+- **Named, not silently accepted:** a successfully jailbroken text-
+  expansion call could in principle hand the image-generation call (which
+  runs with no system instruction of its own, by design — see Decision
+  2/5) a prompt that drifts from the category's own conventions. Bounded
+  blast radius unchanged from this ADR's original Decision 5 analysis:
+  no downstream code ever executes or interprets either model's output,
+  and the worst realistic outcome is a wrong or off-convention image
+  scoped to the requesting creator's own pack (at most a
+  `NoKeyColorFoundException`-caught skip for a Prop that came back
+  without its expected magenta background). Not fixed in this pass —
+  there is no concrete exploit beyond what a creator could already get by
+  typing something unusual directly, so adding complexity here would be
+  defense against a threat this review couldn't actually construct.

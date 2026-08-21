@@ -39,6 +39,23 @@ public sealed class GeminiArtGenerationClient(HttpClient httpClient, GeminiArtGe
 {
     private const string BaseUrl = "https://generativelanguage.googleapis.com/v1beta/models";
 
+    // N7 security review: the key travels as the documented `x-goog-api-key`
+    // request header, never as a `?key=` query-string parameter. This
+    // isn't stylistic — ASP.NET Core's HttpClientFactory attaches request
+    // logging handlers by default (`AddHttpClient` always does, unless
+    // explicitly removed) that log the full RequestUri, query string
+    // included, at LogLevel.Information — which this API's own default
+    // appsettings.json configuration (`Logging:LogLevel:Default =
+    // Information`) genuinely reaches. A key embedded in the URL would
+    // land in application logs on every real call this client makes,
+    // violating CLAUDE.md Section 1.1 guardrail 5 ("never log secrets,
+    // tokens...") — a real, first-order consequence of this being the
+    // codebase's first HttpClient consumer, not a hypothetical. The
+    // default logging handlers do not log request headers, so this is a
+    // root-cause fix, not a mitigation that depends on log-level
+    // discipline someone could later loosen.
+    private const string ApiKeyHeaderName = "x-goog-api-key";
+
     // docs/adr/0016 Decision 5: fixed per category, never influenced by
     // the creator's own text — this is what makes the system-
     // instruction/user-content separation real rather than nominal.
@@ -72,11 +89,7 @@ public sealed class GeminiArtGenerationClient(HttpClient httpClient, GeminiArtGe
             SystemInstruction: new GeminiContent("system", [new GeminiPart(Text: systemInstruction)]),
             Contents: [new GeminiContent("user", [new GeminiPart(Text: request.UserPrompt)])]);
 
-        using var response = await httpClient.PostAsJsonAsync(
-            $"{BaseUrl}/{options.TextModel}:generateContent?key={Uri.EscapeDataString(options.ApiKey)}",
-            body,
-            JsonOptions,
-            ct);
+        using var response = await SendGenerateContentAsync(options.TextModel, body, ct);
 
         // A safety-filtered refusal comes back as a normal 200 with
         // `promptFeedback.blockReason` set and no candidates — not an
@@ -109,11 +122,7 @@ public sealed class GeminiArtGenerationClient(HttpClient httpClient, GeminiArtGe
             Contents: [new GeminiContent("user", [new GeminiPart(request.ExpandedPrompt)])],
             CandidateCount: request.VariationCount);
 
-        using var response = await httpClient.PostAsJsonAsync(
-            $"{BaseUrl}/{options.ImageModel}:generateContent?key={Uri.EscapeDataString(options.ApiKey)}",
-            body,
-            JsonOptions,
-            ct);
+        using var response = await SendGenerateContentAsync(options.ImageModel, body, ct);
 
         if (response.IsSuccessStatusCode)
         {
@@ -143,6 +152,17 @@ public sealed class GeminiArtGenerationClient(HttpClient httpClient, GeminiArtGe
 
         response.EnsureSuccessStatusCode();
         throw new InvalidOperationException("Unreachable.");
+    }
+
+    /// <summary>Shared send path for both calls — the key goes on the request header (this class's own <see cref="ApiKeyHeaderName"/> doc comment), never the URL, and <see cref="HttpClient.PostAsJsonAsync{TValue}(string,TValue,JsonSerializerOptions,CancellationToken)"/> has no overload that accepts extra headers, hence the manual <see cref="HttpRequestMessage"/>.</summary>
+    private async Task<HttpResponseMessage> SendGenerateContentAsync(string model, GenerateContentRequestBody body, CancellationToken ct)
+    {
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/{model}:generateContent")
+        {
+            Content = JsonContent.Create(body, options: JsonOptions),
+        };
+        httpRequest.Headers.Add(ApiKeyHeaderName, options.ApiKey);
+        return await httpClient.SendAsync(httpRequest, ct);
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };

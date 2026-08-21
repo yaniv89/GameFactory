@@ -152,6 +152,6 @@ public static class CreateGenerationRequestEndpoint
 
         return TypedResults.Created(
             $"/api/v1/workspaces/{workspaceId}/projects/{projectId}/art-generation/{request.Id}",
-            new GenerationRequestResponse(request.Id, request.Category, request.Status, request.ExpandedPrompt, request.ErrorMessage, request.CreatedAt));
+            new GenerationRequestResponse(request.Id, request.Category, request.Status, request.ExpandedPrompt, request.ErrorMessage, request.CreatedAt, Variations: []));
     }
 }

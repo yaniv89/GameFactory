@@ -198,6 +198,24 @@ public sealed class CrossTenantAuthorizationTests : IClassFixture<ForgeWebApplic
 
         yield return new object[] { "ConfirmGenerationRequest (workspace:write + workspace:pro)", (Func<SharedState, HttpRequestMessage>)(s =>
             new HttpRequestMessage(HttpMethod.Post, $"/api/v1/workspaces/{s.Owner.WorkspaceId}/projects/{s.ProjectId}/art-generation/{Guid.NewGuid()}/confirm")) };
+
+        // N5: GetGenerationRequest/GetGenerationVariationContent are
+        // workspace:read only (not workspace:pro -- GetGenerationRequestEndpoint's
+        // own doc comment); SelectGenerationVariation is workspace:write
+        // only (SelectGenerationVariationEndpoint's own doc comment). All
+        // three still resolve through the same workspaceId route value,
+        // so the outsider case is a real cross-tenant 404 either way.
+        yield return new object[] { "GetGenerationRequest (workspace:read)", (Func<SharedState, HttpRequestMessage>)(s =>
+            new HttpRequestMessage(HttpMethod.Get, $"/api/v1/workspaces/{s.Owner.WorkspaceId}/projects/{s.ProjectId}/art-generation/{Guid.NewGuid()}")) };
+
+        yield return new object[] { "GetGenerationVariationContent (workspace:read)", (Func<SharedState, HttpRequestMessage>)(s =>
+            new HttpRequestMessage(HttpMethod.Get, $"/api/v1/workspaces/{s.Owner.WorkspaceId}/projects/{s.ProjectId}/art-generation/{Guid.NewGuid()}/variations/{Guid.NewGuid()}/content")) };
+
+        yield return new object[] { "SelectGenerationVariation (workspace:write)", (Func<SharedState, HttpRequestMessage>)(s =>
+            new HttpRequestMessage(HttpMethod.Post, $"/api/v1/workspaces/{s.Owner.WorkspaceId}/projects/{s.ProjectId}/art-generation/{Guid.NewGuid()}/variations/{Guid.NewGuid()}/select")
+            {
+                Content = JsonContent.Create(new { assetName = "intrusion.png" }),
+            }) };
     }
 
     [Theory]

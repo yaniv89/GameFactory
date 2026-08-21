@@ -274,6 +274,30 @@ public sealed class ForgeWebApplicationFactory : WebApplicationFactory<Program>,
                 return new AzureBlobAssetStorage(quarantine, pub);
             });
 
+            // N5: the same override as IAssetStorage's own case just
+            // above, and for the identical reason -- AddForgeArtGenerationStorage
+            // (Forge.Infrastructure.DependencyInjection) builds its
+            // BlobContainerClient from appsettings.json's ArtGeneration
+            // placeholder connection string, which isn't a real
+            // "name=value" Azure Storage connection string at all (it
+            // exists purely so a real secret is never committed --
+            // GeminiArtGenerationOptions' own doc comment). Before N5,
+            // nothing in Forge.Api itself ever resolved IArtGenerationStorage
+            // from DI (only Forge.Functions.ArtGen did, and its own tests
+            // construct AzureBlobArtGenerationStorage directly against
+            // this same Azurite container, bypassing DI entirely) -- so
+            // this gap in the test harness was real but never actually
+            // exercised until GetGenerationVariationContentEndpoint/
+            // SelectGenerationVariationEndpoint (N5) became the first
+            // Forge.Api endpoints to depend on it.
+            services.RemoveAll<IArtGenerationStorage>();
+            services.AddSingleton<IArtGenerationStorage>(_ =>
+            {
+                var container = new BlobContainerClient(blobConnectionString, "art-generations");
+                container.CreateIfNotExists();
+                return new AzureBlobArtGenerationStorage(container);
+            });
+
             // M7 Phase 7: same Azurite container as point 5 above backs
             // Table Storage too (Azurite emulates blob/queue/table under
             // one account) — no second container, just a second client

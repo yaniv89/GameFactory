@@ -6,6 +6,9 @@ public static class ArtGenerationEndpointsExtensions
     {
         app.MapCreateGenerationRequest();
         app.MapConfirmGenerationRequest();
+        app.MapGetGenerationRequest();
+        app.MapGetGenerationVariationContent();
+        app.MapSelectGenerationVariation();
         return app;
     }
 }

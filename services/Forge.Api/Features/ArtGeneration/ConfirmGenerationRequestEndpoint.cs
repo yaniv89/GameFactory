@@ -55,6 +55,6 @@ public static class ConfirmGenerationRequestEndpoint
         request.Status = GenerationStatus.Queued;
         await db.SaveChangesAsync(ct);
 
-        return TypedResults.Ok(new GenerationRequestResponse(request.Id, request.Category, request.Status, request.ExpandedPrompt, request.ErrorMessage, request.CreatedAt));
+        return TypedResults.Ok(new GenerationRequestResponse(request.Id, request.Category, request.Status, request.ExpandedPrompt, request.ErrorMessage, request.CreatedAt, Variations: []));
     }
 }

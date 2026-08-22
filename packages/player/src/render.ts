@@ -1,11 +1,22 @@
-import type { SceneChangedEvent } from "@forge/core";
+import { createCharacterAnimationSystem, type SceneChangedEvent } from "@forge/core";
 import { Camera, RenderHost, TilemapLayer, createSpriteSyncSystem, createTransformSnapshotSystem, TransformSnapshotStore } from "@forge/render-2d";
 import { Sprite } from "pixi.js";
 import { buildEntityTextures } from "./entityMarkers.js";
 import type { GameLogic } from "./gameLogic.js";
+import { NPC_ASSET_ID, PLAYER_ASSET_ID } from "./gameWorld.js";
 import { GRID_HEIGHT, GRID_WIDTH, TILE_SIZE } from "./gridConstants.js";
+import { buildPlayerCharacterTextures, buildPlayerPaletteTextures, type PlayerCharacterFrameSet } from "./packArt.js";
 import type { PlayerProjectData } from "./playerProjectData.js";
-import { buildPaletteTextures } from "./tilePalette.js";
+
+/** `Sprite.assetId` -> the active pack's own `characters.sheets` role id — matches `packages/editor/src/preview/PreviewApp.tsx`'s own `ASSET_ID_TO_CHARACTER_ROLE` exactly for the two entity kinds this standalone player currently spawns (enemy/mount art is #182's scope, once this player recognizes those prefabs as anything other than a plain NPC marker). */
+const ASSET_ID_TO_CHARACTER_ROLE: Readonly<Record<number, string>> = {
+  [PLAYER_ASSET_ID]: "hero",
+  [NPC_ASSET_ID]: "villager",
+};
+
+/** Matches PreviewApp.tsx's own WALK_FRAME_COUNT/WALK_FPS exactly — every character sheet this repo's own generated art and `createCharacterAnimationSystem` agree on. */
+const WALK_FRAME_COUNT = 4;
+const WALK_FPS = 8;
 
 /** --surface-canvas from tokens.css, as a Pixi-friendly hex number — kept visually consistent with the editor's own canvas, not because the player imports the token itself. */
 const CANVAS_BACKGROUND = 0x232a26;
@@ -58,7 +69,10 @@ export async function bootRenderer(canvas: HTMLCanvasElement, projectData: Playe
   camera.y = (GRID_HEIGHT * TILE_SIZE) / 2;
   camera.applyTo(host.worldContainer);
 
-  const paletteTextures = buildPaletteTextures(host.app.renderer, TILE_SIZE);
+  // K1 Phase 2b: real Art Pack ground textures when the export embedded
+  // one, the same flat-color fallback as before when it didn't
+  // (`buildPlayerPaletteTextures`'s own doc comment).
+  const paletteTextures = await buildPlayerPaletteTextures(host.app.renderer, TILE_SIZE, projectData.pack);
   const layer = new TilemapLayer<Sprite>({
     gridWidth: GRID_WIDTH,
     gridHeight: GRID_HEIGHT,
@@ -84,14 +98,24 @@ export async function bootRenderer(canvas: HTMLCanvasElement, projectData: Playe
 
   const snapshots = new TransformSnapshotStore();
   const entityTextures = buildEntityTextures(host.app.renderer, TILE_SIZE);
+  // K1 Phase 2b: real, animated hero/villager art when the export
+  // embedded a pack that declares character sheets; `entityTextures`'s
+  // own flat circle stays the fallback for any role the pack doesn't
+  // cover, exactly as before this existed.
+  const characterTextures = await buildPlayerCharacterTextures(projectData.pack);
   game.scheduler.addSystem(createTransformSnapshotSystem(game.world, snapshots));
+  game.scheduler.addSystem(createCharacterAnimationSystem({ world: game.world, frameCount: WALK_FRAME_COUNT, fps: WALK_FPS }));
   game.scheduler.addSystem(
     createSpriteSyncSystem({
       world: game.world,
       container: host.worldContainer,
       snapshots,
       createSprite: () => new Sprite(),
-      resolveTexture: (assetId) => entityTextures.get(assetId),
+      resolveTexture: (assetId: number, frame: number) => {
+        const role = ASSET_ID_TO_CHARACTER_ROLE[assetId];
+        const frameSet: PlayerCharacterFrameSet | undefined = role ? characterTextures.get(role) : undefined;
+        return frameSet?.frames[frame] ?? entityTextures.get(assetId);
+      },
     }),
   );
 

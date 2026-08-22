@@ -1,15 +1,17 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
-import type { PlayerProjectData } from "@forge/player";
+import { dirname, extname, join } from "node:path";
+import { validateArtPackManifest } from "@forge/art-pack";
+import type { PlayerPackData, PlayerProjectData } from "@forge/player";
 import { toExportProjectInput, type ExportInstalledModuleInput, type ExportProjectInput, type ProjectDocument } from "@forge/project-export";
 import { findRepoRoot } from "../repoRoot.js";
 
 const REPO_ROOT = findRepoRoot();
 const PLAYER_DIR = join(REPO_ROOT, "packages/player");
 const ALLOWLIST_PATH = join(REPO_ROOT, "tools/security/licenses.json");
+const FIXTURE_PACKS_DIR = join(REPO_ROOT, "fixtures/packs");
 
 // ExportProjectInput's canonical definition lives in @forge/project-export
 // (docs/adr/0009) — re-exported here so existing callers of this module
@@ -192,15 +194,98 @@ async function resolveGuestBundleSource(installedModule: ExportInstalledModuleIn
   return fetchGuestBundle(installedModule.guestBundleUrl, installedModule.guestBundleSha256Hex);
 }
 
+/** `data:` URI MIME type for a pack asset's own file extension — every fixture pack today ships `.png`; this covers the other web-safe raster formats an author might reasonably ship rather than assuming PNG unconditionally. */
+function mimeTypeFor(path: string): string {
+  switch (extname(path).toLowerCase()) {
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".webp":
+      return "image/webp";
+    case ".gif":
+      return "image/gif";
+    default:
+      return "image/png";
+  }
+}
+
+/**
+ * K1 Phase 2b: resolves `packName` (`ProjectDocument.activePack`) to its
+ * real manifest and the actual bytes of every asset this export can use —
+ * mirrors `packages/editor/src/canvas/packTiles.ts`'s own tier-3
+ * ("active pack") resolution scope exactly (ground tileset + character
+ * sheets), but reads from `fixtures/packs/*` on disk instead of fetching
+ * a dev-server URL, and returns the asset bytes themselves (base64
+ * `data:` URIs) rather than a URL to fetch later — an exported build has
+ * no server to fetch from (docs/security/THREAT-MODEL.md's play-origin
+ * isolation), so every byte it needs has to already be embedded.
+ *
+ * Never throws: a pack that can't be found, fails manifest validation, or
+ * whose declared image file is missing on disk is a reason to skip that
+ * one asset (or the whole pack) and fall back to the renderer's own
+ * placeholder colors/markers, exactly like a broken pack does in the
+ * editor's own `loadActivePackContext` — an author's export must never
+ * fail outright over pack art specifically. Every skip is a printed
+ * warning, per CLAUDE.md 1.2.11, not a silent gap.
+ */
+function resolvePackData(packName: string): PlayerPackData | undefined {
+  if (!existsSync(FIXTURE_PACKS_DIR)) return undefined;
+  let packDir: string | undefined;
+  for (const entry of readdirSync(FIXTURE_PACKS_DIR, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const manifestPath = join(FIXTURE_PACKS_DIR, entry.name, "manifest.json");
+    if (!existsSync(manifestPath)) continue;
+    const candidate = JSON.parse(readFileSync(manifestPath, "utf8")) as { name?: unknown };
+    if (candidate.name === packName) {
+      packDir = join(FIXTURE_PACKS_DIR, entry.name);
+      break;
+    }
+  }
+  if (!packDir) {
+    console.warn(`[forge export] active pack "${packName}" was not found under fixtures/packs — exporting with placeholder art instead.`);
+    return undefined;
+  }
+
+  const result = validateArtPackManifest(JSON.parse(readFileSync(join(packDir, "manifest.json"), "utf8")));
+  if (!result.ok) {
+    console.warn(`[forge export] active pack "${packName}"'s manifest failed validation (${JSON.stringify(result.errors)}) — exporting with placeholder art instead.`);
+    return undefined;
+  }
+  const manifest = result.manifest!;
+
+  const declaredPaths = new Set<string>();
+  for (const tileset of Object.values(manifest.tilesets)) declaredPaths.add(tileset.src);
+  if (manifest.characters) for (const path of Object.values(manifest.characters.sheets)) declaredPaths.add(path);
+
+  const assets: Record<string, string> = {};
+  for (const path of declaredPaths) {
+    const filePath = join(packDir, path);
+    if (!existsSync(filePath)) {
+      console.warn(`[forge export] active pack "${packName}" declares "${path}" but that file doesn't exist under ${packDir} — that asset falls back to a placeholder.`);
+      continue;
+    }
+    assets[path] = `data:${mimeTypeFor(path)};base64,${readFileSync(filePath).toString("base64")}`;
+  }
+
+  return { name: packName, manifest, assets };
+}
+
 async function hydrateProjectData(input: ExportProjectInput): Promise<PlayerProjectData> {
+  const { activePack, ...rest } = input;
+  const pack = activePack ? resolvePackData(activePack) : undefined;
   return {
-    ...input,
+    ...rest,
     installedModules: await Promise.all(
       input.installedModules.map(async (installedModule) => ({
         ...installedModule,
         guestBundleSource: await resolveGuestBundleSource(installedModule),
       })),
     ),
+    // exactOptionalPropertyTypes: omit rather than assign `undefined` —
+    // `resolvePackData` itself can come back empty (pack not found,
+    // failed validation) even when `activePack` was set, same convention
+    // this whole file already follows for `guestBundleUrl`/etc.
+    ...(pack ? { pack } : {}),
   };
 }
 

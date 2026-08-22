@@ -27,6 +27,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@forge/art-pack':
+        specifier: workspace:*
+        version: link:../art-pack
       '@forge/player':
         specifier: workspace:*
         version: link:../player
@@ -306,6 +309,9 @@ importers:
 
   packages/player:
     dependencies:
+      '@forge/art-pack':
+        specifier: workspace:*
+        version: link:../art-pack
       '@forge/core':
         specifier: workspace:*
         version: link:../core

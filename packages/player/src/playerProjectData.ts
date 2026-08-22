@@ -1,3 +1,5 @@
+import type { ArtPackManifest } from "@forge/art-pack";
+
 /**
  * What a `forge export` bundle actually embeds — deliberately its own,
  * independent type, not imported from `packages/editor`'s `ProjectDocument`
@@ -55,6 +57,31 @@ export interface PlayerInstalledModule {
   readonly guestBundleSource: string;
 }
 
+/**
+ * K1 Phase 2b: the active Art Pack's own manifest plus every asset this
+ * export actually resolved for it, base64-embedded as `data:` URIs at
+ * export time — no runtime fetch, matching `guestBundleSource`'s and
+ * `WASM_BINARY_BASE64`'s own "no network, ever" contract for an exported
+ * game (docs/security/THREAT-MODEL.md's play-origin isolation extends to
+ * this: a `file://`-opened build has no origin to fetch pack assets from
+ * even if it wanted to).
+ *
+ * Scoped to exactly what `packTiles.ts`/`characterTextures.ts` (the
+ * editor's own pack-aware rendering) resolve for a *ground tileset* and
+ * *character sheets* — tier 3 ("active pack") of docs/SPEC.md Section
+ * 11.4's five-tier resolution only. Project overrides/uploaded assets/
+ * module-bundled assets have no meaning for a frozen, already-built
+ * export the way they do for a live, still-editable project, so they're
+ * out of scope here, not silently dropped. Mount/weapon art (K1 Phase 2,
+ * #177/#178) is a separate, still-pending gap this does not close.
+ */
+export interface PlayerPackData {
+  readonly name: string;
+  readonly manifest: ArtPackManifest;
+  /** Keyed by the manifest-relative path exactly as declared (e.g. `"tilesets/outdoor-base.png"`, `"characters/hero_walk.png"`) — only paths this export actually resolved and embedded appear here; a declared-but-unresolved path is simply absent, the same "falls back to the placeholder" honesty `resolveAsset`'s own `found: false` case already establishes. */
+  readonly assets: Readonly<Record<string, string>>;
+}
+
 export interface PlayerProjectData {
   readonly projectId: string;
   /** Whatever `forge export` was run against — a save file records which build produced it (SaveFile.buildId, docs/SPEC.md Section 8.5), independent of the engine version. */
@@ -80,4 +107,6 @@ export interface PlayerProjectData {
    * need a `PlayerProjectData` shape change to say which one starts.
    */
   readonly startSceneId: string;
+  /** Absent when the project had no active pack, or the CLI couldn't resolve one for it (a warning is printed at export time either way — see `resolvePackData`, packages/cli/src/commands/export.ts) — the renderer's own placeholder-color/marker fallback (`tilePalette.ts`, `entityMarkers.ts`) is what actually renders in that case. */
+  readonly pack?: PlayerPackData;
 }

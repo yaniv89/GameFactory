@@ -16,6 +16,7 @@
     "test:browser": "playwright test"
   },
   "dependencies": {
+    "@forge/art-pack": "workspace:*",
     "@forge/core": "workspace:*",
     "@forge/module-api": "workspace:*",
     "@forge/render-2d": "workspace:*",

@@ -24,9 +24,20 @@ export type ExportInstalledModuleInput = Omit<PlayerInstalledModule, "guestBundl
   readonly guestBundleSha256Hex?: string;
 };
 
-/** `PlayerProjectData` minus each module's `guestBundleSource` — the CLI's own long-standing input contract (`packages/cli/src/commands/export.ts`), relocated here so it has one canonical definition instead of being redeclared. */
-export type ExportProjectInput = Omit<PlayerProjectData, "installedModules"> & {
+/**
+ * `PlayerProjectData` minus each module's `guestBundleSource` — the CLI's
+ * own long-standing input contract (`packages/cli/src/commands/export.ts`),
+ * relocated here so it has one canonical definition instead of being
+ * redeclared. `pack` is replaced by the raw `activePack` name (K1 Phase
+ * 2b): resolving a pack name into real, embedded asset bytes needs
+ * filesystem access this isomorphic package deliberately never touches
+ * (this module's own doc comment) — the CLI does that resolution
+ * (`resolvePackData`) the same way it already resolves `guestBundleSource`
+ * from `packages/player`'s own `node_modules`.
+ */
+export type ExportProjectInput = Omit<PlayerProjectData, "installedModules" | "pack"> & {
   readonly installedModules: readonly ExportInstalledModuleInput[];
+  readonly activePack?: string;
 };
 
 export interface ToExportProjectInputOptions {
@@ -132,5 +143,8 @@ export function toExportProjectInput(document: ProjectDocument, options: ToExpor
     installedModules,
     dataTables,
     startSceneId,
+    // exactOptionalPropertyTypes: omit rather than assign `undefined`,
+    // same convention this function already follows for `entity.dialogue`.
+    ...(document.activePack ? { activePack: document.activePack } : {}),
   };
 }

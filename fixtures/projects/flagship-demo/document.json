@@ -3,17 +3,17 @@
   "document": {
     "scenes": [
       {
-        "id": "725238b9-3bf3-4456-8ee4-ffeacfa933b7",
+        "id": "2702a1a1-b4c2-49e5-9cb5-4946dc750d91",
         "name": "Scene 1",
         "entities": [
           {
-            "id": "e1e58d76-29db-483c-af8b-1068115dc98d",
+            "id": "47c39cd9-97c6-46dc-ac5b-7b59c800c305",
             "prefabId": "player-start",
             "tileX": 3,
             "tileY": 11
           },
           {
-            "id": "20a936ef-2097-4f27-a6d2-f0c357dd218b",
+            "id": "1d0bf335-cf7b-4cd9-9a3e-9fc5811de485",
             "prefabId": "npc",
             "tileX": 7,
             "tileY": 11,
@@ -24,12 +24,12 @@
                   "text": "Goblins have overrun the east wing. Will you help?",
                   "choices": [
                     {
-                      "id": "94dfac86-0a84-46e7-9f0b-28252bcefb31",
+                      "id": "a50a0c9a-a5af-49b1-949a-81fb8c57864b",
                       "text": "I'll clear them out",
                       "next": 1
                     },
                     {
-                      "id": "274d3447-63fe-428e-bca7-6893777034b7",
+                      "id": "d575b7bf-8e42-4acc-9306-5f68ab2de6dc",
                       "text": "Not today",
                       "next": -1
                     }
@@ -43,7 +43,7 @@
             }
           },
           {
-            "id": "4c64039a-6991-40e9-9973-ff06bc7f9b21",
+            "id": "0dd7db5f-87d3-4eea-97d9-77817aa88f77",
             "prefabId": "enemy",
             "tileX": 15,
             "tileY": 8
@@ -368,12 +368,12 @@
     "packOverrides": {},
     "packTerrainRemap": {},
     "graphs": {
-      "093d51f3-64b8-4c4d-aadc-fc913fb3e37f": {
-        "id": "093d51f3-64b8-4c4d-aadc-fc913fb3e37f",
+      "363f4ee0-b5a6-4a0a-829e-4f66050f4c6d": {
+        "id": "363f4ee0-b5a6-4a0a-829e-4f66050f4c6d",
         "name": "Graph 1",
         "nodes": [
           {
-            "id": "9eade86d-214f-4caa-9fba-437ad46a1682",
+            "id": "fc9e7bc2-342a-4f52-83cf-d0600de6cd1d",
             "type": "core:onEvent",
             "position": {
               "x": 40,
@@ -384,7 +384,7 @@
             }
           },
           {
-            "id": "0ca15017-8e08-4804-9dd6-dfec248083fc",
+            "id": "3b5d6c66-7a79-42c6-80fe-6467122e5263",
             "type": "core:getField",
             "position": {
               "x": 230,
@@ -395,30 +395,30 @@
             }
           },
           {
-            "id": "3bc85185-3bf2-4dca-935d-da06f6171a76",
+            "id": "eee4c2ba-5a7f-479d-b440-31feeab79ee2",
             "type": "core:questStart",
             "position": {
               "x": 420,
               "y": 40
             },
             "config": {
-              "questId": "3d2b7868-961f-4a94-ad86-eae3ea52c5cf"
+              "questId": "e7abd093-4b57-4dc6-81bc-fc92f8ab1c0a"
             }
           },
           {
-            "id": "bca56658-11fa-4ac8-a88f-e46c6da8cba4",
+            "id": "539f1759-11aa-4a6c-a3fe-8afb1dc018f2",
             "type": "core:questCompleteObjective",
             "position": {
               "x": 610,
               "y": 40
             },
             "config": {
-              "questId": "3d2b7868-961f-4a94-ad86-eae3ea52c5cf",
-              "objectiveId": "104db552-079f-4582-b834-9462c11ad23d"
+              "questId": "e7abd093-4b57-4dc6-81bc-fc92f8ab1c0a",
+              "objectiveId": "34a4ebad-4739-46d9-ac78-0cac155fa899"
             }
           },
           {
-            "id": "46ddf823-c065-4159-8f1b-c71875182a28",
+            "id": "d4867737-70cb-438c-b48a-c882fc4d3e9f",
             "type": "core:constant",
             "position": {
               "x": 800,
@@ -429,30 +429,30 @@
             }
           },
           {
-            "id": "d45e85ee-5d08-4641-a0c2-7995f04275ff",
+            "id": "3d82254a-9c16-4e8a-97b3-1418fd361c5f",
             "type": "core:lookupRow",
             "position": {
               "x": 990,
               "y": 40
             },
             "config": {
-              "table": "7cc0cf3e-86c9-4a2b-9168-c2be8a9edc7d",
-              "keyColumn": "54388b29-eddc-4fb8-8aa9-e3a64af92edc"
+              "table": "568b6250-34a3-4c35-8287-713bee5634fb",
+              "keyColumn": "90ad21a4-0c41-49ad-bb72-1d1d38ff5f49"
             }
           },
           {
-            "id": "56c9faf1-459c-41dc-a68c-5f8b9f93a98a",
+            "id": "c4457030-ee9e-4721-bebc-d2952a61400d",
             "type": "core:getField",
             "position": {
               "x": 40,
               "y": 170
             },
             "config": {
-              "field": "66d425de-9cec-4059-8f3c-47182406523a"
+              "field": "869ad35e-a927-4d06-a4ba-c8f6658a679f"
             }
           },
           {
-            "id": "8115f433-62f5-421a-b21e-72d1861c832c",
+            "id": "25bafc52-90c7-4076-8468-0c5ff7684b7d",
             "type": "core:setField",
             "position": {
               "x": 230,
@@ -463,7 +463,7 @@
             }
           },
           {
-            "id": "09e68e56-8ee3-47df-b21c-e45a24689984",
+            "id": "f169f180-327f-472b-a4b3-4032240ef31c",
             "type": "core:setComponent",
             "position": {
               "x": 420,
@@ -476,118 +476,118 @@
         ],
         "edges": [
           {
-            "id": "acfb3a71-9a6c-4c07-a6bb-4ee74129d0f9",
-            "source": "9eade86d-214f-4caa-9fba-437ad46a1682",
+            "id": "f3e25935-0270-4770-955d-05a993b85a55",
+            "source": "fc9e7bc2-342a-4f52-83cf-d0600de6cd1d",
             "sourceHandle": "flow",
-            "target": "3bc85185-3bf2-4dca-935d-da06f6171a76",
+            "target": "eee4c2ba-5a7f-479d-b440-31feeab79ee2",
             "targetHandle": "flow"
           },
           {
-            "id": "4e5185a0-0bcb-4903-a049-e04ffd13062b",
-            "source": "3bc85185-3bf2-4dca-935d-da06f6171a76",
+            "id": "96396c4f-78d1-4bb3-9993-ecc551969634",
+            "source": "eee4c2ba-5a7f-479d-b440-31feeab79ee2",
             "sourceHandle": "flow",
-            "target": "bca56658-11fa-4ac8-a88f-e46c6da8cba4",
+            "target": "539f1759-11aa-4a6c-a3fe-8afb1dc018f2",
             "targetHandle": "flow"
           },
           {
-            "id": "a94be141-e288-4267-838c-46f47dc9fdee",
-            "source": "bca56658-11fa-4ac8-a88f-e46c6da8cba4",
+            "id": "98460951-c56e-4a07-aa83-63bcbe0f84d8",
+            "source": "539f1759-11aa-4a6c-a3fe-8afb1dc018f2",
             "sourceHandle": "flow",
-            "target": "09e68e56-8ee3-47df-b21c-e45a24689984",
+            "target": "f169f180-327f-472b-a4b3-4032240ef31c",
             "targetHandle": "flow"
           },
           {
-            "id": "e5e8fa5d-3a95-47cc-87a7-cffeadc76798",
-            "source": "9eade86d-214f-4caa-9fba-437ad46a1682",
+            "id": "8770b736-6ab7-4505-8416-e2440c3add96",
+            "source": "fc9e7bc2-342a-4f52-83cf-d0600de6cd1d",
             "sourceHandle": "payload",
-            "target": "0ca15017-8e08-4804-9dd6-dfec248083fc",
+            "target": "3b5d6c66-7a79-42c6-80fe-6467122e5263",
             "targetHandle": "object"
           },
           {
-            "id": "439e0c7d-d5b7-4507-bc96-4ccfdc10a53f",
-            "source": "0ca15017-8e08-4804-9dd6-dfec248083fc",
+            "id": "33500b12-a351-4f8f-837f-12ccf9f044a0",
+            "source": "3b5d6c66-7a79-42c6-80fe-6467122e5263",
             "sourceHandle": "value",
-            "target": "3bc85185-3bf2-4dca-935d-da06f6171a76",
+            "target": "eee4c2ba-5a7f-479d-b440-31feeab79ee2",
             "targetHandle": "entity"
           },
           {
-            "id": "03bb3edc-5bbe-4d31-b531-a5095a2c2945",
-            "source": "0ca15017-8e08-4804-9dd6-dfec248083fc",
+            "id": "bd9e4533-25a8-436e-b2d6-efdc7fdd89ca",
+            "source": "3b5d6c66-7a79-42c6-80fe-6467122e5263",
             "sourceHandle": "value",
-            "target": "bca56658-11fa-4ac8-a88f-e46c6da8cba4",
+            "target": "539f1759-11aa-4a6c-a3fe-8afb1dc018f2",
             "targetHandle": "entity"
           },
           {
-            "id": "c66a6bfb-c2ff-45f9-9030-1c319de3a089",
-            "source": "0ca15017-8e08-4804-9dd6-dfec248083fc",
+            "id": "e7a5f220-ad93-4634-9b08-0eeaf2e3abd9",
+            "source": "3b5d6c66-7a79-42c6-80fe-6467122e5263",
             "sourceHandle": "value",
-            "target": "09e68e56-8ee3-47df-b21c-e45a24689984",
+            "target": "f169f180-327f-472b-a4b3-4032240ef31c",
             "targetHandle": "entity"
           },
           {
-            "id": "81488af5-714e-4d1f-aa6c-5d46f4d8cae6",
-            "source": "46ddf823-c065-4159-8f1b-c71875182a28",
+            "id": "c717c8a0-fa16-426a-b5a7-601cd2fb288d",
+            "source": "d4867737-70cb-438c-b48a-c882fc4d3e9f",
             "sourceHandle": "value",
-            "target": "d45e85ee-5d08-4641-a0c2-7995f04275ff",
+            "target": "3d82254a-9c16-4e8a-97b3-1418fd361c5f",
             "targetHandle": "key"
           },
           {
-            "id": "4ae530e1-e50e-4982-8995-d007da82b268",
-            "source": "d45e85ee-5d08-4641-a0c2-7995f04275ff",
+            "id": "c0b89b08-b2a4-4d3a-b94f-ba166747f612",
+            "source": "3d82254a-9c16-4e8a-97b3-1418fd361c5f",
             "sourceHandle": "row",
-            "target": "56c9faf1-459c-41dc-a68c-5f8b9f93a98a",
+            "target": "c4457030-ee9e-4721-bebc-d2952a61400d",
             "targetHandle": "object"
           },
           {
-            "id": "a7205d17-f340-4a7f-8826-0239e6bfe8af",
-            "source": "56c9faf1-459c-41dc-a68c-5f8b9f93a98a",
+            "id": "45c22cad-0e1d-4c78-84a7-9d5778c8b050",
+            "source": "c4457030-ee9e-4721-bebc-d2952a61400d",
             "sourceHandle": "value",
-            "target": "8115f433-62f5-421a-b21e-72d1861c832c",
+            "target": "25bafc52-90c7-4076-8468-0c5ff7684b7d",
             "targetHandle": "value"
           },
           {
-            "id": "9a47c549-5527-4ed8-b09d-5d9c97c0aaf9",
-            "source": "8115f433-62f5-421a-b21e-72d1861c832c",
+            "id": "fc2dda62-ccd6-4b8a-b19a-04f1606581d3",
+            "source": "25bafc52-90c7-4076-8468-0c5ff7684b7d",
             "sourceHandle": "object",
-            "target": "09e68e56-8ee3-47df-b21c-e45a24689984",
+            "target": "f169f180-327f-472b-a4b3-4032240ef31c",
             "targetHandle": "value"
           }
         ]
       }
     },
     "quests": {
-      "3d2b7868-961f-4a94-ad86-eae3ea52c5cf": {
-        "id": "3d2b7868-961f-4a94-ad86-eae3ea52c5cf",
+      "e7abd093-4b57-4dc6-81bc-fc92f8ab1c0a": {
+        "id": "e7abd093-4b57-4dc6-81bc-fc92f8ab1c0a",
         "name": "Clear the Goblins",
-        "description": "",
+        "description": "Two goblins have overrun the east wing. Deal with them.",
         "objectives": [
           {
-            "id": "104db552-079f-4582-b834-9462c11ad23d",
+            "id": "34a4ebad-4739-46d9-ac78-0cac155fa899",
             "description": "Defeat both goblins"
           }
         ]
       }
     },
     "dataTables": {
-      "7cc0cf3e-86c9-4a2b-9168-c2be8a9edc7d": {
-        "id": "7cc0cf3e-86c9-4a2b-9168-c2be8a9edc7d",
+      "568b6250-34a3-4c35-8287-713bee5634fb": {
+        "id": "568b6250-34a3-4c35-8287-713bee5634fb",
         "name": "Goblin Loot",
         "columns": [
           {
-            "id": "54388b29-eddc-4fb8-8aa9-e3a64af92edc",
+            "id": "90ad21a4-0c41-49ad-bb72-1d1d38ff5f49",
             "name": "id",
             "type": "number"
           },
           {
-            "id": "66d425de-9cec-4059-8f3c-47182406523a",
+            "id": "869ad35e-a927-4d06-a4ba-c8f6658a679f",
             "name": "amount",
             "type": "number"
           }
         ],
         "rows": [
           {
-            "54388b29-eddc-4fb8-8aa9-e3a64af92edc": 1,
-            "66d425de-9cec-4059-8f3c-47182406523a": 30
+            "90ad21a4-0c41-49ad-bb72-1d1d38ff5f49": 1,
+            "869ad35e-a927-4d06-a4ba-c8f6658a679f": 30
           }
         ]
       }

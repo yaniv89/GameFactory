@@ -14,7 +14,21 @@ const executablePath =
 
 export default defineConfig({
   testDir: "./test-browser",
-  fullyParallel: true,
+  // K1 Phase 2b: `forge export` (packages/cli/src/commands/export.ts)
+  // always builds through the one shared `packages/player/dist-app/`
+  // intermediate directory before copying to a spec's own `--out` — real
+  // for any two concurrent exports against one checkout, not just tests,
+  // but this is the one place it can actually collide: two spec files in
+  // this directory each call it from their own `beforeAll`. Confirmed the
+  // hard way, adding packArtRendering.spec.ts alongside the existing
+  // exportedGame.spec.ts: `fullyParallel: true` ran both exports at once
+  // and one process's `vite build` deleted `dist-app/`'s inlined JS out
+  // from under the other's own inline-bundle.mjs step. `workers: 1` is
+  // the honest fix at this layer — making concurrent `forge export`
+  // itself safe (a per-invocation build directory) is a real, separate
+  // improvement to packages/cli, out of scope here.
+  fullyParallel: false,
+  workers: 1,
   reporter: "list",
   timeout: 60_000,
   use: {

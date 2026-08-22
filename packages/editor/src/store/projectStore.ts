@@ -461,6 +461,8 @@ interface ProjectStoreState {
   selectModule: (moduleName: string | undefined) => void;
   placePlayerStart: (sceneId: string, tileX: number, tileY: number) => void;
   placeNpc: (sceneId: string, tileX: number, tileY: number) => void;
+  placeEnemy: (sceneId: string, tileX: number, tileY: number) => void;
+  placeMount: (sceneId: string, tileX: number, tileY: number) => void;
   removeEntity: (sceneId: string, entityId: string) => void;
   configureEntityDialogue: (sceneId: string, entityId: string, dialogue: EntityDialogue) => void;
   selectEntity: (sceneId: string, entityId: string | undefined) => void;
@@ -715,6 +717,32 @@ export const useProjectStore = create<ProjectStoreState>()(
           // Immediately selecting the new NPC lets the Inspector's
           // dialogue form show up right away — placing and configuring an
           // NPC is meant to feel like one motion, not two.
+          state.selection = { kind: "entity", sceneId, entityId: entity.id };
+        }),
+
+      placeEnemy: (sceneId, tileX, tileY) =>
+        set((state) => {
+          const scene = state.document.scenes.find((candidate) => candidate.id === sceneId);
+          if (!scene) return;
+          const entity: EntityPlacement = { id: crypto.randomUUID(), prefabId: "enemy", tileX, tileY };
+          const forward: ProjectCommand = { type: "entity/add", sceneId, entity };
+          const inverse: ProjectCommand = { type: "entity/delete", sceneId, entityId: entity.id };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
+          state.selection = { kind: "entity", sceneId, entityId: entity.id };
+        }),
+
+      placeMount: (sceneId, tileX, tileY) =>
+        set((state) => {
+          const scene = state.document.scenes.find((candidate) => candidate.id === sceneId);
+          if (!scene) return;
+          const entity: EntityPlacement = { id: crypto.randomUUID(), prefabId: "mount", tileX, tileY };
+          const forward: ProjectCommand = { type: "entity/add", sceneId, entity };
+          const inverse: ProjectCommand = { type: "entity/delete", sceneId, entityId: entity.id };
+          applyCommand(state.document, forward);
+          state.past.push({ forward, inverse });
+          state.future = [];
           state.selection = { kind: "entity", sceneId, entityId: entity.id };
         }),
 

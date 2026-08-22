@@ -57,6 +57,12 @@ export function EntityInspector({ entity, onConfigureDialogue, onOpenDialogueEdi
       {entity.prefabId === "player-start" && (
         <p className="fg-entity-inspector__hint">The player spawns here when you open the preview.</p>
       )}
+      {entity.prefabId === "enemy" && (
+        <p className="fg-entity-inspector__hint">Hostile on sight — attacks and damages the player in range. Killing it drops a coin.</p>
+      )}
+      {entity.prefabId === "mount" && (
+        <p className="fg-entity-inspector__hint">The player can ride this by pressing E in range, for a real speed boost, and E again to dismount.</p>
+      )}
       <Button variant="destructive" onClick={() => onRemove(entity.id)}>
         Remove
       </Button>

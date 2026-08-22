@@ -253,10 +253,23 @@ interface GameWorld {
   readonly scheduler: Scheduler;
   playerEntity: EntityId | undefined;
   readonly npcEntitiesByPlacementId: Map<string, EntityId>;
-  /** H1c's fixed demo combat target (`spawnEnemy`'s own doc comment explains why it isn't placement-sourced yet). */
+  /** H1c's fixed demo combat target — kept exactly as it was (`spawnEnemy`'s own doc comment) for every pre-K1 spec that assumes exactly one enemy exists at boot. `enemyEntitiesByPlacementId` below is the real, additive "place an Enemy" authoring path K1 adds alongside it. */
   readonly enemyEntity: EntityId;
-  /** I1b's fixed demo mount (`spawnMount`'s own doc comment explains why it isn't placement-sourced yet). */
+  /** I1b's fixed demo mount — same "kept as-is, extended additively" reasoning as `enemyEntity`. `mountEntitiesByPlacementId` below is K1's real "place a Mount" authoring path. */
   readonly mountEntity: EntityId;
+  /**
+   * K1: scene-authored Enemy placements, reconciled the same way
+   * `npcEntitiesByPlacementId` already is (`reconcilePlacedEntities`) —
+   * additional to, never replacing, the single fixed `enemyEntity` above.
+   * A tracked entity that died in combat is left in this map (not
+   * respawned or removed) once no longer alive — see
+   * `reconcilePlacedEntities`'s own doc comment for why a killed,
+   * author-placed enemy must not silently come back on the next scene
+   * message.
+   */
+  readonly enemyEntitiesByPlacementId: Map<string, EntityId>;
+  /** K1: scene-authored Mount placements, reconciled the same way `enemyEntitiesByPlacementId` is — additional to the single fixed `mountEntity` above. */
+  readonly mountEntitiesByPlacementId: Map<string, EntityId>;
   /** `createMeleeAttackSystem`'s own event bus — H1d's damage-number/death-particle work subscribes to `"combat:hit"`/`"combat:death"` here. */
   readonly combatEvents: EventBus<MeleeAttackEventMap>;
   /** `createPickupSystem`'s own event bus — H1e's HUD coin-slot counter subscribes to `"pickup:collected"` here. */
@@ -794,6 +807,8 @@ export function PreviewApp() {
           npcEntitiesByPlacementId: new Map(),
           enemyEntity,
           mountEntity,
+          enemyEntitiesByPlacementId: new Map(),
+          mountEntitiesByPlacementId: new Map(),
           combatEvents,
           pickupEvents,
           graphEvents,
@@ -1324,8 +1339,49 @@ export function PreviewApp() {
  * player, restored or not) but its x/y is ignored on a restore — the
  * saved `Transform` is authoritative for where the player actually was.
  */
+/**
+ * K1: reconciles one prefab type's scene-authored placements against a
+ * persistent tracking map — the shape `npcEntitiesByPlacementId` already
+ * established, generalized so Enemy/Mount placements (K1) share it
+ * instead of duplicating the loop a third time. Spawns once per placement
+ * id, syncs `Transform` on every later message while the spawned entity
+ * is still alive, and — this is the real reason `world.isAlive` gets
+ * checked rather than just trusting the map — never respawns a placement
+ * whose own entity died from gameplay (an author-placed enemy the player
+ * killed stays dead the next time any unrelated store change re-sends a
+ * scene message; it does not silently return). A tracked id is only ever
+ * removed, and only then destroyed if still alive, when the author
+ * deletes the placement itself.
+ */
+function reconcilePlacedEntities(
+  world: World,
+  entities: readonly EntityPlacement[],
+  prefabId: string,
+  spawn: (world: World, worldX: number, worldY: number) => EntityId,
+  tracked: Map<string, EntityId>,
+): void {
+  for (const entity of entities) {
+    if (entity.prefabId !== prefabId) continue;
+    const existing = tracked.get(entity.id);
+    if (existing === undefined) {
+      const { x, y } = tileCenterWorld(entity.tileX, entity.tileY);
+      tracked.set(entity.id, spawn(world, x, y));
+    } else if (world.isAlive(existing)) {
+      const { x, y } = tileCenterWorld(entity.tileX, entity.tileY);
+      world.set(existing, "Transform", { x, y });
+    }
+  }
+
+  const seenIds = new Set(entities.filter((entity) => entity.prefabId === prefabId).map((entity) => entity.id));
+  for (const [placementId, entityId] of tracked) {
+    if (seenIds.has(placementId)) continue;
+    if (world.isAlive(entityId)) world.destroy(entityId);
+    tracked.delete(placementId);
+  }
+}
+
 function reconcileEntities(gameWorld: GameWorld, entities: readonly EntityPlacement[], devPreviewRestore: Readonly<Record<string, ComponentFieldValues>> | null): void {
-  const { world, npcEntitiesByPlacementId } = gameWorld;
+  const { world } = gameWorld;
 
   const playerPlacement = entities.find((entity) => entity.prefabId === "player-start");
   if (playerPlacement && gameWorld.playerEntity === undefined) {
@@ -1337,22 +1393,9 @@ function reconcileEntities(gameWorld: GameWorld, entities: readonly EntityPlacem
     }
   }
 
-  const seenIds = new Set(entities.filter((entity) => entity.prefabId === "npc").map((entity) => entity.id));
-  for (const [placementId, entityId] of npcEntitiesByPlacementId) {
-    if (seenIds.has(placementId)) continue;
-    world.destroy(entityId);
-    npcEntitiesByPlacementId.delete(placementId);
-  }
-  for (const entity of entities) {
-    if (entity.prefabId !== "npc") continue;
-    const { x, y } = tileCenterWorld(entity.tileX, entity.tileY);
-    const existing = npcEntitiesByPlacementId.get(entity.id);
-    if (existing === undefined) {
-      npcEntitiesByPlacementId.set(entity.id, spawnNpcMarker(world, x, y));
-    } else {
-      world.set(existing, "Transform", { x, y });
-    }
-  }
+  reconcilePlacedEntities(world, entities, "npc", spawnNpcMarker, gameWorld.npcEntitiesByPlacementId);
+  reconcilePlacedEntities(world, entities, "enemy", spawnEnemy, gameWorld.enemyEntitiesByPlacementId);
+  reconcilePlacedEntities(world, entities, "mount", spawnMount, gameWorld.mountEntitiesByPlacementId);
 
   world.flush();
 }

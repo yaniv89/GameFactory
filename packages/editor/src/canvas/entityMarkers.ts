@@ -1,4 +1,4 @@
-import { COIN_PICKUP_PREFAB, MOUNT_PREFAB, PLAYER_START_PREFAB, NPC_PREFAB } from "@forge/core";
+import { COIN_PICKUP_PREFAB, ENEMY_PREFAB, MOUNT_PREFAB, PLAYER_START_PREFAB, NPC_PREFAB } from "@forge/core";
 import { Graphics, type Renderer, type Texture } from "pixi.js";
 
 /**
@@ -12,6 +12,8 @@ import { Graphics, type Renderer, type Texture } from "pixi.js";
  */
 export const PLAYER_MARKER_COLOR = 0x5ec8f2; // cyan
 export const NPC_MARKER_COLOR = 0xd162c9; // magenta
+/** K1: a placeable Enemy — a hostile red distinct from every other marker color, well clear of `--accent-running`'s amber (CLAUDE.md 5.1). */
+export const ENEMY_MARKER_COLOR = 0xd15c4a;
 /** H1e's dropped coin — gold, deliberately duller/more yellow than `--accent-running`'s amber so it never reads as "the running state" (CLAUDE.md 5.1). */
 export const COIN_MARKER_COLOR = 0xe0c14c;
 /** I1b's rideable mount — a saddle-brown distinct from every other marker/tile color and, per CLAUDE.md 5.1, well clear of `--accent-running`'s amber. */
@@ -47,6 +49,17 @@ export function buildEntityTextures(renderer: Renderer, tileSize: number): Map<s
   const coin = new Graphics().circle(center, center, radius * 0.6).fill(COIN_MARKER_COLOR);
   textures.set(COIN_PICKUP_PREFAB.id, renderer.generateTexture(coin));
   coin.destroy();
+
+  // A triangle, not a circle — CLAUDE.md 5.6's "color is never the only
+  // signal" (same reasoning the mount's own rounded square already
+  // establishes), and reads as "hostile" at a glance the way an RTS/RPG
+  // minimap marker convention already does.
+  const enemySize = radius * 1.9;
+  const enemy = new Graphics()
+    .poly([center, center - enemySize / 2, center - enemySize / 2, center + enemySize / 2, center + enemySize / 2, center + enemySize / 2])
+    .fill(ENEMY_MARKER_COLOR);
+  textures.set(ENEMY_PREFAB.id, renderer.generateTexture(enemy));
+  enemy.destroy();
 
   // A rounded rectangle, not another circle — CLAUDE.md 5.6's "color is
   // never the only signal" applies to game-world markers too, not just

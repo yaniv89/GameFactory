@@ -19,7 +19,7 @@ const CANVAS_BACKGROUND = 0x232a26;
 const ENTITY_PICK_RADIUS = TILE_SIZE * 0.5;
 
 type CanvasStatus = "loading" | "ready" | "error";
-type CanvasTool = "tiles" | "player" | "npc" | "select";
+type CanvasTool = "tiles" | "player" | "npc" | "enemy" | "mount" | "select";
 
 interface RenderRig {
   readonly host: RenderHost;
@@ -134,6 +134,8 @@ export function SceneCanvas() {
   const packTerrainRemap = useProjectStore((state) => state.document.packTerrainRemap);
   const placePlayerStart = useProjectStore((state) => state.placePlayerStart);
   const placeNpc = useProjectStore((state) => state.placeNpc);
+  const placeEnemy = useProjectStore((state) => state.placeEnemy);
+  const placeMount = useProjectStore((state) => state.placeMount);
   const selectEntity = useProjectStore((state) => state.selectEntity);
   const paintTile = useProjectStore((state) => state.paintTile);
 
@@ -436,6 +438,16 @@ export function SceneCanvas() {
       if (tile) placeNpc(activeScene.id, tile.tileX, tile.tileY);
       return;
     }
+    if (tool === "enemy") {
+      const tile = tileAt(worldX, worldY);
+      if (tile) placeEnemy(activeScene.id, tile.tileX, tile.tileY);
+      return;
+    }
+    if (tool === "mount") {
+      const tile = tileAt(worldX, worldY);
+      if (tile) placeMount(activeScene.id, tile.tileX, tile.tileY);
+      return;
+    }
     // tool === "select"
     const hit = activeScene.entities.find((entity) => {
       const centerX = entity.tileX * TILE_SIZE + TILE_SIZE / 2;
@@ -537,6 +549,8 @@ export function SceneCanvas() {
                 { tool: "tiles" as const, label: "Tiles", needsScene: true },
                 { tool: "player" as const, label: "Player start", needsScene: true },
                 { tool: "npc" as const, label: "NPC", needsScene: true },
+                { tool: "enemy" as const, label: "Enemy", needsScene: true },
+                { tool: "mount" as const, label: "Mount", needsScene: true },
                 { tool: "select" as const, label: "Select", needsScene: true },
               ]
             ).map((entry) => (

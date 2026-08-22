@@ -104,3 +104,69 @@ export async function buildPlayerCharacterTextures(pack: PlayerPackData | undefi
 
   return result;
 }
+
+/**
+ * K1 Phase 2's wagon/mount half — mirrors
+ * `packages/editor/src/canvas/wagonWeaponTextures.ts`'s
+ * `buildPackAwareWagonTextures` exactly (a 1x4 south/west/east/north
+ * facing strip, `frames[0]` = south, the only frame a placed Mount's
+ * fixed `Sprite.frame = 0` ever asks for today), reading pre-resolved
+ * `pack.assets` data URIs instead of fetching through `resolveAsset`.
+ */
+export interface PlayerWagonFrameSet {
+  readonly frames: readonly Texture[];
+}
+
+export async function buildPlayerWagonTextures(pack: PlayerPackData | undefined): Promise<Map<string, PlayerWagonFrameSet>> {
+  const result = new Map<string, PlayerWagonFrameSet>();
+  const wagons = pack?.manifest.wagons;
+  if (!pack || !wagons) return result;
+
+  const frameSize = pack.manifest.grid.spriteSize ?? { width: pack.manifest.grid.tileSize, height: pack.manifest.grid.tileSize };
+
+  for (const [wagonId, wagon] of Object.entries(wagons)) {
+    const dataUrl = pack.assets[wagon.src];
+    if (!dataUrl) continue; // not embedded at export time — falls back to the flat marker for this wagon.
+
+    let stripTexture: Texture;
+    try {
+      stripTexture = await Assets.load<Texture>(dataUrl);
+    } catch (err) {
+      console.warn(`[forge:player] failed to decode the embedded wagon strip '${wagon.src}' for '${wagonId}' — falling back to a flat marker.`, err);
+      continue;
+    }
+
+    const frames: Texture[] = [];
+    for (let column = 0; column < 4; column++) {
+      const frame = new Rectangle(column * frameSize.width, 0, frameSize.width, frameSize.height);
+      frames.push(new Texture({ source: stripTexture.source, frame }));
+    }
+    result.set(wagonId, { frames });
+  }
+
+  return result;
+}
+
+/**
+ * K1 Phase 2's weapon half — mirrors
+ * `buildPackAwareWeaponTextures` exactly (one flat icon per weapon id,
+ * no slicing), reading pre-resolved `pack.assets` data URIs.
+ */
+export async function buildPlayerWeaponTextures(pack: PlayerPackData | undefined): Promise<Map<string, Texture>> {
+  const result = new Map<string, Texture>();
+  const weapons = pack?.manifest.weapons;
+  if (!pack || !weapons) return result;
+
+  for (const [weaponId, weapon] of Object.entries(weapons)) {
+    const dataUrl = pack.assets[weapon.src];
+    if (!dataUrl) continue; // not embedded at export time — falls back to the flat marker for this weapon.
+
+    try {
+      result.set(weaponId, await Assets.load<Texture>(dataUrl));
+    } catch (err) {
+      console.warn(`[forge:player] failed to decode the embedded weapon icon '${weapon.src}' for '${weaponId}' — falling back to a flat marker.`, err);
+    }
+  }
+
+  return result;
+}

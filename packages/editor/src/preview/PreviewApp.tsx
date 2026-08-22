@@ -51,6 +51,7 @@ import { buildEntityTextures, VFX_PARTICLE_TEXTURE_KEY, WEAPON_MARKER_TEXTURE_KE
 import { GRID_HEIGHT, GRID_WIDTH, TILE_SIZE } from "../canvas/gridConstants";
 import { loadActivePackContext } from "../canvas/packTiles";
 import { WALL_TILE_ID, buildAutotileWallTextures, buildPaletteTextures } from "../canvas/tilePalette";
+import { buildPackAwareWagonTextures, buildPackAwareWeaponTextures, type WagonFrameSet } from "../canvas/wagonWeaponTextures";
 import type { EntityPlacement } from "../store/projectStore";
 import { fitZoom as fitZoomOf, followCamera as followCameraOf, followZoom as followZoomOf } from "./cameraFollow";
 import { buildDecorationTextures, computeDecorationTiles } from "./decorationTiles";
@@ -84,6 +85,18 @@ const ASSET_ID_TO_CHARACTER_ROLE: Readonly<Record<number, string>> = {
   [NPC_ASSET_ID]: "villager",
   [ENEMY_ASSET_ID]: "goblin",
 };
+
+/**
+ * K1 Phase 2: this repo's own convention for the single `wagons`/`weapons`
+ * key a pack should declare to art a placed Mount / the wielded-weapon
+ * visual — same "one generic id, not per-item art" scope
+ * `createEquipmentSystem`'s own doc comment already states for weapons
+ * (`WEAPON_ASSET_ID` is a single constant, not per-item), extended here
+ * to `wagons` since a placed Mount is likewise one prefab, not a roster
+ * of distinct mount types yet.
+ */
+const WAGON_ROLE_ID = "mount";
+const WEAPON_ROLE_ID = "sword";
 
 /**
  * I1e's item-id bridge: `Pickup.itemId` (@forge/core) is a plain numeric
@@ -410,6 +423,9 @@ export function PreviewApp() {
   const inventoryInstalledRef = useRef(false);
   /** Populated asynchronously once a `forge:preview:scene` message names an `activePack` — read every tick by the sprite-sync `resolveTexture` closure below, which is wired once at boot before any pack has necessarily loaded. Empty map (not undefined) so a lookup miss and "still loading" look identical: fall back to the placeholder marker either way. */
   const characterTexturesRef = useRef<Map<string, CharacterFrameSet>>(new Map());
+  /** K1 Phase 2: same "loaded alongside characters, resolved at render time" shape as `characterTexturesRef`, for the active pack's own `wagons`/`weapons` declarations. */
+  const wagonTexturesRef = useRef<Map<string, WagonFrameSet>>(new Map());
+  const weaponTexturesRef = useRef<Map<string, Texture>>(new Map());
   /** The `activePack` name this preview has already loaded (or attempted to) — guards against re-fetching the same pack's manifest on every scene message (tile paints fire these constantly) and against a stale, slower-to-resolve fetch clobbering a newer one. */
   const loadedPackNameRef = useRef<string | undefined>(undefined);
   /** The panel's current pixel size — read by the per-tick camera-follow logic (H1b) so it doesn't need to re-measure the DOM every frame; kept current by the boot effect and the resize observer below. */
@@ -677,8 +693,8 @@ export function PreviewApp() {
               const animatedFrame = frameSet?.frames[frame];
               if (animatedFrame) return animatedFrame;
               if (assetId === COIN_ASSET_ID) return entityTextures.get(COIN_PICKUP_PREFAB.id);
-              if (assetId === MOUNT_ASSET_ID) return entityTextures.get(MOUNT_PREFAB.id);
-              if (assetId === WEAPON_ASSET_ID) return entityTextures.get(WEAPON_MARKER_TEXTURE_KEY);
+              if (assetId === MOUNT_ASSET_ID) return wagonTexturesRef.current.get(WAGON_ROLE_ID)?.frames[0] ?? entityTextures.get(MOUNT_PREFAB.id);
+              if (assetId === WEAPON_ASSET_ID) return weaponTexturesRef.current.get(WEAPON_ROLE_ID) ?? entityTextures.get(WEAPON_MARKER_TEXTURE_KEY);
               if (assetId === VFX_PARTICLE_ASSET_ID) return entityTextures.get(VFX_PARTICLE_TEXTURE_KEY);
               return entityTextures.get(assetId === PLAYER_ASSET_ID ? "player-start" : "npc");
             },
@@ -1040,13 +1056,18 @@ export function PreviewApp() {
       if (activePack !== loadedPackNameRef.current) {
         loadedPackNameRef.current = activePack;
         characterTexturesRef.current = new Map(); // clear immediately: don't keep showing the outgoing pack's art while the new one loads.
+        wagonTexturesRef.current = new Map();
+        weaponTexturesRef.current = new Map();
         void loadActivePackContext(activePack)
-          .then((context) => buildPackAwareCharacterTextures(context))
-          .then((textures) => {
-            if (loadedPackNameRef.current === activePack) characterTexturesRef.current = textures;
+          .then((context) => Promise.all([buildPackAwareCharacterTextures(context), buildPackAwareWagonTextures(context), buildPackAwareWeaponTextures(context)]))
+          .then(([characterTextures, wagonTextures, weaponTextures]) => {
+            if (loadedPackNameRef.current !== activePack) return;
+            characterTexturesRef.current = characterTextures;
+            wagonTexturesRef.current = wagonTextures;
+            weaponTexturesRef.current = weaponTextures;
           })
           .catch((err) => {
-            console.warn("[forge:preview] failed to load character art for the active pack — falling back to placeholder markers.", err);
+            console.warn("[forge:preview] failed to load character/wagon/weapon art for the active pack — falling back to placeholder markers.", err);
           });
       }
 

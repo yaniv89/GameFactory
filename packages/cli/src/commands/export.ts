@@ -256,6 +256,11 @@ function resolvePackData(packName: string): PlayerPackData | undefined {
   const declaredPaths = new Set<string>();
   for (const tileset of Object.values(manifest.tilesets)) declaredPaths.add(tileset.src);
   if (manifest.characters) for (const path of Object.values(manifest.characters.sheets)) declaredPaths.add(path);
+  // K1 Phase 2: wagons (mounts) and weapons — same "collect every declared
+  // src, base64-embed whatever actually exists on disk" treatment as
+  // tilesets/characters above.
+  if (manifest.wagons) for (const wagon of Object.values(manifest.wagons)) declaredPaths.add(wagon.src);
+  if (manifest.weapons) for (const weapon of Object.values(manifest.weapons)) declaredPaths.add(weapon.src);
 
   const assets: Record<string, string> = {};
   for (const path of declaredPaths) {

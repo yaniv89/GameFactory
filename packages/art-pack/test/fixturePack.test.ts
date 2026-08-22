@@ -118,6 +118,38 @@ describe("fixtures/packs/starter-pack props (docs/adr/0014, L5)", () => {
   });
 });
 
+describe("fixtures/packs/starter-pack weapons (docs/adr/0014, K1 Phase 2)", () => {
+  const dir = join(REPO_ROOT, "fixtures/packs/starter-pack");
+
+  it("every declared weapon is a real, valid PNG on disk at the declared path", () => {
+    const result = readManifest(dir);
+    expect(result.ok).toBe(true);
+    const weapons = result.manifest!.weapons;
+    expect(weapons).toBeDefined();
+    expect(Object.keys(weapons!)).toEqual(["sword"]);
+    for (const [id, weapon] of Object.entries(weapons!)) {
+      const assetPath = join(dir, weapon.src);
+      expect(existsSync(assetPath), `weapon '${id}' declares '${weapon.src}' but no file exists there`).toBe(true);
+      const bytes = readFileSync(assetPath);
+      expect(bytes.subarray(0, 8).equals(PNG_SIGNATURE), `weapon '${id}' is not a valid PNG`).toBe(true);
+    }
+  });
+
+  it("every declared weapon's anchor (grip point) sits within its own image bounds", () => {
+    const result = readManifest(dir);
+    const weapons = result.manifest!.weapons!;
+    for (const [id, weapon] of Object.entries(weapons)) {
+      const bytes = readFileSync(join(dir, weapon.src));
+      const width = bytes.readUInt32BE(16);
+      const height = bytes.readUInt32BE(20);
+      expect(weapon.anchor.x, `weapon '${id}' anchor.x`).toBeGreaterThanOrEqual(0);
+      expect(weapon.anchor.x, `weapon '${id}' anchor.x`).toBeLessThanOrEqual(width);
+      expect(weapon.anchor.y, `weapon '${id}' anchor.y`).toBeGreaterThanOrEqual(0);
+      expect(weapon.anchor.y, `weapon '${id}' anchor.y`).toBeLessThanOrEqual(height);
+    }
+  });
+});
+
 describe("diffPackSwap on the two real fixture packs", () => {
   it("starter-pack -> scifi-pack: grass/dirt match, water fails, tile size warns", () => {
     const source = readManifest(join(REPO_ROOT, "fixtures/packs/starter-pack"));
@@ -148,6 +180,11 @@ describe("diffPackSwap on the two real fixture packs", () => {
         severity: "fail",
         message: "1 animation has no equivalent: 'walk'",
         detail: "These will be skipped until remapped.",
+      },
+      {
+        severity: "fail",
+        message: "1 weapon has no equivalent: 'sword'",
+        detail: "These will render as placeholders until remapped.",
       },
       {
         severity: "fail",
@@ -183,6 +220,11 @@ describe("diffPackSwap on the two real fixture packs", () => {
         severity: "fail",
         message: "1 animation has no equivalent: 'walk'",
         detail: "These will be skipped until remapped.",
+      },
+      {
+        severity: "fail",
+        message: "1 weapon has no equivalent: 'sword'",
+        detail: "These will render as placeholders until remapped.",
       },
       {
         severity: "fail",

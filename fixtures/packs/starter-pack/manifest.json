@@ -30,5 +30,8 @@
     "treasure-chest": { "src": "props/treasure-chest.png", "anchor": { "x": 43, "y": 96 } },
     "dungeon-door": { "src": "props/dungeon-door.png", "anchor": { "x": 38, "y": 96 } }
   },
+  "weapons": {
+    "sword": { "src": "weapons/sword.png", "anchor": { "x": 19, "y": 40 } }
+  },
   "locales": ["en"]
 }

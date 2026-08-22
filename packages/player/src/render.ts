@@ -11,9 +11,15 @@ import {
 import { Sprite, Text } from "pixi.js";
 import { buildEntityTextures } from "./entityMarkers.js";
 import type { GameLogic } from "./gameLogic.js";
-import { ENEMY_ASSET_ID, NPC_ASSET_ID, PLAYER_ASSET_ID } from "./gameWorld.js";
+import { ENEMY_ASSET_ID, MOUNT_ASSET_ID, NPC_ASSET_ID, PLAYER_ASSET_ID, WEAPON_ASSET_ID } from "./gameWorld.js";
 import { GRID_HEIGHT, GRID_WIDTH, TILE_SIZE } from "./gridConstants.js";
-import { buildPlayerCharacterTextures, buildPlayerPaletteTextures, type PlayerCharacterFrameSet } from "./packArt.js";
+import {
+  buildPlayerCharacterTextures,
+  buildPlayerPaletteTextures,
+  buildPlayerWagonTextures,
+  buildPlayerWeaponTextures,
+  type PlayerCharacterFrameSet,
+} from "./packArt.js";
 import type { PlayerProjectData } from "./playerProjectData.js";
 
 /** `Sprite.assetId` -> the active pack's own `characters.sheets` role id — matches `packages/editor/src/preview/PreviewApp.tsx`'s own `ASSET_ID_TO_CHARACTER_ROLE` exactly. `entityTextures`'s own flat marker (a triangle/circle/rounded-square, per role) stays the fallback for any role the active pack doesn't declare a sheet for. */
@@ -22,6 +28,10 @@ const ASSET_ID_TO_CHARACTER_ROLE: Readonly<Record<number, string>> = {
   [NPC_ASSET_ID]: "villager",
   [ENEMY_ASSET_ID]: "goblin",
 };
+
+/** K1 Phase 2: this repo's own convention for the single `wagons`/`weapons` key a pack should declare — matches `packages/editor/src/preview/PreviewApp.tsx`'s own `WAGON_ROLE_ID`/`WEAPON_ROLE_ID` exactly. */
+const WAGON_ROLE_ID = "mount";
+const WEAPON_ROLE_ID = "sword";
 
 /** Matches PreviewApp.tsx's own WALK_FRAME_COUNT/WALK_FPS exactly — every character sheet this repo's own generated art and `createCharacterAnimationSystem` agree on. */
 const WALK_FRAME_COUNT = 4;
@@ -116,6 +126,11 @@ export async function bootRenderer(canvas: HTMLCanvasElement, projectData: Playe
   // own flat circle stays the fallback for any role the pack doesn't
   // cover, exactly as before this existed.
   const characterTextures = await buildPlayerCharacterTextures(projectData.pack);
+  // K1 Phase 2: real wagon (mount) / weapon art when the export embedded
+  // a pack that declares one — `entityTextures`'s own flat rounded-square
+  // / blade stays the fallback, exactly as before this existed.
+  const wagonTextures = await buildPlayerWagonTextures(projectData.pack);
+  const weaponTextures = await buildPlayerWeaponTextures(projectData.pack);
   game.scheduler.addSystem(createTransformSnapshotSystem(game.world, snapshots));
   game.scheduler.addSystem(createCharacterAnimationSystem({ world: game.world, frameCount: WALK_FRAME_COUNT, fps: WALK_FPS }));
   game.scheduler.addSystem(
@@ -127,7 +142,11 @@ export async function bootRenderer(canvas: HTMLCanvasElement, projectData: Playe
       resolveTexture: (assetId: number, frame: number) => {
         const role = ASSET_ID_TO_CHARACTER_ROLE[assetId];
         const frameSet: PlayerCharacterFrameSet | undefined = role ? characterTextures.get(role) : undefined;
-        return frameSet?.frames[frame] ?? entityTextures.get(assetId);
+        const animatedFrame = frameSet?.frames[frame];
+        if (animatedFrame) return animatedFrame;
+        if (assetId === MOUNT_ASSET_ID) return wagonTextures.get(WAGON_ROLE_ID)?.frames[0] ?? entityTextures.get(assetId);
+        if (assetId === WEAPON_ASSET_ID) return weaponTextures.get(WEAPON_ROLE_ID) ?? entityTextures.get(assetId);
+        return entityTextures.get(assetId);
       },
     }),
   );

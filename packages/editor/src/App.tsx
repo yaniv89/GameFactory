@@ -30,6 +30,28 @@ import { PreviewPanel } from "./shell/PreviewPanel";
 import { UndoRedoControls } from "./shell/UndoRedoControls";
 import "./App.css";
 
+declare global {
+  interface Window {
+    /**
+     * Dev-only escape hatch, same "test-only hook, never shipped" pattern
+     * `main.tsx`'s own `__FORGE_E2E_SKIP_AUTH__` and `SceneCanvas.tsx`'s
+     * `__forgeSceneCanvasDebug` already establish (guarded by
+     * `import.meta.env.DEV`, dead-code-eliminated in a production build).
+     * Lets a `test-browser/*.spec.ts` script that builds a project entirely
+     * through the real UI (e.g. K1's flagship-demo authoring run) read the
+     * finished `ProjectDocument` back out and save it as a fixture, without
+     * needing the real backend "Export Project" button — that button is
+     * gated behind a real, signed-in `projectId` the E2E-skip-auth harness
+     * (no `Forge.Api` backend at all) never has.
+     */
+    __forgeProjectStoreDebug?: typeof useProjectStore;
+  }
+}
+
+if (import.meta.env.DEV) {
+  window.__forgeProjectStoreDebug = useProjectStore;
+}
+
 const COMPONENTS: Record<string, FC<IDockviewPanelProps>> = {
   scenes: ScenesPanelContainer,
   modules: ModulesPanelContainer,

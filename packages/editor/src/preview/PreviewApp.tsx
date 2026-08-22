@@ -1359,13 +1359,16 @@ function reconcilePlacedEntities(
   prefabId: string,
   spawn: (world: World, worldX: number, worldY: number) => EntityId,
   tracked: Map<string, EntityId>,
-): void {
+): EntityId[] {
+  const spawned: EntityId[] = [];
   for (const entity of entities) {
     if (entity.prefabId !== prefabId) continue;
     const existing = tracked.get(entity.id);
     if (existing === undefined) {
       const { x, y } = tileCenterWorld(entity.tileX, entity.tileY);
-      tracked.set(entity.id, spawn(world, x, y));
+      const id = spawn(world, x, y);
+      tracked.set(entity.id, id);
+      spawned.push(id);
     } else if (world.isAlive(existing)) {
       const { x, y } = tileCenterWorld(entity.tileX, entity.tileY);
       world.set(existing, "Transform", { x, y });
@@ -1378,6 +1381,7 @@ function reconcilePlacedEntities(
     if (world.isAlive(entityId)) world.destroy(entityId);
     tracked.delete(placementId);
   }
+  return spawned;
 }
 
 function reconcileEntities(gameWorld: GameWorld, entities: readonly EntityPlacement[], devPreviewRestore: Readonly<Record<string, ComponentFieldValues>> | null): void {
@@ -1394,10 +1398,26 @@ function reconcileEntities(gameWorld: GameWorld, entities: readonly EntityPlacem
   }
 
   reconcilePlacedEntities(world, entities, "npc", spawnNpcMarker, gameWorld.npcEntitiesByPlacementId);
-  reconcilePlacedEntities(world, entities, "enemy", spawnEnemy, gameWorld.enemyEntitiesByPlacementId);
+  const newlyPlacedEnemies = reconcilePlacedEntities(world, entities, "enemy", spawnEnemy, gameWorld.enemyEntitiesByPlacementId);
   reconcilePlacedEntities(world, entities, "mount", spawnMount, gameWorld.mountEntitiesByPlacementId);
 
   world.flush();
+
+  // Same test-only disarm this file's boot effect already applies to the
+  // single demo enemy (see that flag's own doc comment) — extended here so
+  // an author-*placed* enemy (K1 Phase 1) is disarmed just as reliably.
+  // `world.set` needs the entity already materialized, hence this runs
+  // after the flush above rather than inline in reconcilePlacedEntities.
+  if (
+    newlyPlacedEnemies.length > 0 &&
+    import.meta.env.DEV &&
+    (window as unknown as { __forgeTestDisableEnemyAggro?: boolean }).__forgeTestDisableEnemyAggro
+  ) {
+    for (const enemyEntity of newlyPlacedEnemies) {
+      world.set(enemyEntity, "EnemyAi", { attackCooldownUntil: Number.MAX_SAFE_INTEGER });
+    }
+    world.flush();
+  }
 }
 
 /**

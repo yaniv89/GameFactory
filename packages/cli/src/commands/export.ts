@@ -6,12 +6,15 @@ import { dirname, extname, join } from "node:path";
 import { validateArtPackManifest } from "@forge/art-pack";
 import type { PlayerPackData, PlayerProjectData } from "@forge/player";
 import { toExportProjectInput, type ExportInstalledModuleInput, type ExportProjectInput, type ProjectDocument } from "@forge/project-export";
+import { withExportLock } from "../exportLock.js";
 import { findRepoRoot } from "../repoRoot.js";
 
 const REPO_ROOT = findRepoRoot();
 const PLAYER_DIR = join(REPO_ROOT, "packages/player");
 const ALLOWLIST_PATH = join(REPO_ROOT, "tools/security/licenses.json");
 const FIXTURE_PACKS_DIR = join(REPO_ROOT, "fixtures/packs");
+/** #183: serializes the whole write-generated-files/build/copy sequence below — see exportLock.ts's own doc comment for why the shared `packages/player` build tree needs a real cross-process lock rather than per-invocation isolation. */
+const EXPORT_LOCK_PATH = join(PLAYER_DIR, ".export-build.lock");
 
 // ExportProjectInput's canonical definition lives in @forge/project-export
 // (docs/adr/0009) — re-exported here so existing callers of this module
@@ -401,18 +404,25 @@ export async function runExport(options: ExportOptions): Promise<void> {
   const exportProjectInput = resolveExportProjectInput(options);
   const projectData = await hydrateProjectData(exportProjectInput);
 
-  writeGeneratedFiles(projectData);
+  // #183: writeGeneratedFiles and the vite build below both go through
+  // the one shared packages/player build tree (src/generated/*.ts,
+  // dist-app/) — not safe for two forge export processes to run through
+  // at the same time. The lock makes this whole sequence a real,
+  // cross-process critical section instead of a race.
+  await withExportLock(EXPORT_LOCK_PATH, async () => {
+    writeGeneratedFiles(projectData);
 
-  // scripts/build-app.mjs: vite build, then inlineBundle — see that
-  // script's and packages/player/scripts/inline-bundle.mjs's own doc
-  // comments for exactly why a plain `vite build` output alone does not
-  // load under file:// (CORS on every ES module load, confirmed with a
-  // real Playwright file:// run, not assumed).
-  execFileSync("node", ["scripts/build-app.mjs"], { cwd: PLAYER_DIR, stdio: "inherit" });
+    // scripts/build-app.mjs: vite build, then inlineBundle — see that
+    // script's and packages/player/scripts/inline-bundle.mjs's own doc
+    // comments for exactly why a plain `vite build` output alone does not
+    // load under file:// (CORS on every ES module load, confirmed with a
+    // real Playwright file:// run, not assumed).
+    execFileSync("node", ["scripts/build-app.mjs"], { cwd: PLAYER_DIR, stdio: "inherit" });
 
-  rmSync(options.outDir, { recursive: true, force: true });
-  mkdirSync(options.outDir, { recursive: true });
-  cpSync(join(PLAYER_DIR, "dist-app"), options.outDir, { recursive: true });
+    rmSync(options.outDir, { recursive: true, force: true });
+    mkdirSync(options.outDir, { recursive: true });
+    cpSync(join(PLAYER_DIR, "dist-app"), options.outDir, { recursive: true });
+  });
 
   writeLicensesFile(options.outDir);
 

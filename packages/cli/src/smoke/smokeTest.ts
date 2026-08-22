@@ -15,6 +15,7 @@
 // (runExport resolves @forge/dialogue's own dist/guest-bundle.js itself),
 // a real file://-loadable dist directory out, with a real LICENSES.txt.
 import { strict as assert } from "node:assert";
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
@@ -24,6 +25,7 @@ import { runExport } from "../commands/export.js";
 import { findRepoRoot } from "../repoRoot.js";
 
 const REPO_ROOT = findRepoRoot();
+const CLI_ENTRY = join(REPO_ROOT, "packages/cli/dist/index.js");
 
 function buildFixtureProjectData(): unknown {
   const tiles = new Array(300).fill(1);
@@ -158,6 +160,68 @@ async function main(): Promise<void> {
       rmSync(mismatchDir, { recursive: true, force: true });
     }
   });
+
+  // Pass 4 (#183): two genuinely concurrent `forge export` OS processes
+  // against the same checkout — not two in-process `runExport()` calls,
+  // which could never actually race each other: `execFileSync` inside
+  // `runExport` blocks the whole event loop, so two `await`ed calls in
+  // one process always run strictly one after another regardless of
+  // `Promise.all`. Real overlap requires two separate child processes,
+  // spawned close enough together to both be mid-build at once — exactly
+  // how this race was first found (two Playwright worker processes each
+  // calling `forge export`). Before the exportLock.ts fix, this
+  // reproduced the exact "inlineBundle: expected exactly one .js asset
+  // ... found 0" failure (or, worse, a build silently containing the
+  // wrong project's data) close to 100% of the time on this repo's own
+  // hardware; confirmed by reverting the fix locally and re-running this
+  // pass, which failed immediately.
+  await (async () => {
+    const markerA = "FORGE_CLI_SMOKE_CONCURRENCY_MARKER_A_7e1c9b";
+    const markerB = "FORGE_CLI_SMOKE_CONCURRENCY_MARKER_B_2d84f0";
+    const buildMarkedFixture = (marker: string): unknown => {
+      const fixture = buildFixtureProjectData() as { scenes: Array<Record<string, unknown>> };
+      fixture.scenes[0]!.name = marker;
+      return fixture;
+    };
+
+    const runDir = mkdtempSync(join(tmpdir(), "forge-cli-smoke-concurrency-"));
+    try {
+      const projectAPath = join(runDir, "project-a.json");
+      const projectBPath = join(runDir, "project-b.json");
+      const outADir = join(runDir, "out-a");
+      const outBDir = join(runDir, "out-b");
+      writeFileSync(projectAPath, JSON.stringify(buildMarkedFixture(markerA)));
+      writeFileSync(projectBPath, JSON.stringify(buildMarkedFixture(markerB)));
+
+      const spawnExport = (projectPath: string, outDir: string): Promise<{ code: number | null; stderr: string }> =>
+        new Promise((resolve, reject) => {
+          const child = spawn("node", [CLI_ENTRY, "export", "--project", projectPath, "--out", outDir]);
+          let stderr = "";
+          child.stderr.on("data", (chunk: Buffer) => {
+            stderr += chunk.toString();
+          });
+          child.on("error", reject);
+          child.on("exit", (code) => resolve({ code, stderr }));
+        });
+
+      // Started back-to-back, not awaited one at a time — both are
+      // genuinely in flight together, which is the whole point of this
+      // pass.
+      const [resultA, resultB] = await Promise.all([spawnExport(projectAPath, outADir), spawnExport(projectBPath, outBDir)]);
+
+      assert.equal(resultA.code, 0, `concurrent export A failed:\n${resultA.stderr}`);
+      assert.equal(resultB.code, 0, `concurrent export B failed:\n${resultB.stderr}`);
+
+      const htmlA = readFileSync(join(outADir, "index.html"), "utf8");
+      const htmlB = readFileSync(join(outBDir, "index.html"), "utf8");
+      assert.ok(htmlA.includes(markerA), "export A's own output should contain export A's own marker");
+      assert.ok(!htmlA.includes(markerB), "export A's output must not contain export B's marker — cross-contamination from the shared build tree");
+      assert.ok(htmlB.includes(markerB), "export B's own output should contain export B's own marker");
+      assert.ok(!htmlB.includes(markerA), "export B's output must not contain export A's marker — cross-contamination from the shared build tree");
+    } finally {
+      rmSync(runDir, { recursive: true, force: true });
+    }
+  })();
 
   console.log("cli export smoke-test: PASS");
 }

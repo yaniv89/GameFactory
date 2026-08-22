@@ -2,13 +2,13 @@ import { Graphics, type Renderer, type Texture } from "pixi.js";
 
 /**
  * Matches `packages/editor/src/canvas/tilePalette.ts` exactly — flat
- * colors, not a real Art Pack render. There is no Art Pack asset bundling
- * in an exported build yet (a stated M6 gap, tracked for a later phase,
- * not silently skipped): an exported game currently renders the same
- * placeholder tile colors the editor's own canvas falls back to when no
- * pack is active. Duplicated rather than imported for the same reason
- * every other file this package shares a lineage with is: the player
- * package cannot depend on the editor app.
+ * colors, the base an exported build renders before `packArt.ts`'s real
+ * Art Pack resolution (K1 Phase 2b) substitutes in the active pack's own
+ * textured tiles wherever it declares one. Still what renders on its own
+ * when there's no active pack, or the active pack doesn't cover a given
+ * terrain — never a missing/broken tile. Duplicated rather than imported
+ * for the same reason every other file this package shares a lineage
+ * with is: the player package cannot depend on the editor app.
  */
 export interface PaletteEntry {
   readonly id: number;

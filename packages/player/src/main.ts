@@ -65,7 +65,18 @@ async function main(): Promise<void> {
 
   window.addEventListener("keydown", (event) => {
     keysHeld.add(event.key);
-    if (event.key.toLowerCase() === "e") game.interact();
+    // Same three-key mapping PreviewApp.tsx's own keydown handler uses:
+    // Space swings (H1c), R equips/unequips (I1c), E interacts — dialogue
+    // if an NPC is in range, otherwise mount/dismount (I1b), decided
+    // inside `game.interact()` itself.
+    if (event.key === " ") {
+      event.preventDefault(); // stop the page from scrolling on Space, the same way a real game would capture it
+      game.attack();
+    } else if (event.key.toLowerCase() === "r") {
+      game.toggleEquip();
+    } else if (event.key.toLowerCase() === "e") {
+      game.interact();
+    }
     // Real, host-fed input for any installed module's action-mapped
     // TickContext.input (github.com/yaniv89/GameFactory/issues/3) —
     // .code (layout-independent), unlike keysHeld above, which is the

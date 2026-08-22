@@ -9,11 +9,43 @@
 // own comment already documents), so this package writes extensions
 // that resolve correctly both at `tsc` compile time and at plain-Node
 // runtime against the compiled output.
-import { EventBusImpl, FIXED_STEP_MS, InterceptorRegistry, registerCoreComponents, Scheduler, World, type EntityId, type SceneChangedEvent } from "@forge/core";
+import {
+  EventBusImpl,
+  FIXED_STEP_MS,
+  InterceptorRegistry,
+  registerCoreComponents,
+  Scheduler,
+  World,
+  createEnemyAiSystem,
+  createEquipmentSystem,
+  createFloatingTextSystem,
+  createHitFlashSystem,
+  createKnockbackPhysicsSystem,
+  createMeleeAttackSystem,
+  createMountSystem,
+  createPickupSystem,
+  createVfxParticleSystem,
+  spawnVfxBurst,
+  type EntityId,
+  type MeleeAttackEventMap,
+  type PickupEventMap,
+  type SceneChangedEvent,
+} from "@forge/core";
 import { GraphNodeRegistry, ModuleBridge } from "@forge/runtime-host";
 import type { QuickJSWASMModule } from "quickjs-emscripten";
 import { GRID_HEIGHT, GRID_WIDTH, TILE_SIZE } from "./gridConstants.js";
-import { createPlayerMovementSystem, INTERACT_RANGE, spawnNpcMarker, spawnPlayer, type HeldKeys } from "./gameWorld.js";
+import {
+  createPlayerMovementSystem,
+  INTERACT_RANGE,
+  VFX_PARTICLE_ASSET_ID,
+  WEAPON_ASSET_ID,
+  spawnCoinPickup,
+  spawnEnemy,
+  spawnMount,
+  spawnNpcMarker,
+  spawnPlayer,
+  type HeldKeys,
+} from "./gameWorld.js";
 import type { PlayerProjectData, PlayerScene } from "./playerProjectData.js";
 import { WALL_TILE_ID } from "./tilePalette.js";
 
@@ -21,6 +53,53 @@ import { WALL_TILE_ID } from "./tilePalette.js";
 const PER_MODULE_COMPUTE_BUDGET_MS = 2;
 const MEMORY_LIMIT_BYTES = 16 * 1024 * 1024;
 const MAX_STACK_SIZE_BYTES = 1024 * 1024;
+
+/**
+ * Combat/AI/mount tuning — matches `packages/editor/src/preview/PreviewApp.tsx`'s
+ * own constants of the same name exactly, so the exported game plays
+ * identically to what a creator already tested in the live preview.
+ * Duplicated rather than imported for the same "player cannot depend on
+ * the editor" reason as everything else this file's own header comment
+ * already gives.
+ */
+const MELEE_REACH = 24;
+const MELEE_SIZE = 22;
+const MELEE_DAMAGE = 10;
+const MELEE_KNOCKBACK_SPEED = 220;
+const MELEE_INVULNERABILITY_SEC = 0.4;
+const MELEE_FLASH_SEC = 0.15;
+
+const ENEMY_DETECT_RADIUS = 130;
+const ENEMY_ATTACK_RANGE = MELEE_REACH;
+const ENEMY_ATTACK_DAMAGE = 6;
+const ENEMY_ATTACK_COOLDOWN_SEC = 1;
+const ENEMY_ATTACK_INVULNERABILITY_SEC = 0.4;
+const ENEMY_ATTACK_FLASH_SEC = 0.15;
+const ENEMY_WANDER_RADIUS = 64;
+const ENEMY_WANDER_SPEED = 40;
+
+const DAMAGE_NUMBER_TTL_SEC = 0.8;
+const DAMAGE_NUMBER_SPAWN_OFFSET_Y = -14;
+
+const DEATH_BURST_OPTIONS = {
+  count: 10,
+  minSpeed: 60,
+  maxSpeed: 160,
+  ttl: 0.5,
+  tint: 0x5d964d, // goblin skin (gensprite_h1.py's GOBLIN palette) — this repo's only enemy today
+  particleAssetId: VFX_PARTICLE_ASSET_ID,
+} as const;
+const IMPACT_SPARK_OPTIONS = {
+  count: 5,
+  minSpeed: 40,
+  maxSpeed: 110,
+  ttl: 0.25,
+  tint: 0xf2d98a,
+  particleAssetId: VFX_PARTICLE_ASSET_ID,
+} as const;
+
+/** I1c's wielded-weapon visual offset, world units along facing — matches PreviewApp.tsx's own `WEAPON_OFFSET`. */
+const WEAPON_OFFSET = 16;
 
 function tileCenterWorld(tileX: number, tileY: number): { x: number; y: number } {
   return { x: tileX * TILE_SIZE + TILE_SIZE / 2, y: tileY * TILE_SIZE + TILE_SIZE / 2 };
@@ -63,9 +142,17 @@ export interface GameLogic {
   readonly npcEntityByPlacementId: ReadonlyMap<string, EntityId>;
   /** Placement id of every NPC a dialogue-tracking entity exists for — the `treeId` `startDialogue` expects. */
   readonly dialogueCapableNpcIds: ReadonlySet<string>;
+  /** Every "enemy"-prefab placement's own spawned entity — I1a's real, chase-and-attack goblin, not a plain NPC marker. */
+  readonly enemyEntityByPlacementId: ReadonlyMap<string, EntityId>;
+  /** Every "mount"-prefab placement's own spawned entity — I1b's real, rideable mount. */
+  readonly mountEntityByPlacementId: ReadonlyMap<string, EntityId>;
   tick(dtMs: number): void;
-  /** "E"-to-interact, same nearest-in-range rule as the editor's unsandboxed preview. Emits `dialogue:start` on the shared event bus if an NPC is in range; no-ops otherwise (nothing in range, or no dialogue module installed). */
+  /** "E"-to-interact, same nearest-in-range rule as the editor's unsandboxed preview. Emits `dialogue:start` on the shared event bus if an NPC is in range; falls through to a mount/dismount request (I1b) otherwise. */
   interact(): void;
+  /** Space-to-swing (H1c) — requests a real melee attack against whatever's in reach next tick, consumed by `createMeleeAttackSystem`. */
+  attack(): void;
+  /** R-to-equip/unequip (I1c) — requests a real wielded-weapon toggle next tick, consumed by `createEquipmentSystem`. */
+  toggleEquip(): void;
   dispose(): void;
 }
 
@@ -99,6 +186,17 @@ export async function bootGameLogic(options: GameLogicOptions): Promise<GameLogi
   const scheduler = new Scheduler(world, { events, initialSceneId: options.projectData.startSceneId });
   const interceptors = new InterceptorRegistry();
   const graphNodes = new GraphNodeRegistry();
+
+  // Dedicated, narrowly-typed buses for the native combat/pickup systems —
+  // the same split PreviewApp.tsx's own `combatEvents`/`pickupEvents` keep
+  // separate from its `graphEvents`/module bus, since `EventBus<T>`'s
+  // generic `on`/`emit` aren't structurally interchangeable across
+  // different `T`s. Real gameplay events are forwarded (not replaced) onto
+  // the shared `events` bus below, right where they're already handled —
+  // that's the one bus every installed module's `ModuleBridge` actually
+  // listens on (e.g. `@forge/graph-runtime`'s `core:onEvent`).
+  const combatEvents = new EventBusImpl<MeleeAttackEventMap>();
+  const pickupEvents = new EventBusImpl<PickupEventMap>();
 
   function findScene(sceneId: string): PlayerScene {
     const scene = options.projectData.scenes.find((candidate) => candidate.id === sceneId);
@@ -136,9 +234,112 @@ export async function bootGameLogic(options: GameLogicOptions): Promise<GameLogi
   };
   scheduler.addSystem(createPlayerMovementSystem(world, isWalkable, options.keysHeld));
 
+  // Host-owned request flags — the same "own the input state, hand the
+  // system a consume-once callback" shape PreviewApp.tsx's own
+  // `attackRequestedRef`/`equipRequestedRef`/`mountRequestedRef` already
+  // establish, just plain closures here instead of React refs.
+  let attackRequested = false;
+  let equipRequested = false;
+  let mountRequested = false;
+
+  scheduler.addSystem(
+    createMeleeAttackSystem({
+      world,
+      events: combatEvents,
+      consumeAttackRequest: () => {
+        const requested = attackRequested;
+        attackRequested = false;
+        return requested;
+      },
+      reach: MELEE_REACH,
+      size: MELEE_SIZE,
+      damage: MELEE_DAMAGE,
+      knockbackSpeed: MELEE_KNOCKBACK_SPEED,
+      invulnerabilitySec: MELEE_INVULNERABILITY_SEC,
+      flashSec: MELEE_FLASH_SEC,
+    }),
+  );
+  scheduler.addSystem(createKnockbackPhysicsSystem({ world }));
+  scheduler.addSystem(
+    createEnemyAiSystem({
+      world,
+      events: combatEvents,
+      detectRadius: ENEMY_DETECT_RADIUS,
+      attackRange: ENEMY_ATTACK_RANGE,
+      attackDamage: ENEMY_ATTACK_DAMAGE,
+      attackCooldownSec: ENEMY_ATTACK_COOLDOWN_SEC,
+      attackInvulnerabilitySec: ENEMY_ATTACK_INVULNERABILITY_SEC,
+      attackFlashSec: ENEMY_ATTACK_FLASH_SEC,
+      wanderRadius: ENEMY_WANDER_RADIUS,
+      wanderSpeed: ENEMY_WANDER_SPEED,
+      isWalkable,
+    }),
+  );
+  scheduler.addSystem(
+    createMountSystem({
+      world,
+      consumeMountRequest: () => {
+        const requested = mountRequested;
+        mountRequested = false;
+        return requested;
+      },
+    }),
+  );
+  scheduler.addSystem(
+    createEquipmentSystem({
+      world,
+      consumeEquipRequest: () => {
+        const requested = equipRequested;
+        equipRequested = false;
+        return requested;
+      },
+      weaponAssetId: WEAPON_ASSET_ID,
+      weaponOffset: WEAPON_OFFSET,
+    }),
+  );
+  scheduler.addSystem(createHitFlashSystem({ world }));
+  scheduler.addSystem(createFloatingTextSystem({ world }));
+  scheduler.addSystem(createPickupSystem({ world, events: pickupEvents }));
+  scheduler.addSystem(createVfxParticleSystem({ world }));
+
+  combatEvents.on("combat:hit", (payload) => {
+    const targetTransform = world.get<{ x: "f64"; y: "f64" }>(payload.target, "Transform") as { x: number; y: number } | undefined;
+    if (targetTransform) {
+      world.create({
+        Transform: { x: targetTransform.x, y: targetTransform.y + DAMAGE_NUMBER_SPAWN_OFFSET_Y },
+        FloatingText: { value: payload.damage, age: 0, ttl: DAMAGE_NUMBER_TTL_SEC },
+      });
+      spawnVfxBurst(world, targetTransform.x, targetTransform.y, IMPACT_SPARK_OPTIONS);
+      world.flush();
+    }
+    // Forwarded, not replaced — a graph mechanic (docs/adr/0017) can react
+    // to the same real gameplay event this hand-coded system already does.
+    events.emit("combat:hit", payload);
+  });
+  combatEvents.on("combat:death", (payload) => {
+    spawnVfxBurst(world, payload.x, payload.y, DEATH_BURST_OPTIONS);
+    // H1e's item drop: every kill leaves a real, walkable-over coin at the
+    // enemy's own last position, exactly one, not a chance roll.
+    spawnCoinPickup(world, payload.x, payload.y);
+    world.flush();
+    events.emit("combat:death", payload);
+  });
+  pickupEvents.on("pickup:collected", (payload) => {
+    // Unlike PreviewApp.tsx (which also books the pickup into an
+    // unsandboxed `@forge/inventory` direct-host here), this needs no
+    // module-specific handling at all: if `@forge/inventory` is installed
+    // for this project, its own real, sandboxed guest code already
+    // subscribes to this exact event on this exact shared `events` bus
+    // (the same bus every `ModuleBridge` above was created with) — there
+    // is no second, editor-only "direct host" path to bridge into here.
+    events.emit("pickup:collected", payload);
+  });
+
   let playerEntity: EntityId | undefined;
   const npcEntityByPlacementId = new Map<string, EntityId>();
   const dialogueCapableNpcIds = new Set<string>();
+  const enemyEntityByPlacementId = new Map<string, EntityId>();
+  const mountEntityByPlacementId = new Map<string, EntityId>();
 
   // Spawns (or, for the player, repositions) `scene`'s entity placements.
   // Shared between the initial boot and every later "scene:changed"
@@ -159,34 +360,61 @@ export async function bootGameLogic(options: GameLogicOptions): Promise<GameLogi
         continue;
       }
 
-      // Dialogue-tracking is folded into the same pass, not a separate
-      // one over `scene.entities` afterward (an earlier version of this
-      // function did it that way only because bridges hadn't booted yet
-      // at the point it ran for the very first scene — a constraint that
-      // doesn't apply to `scene.entities` itself, which needs nothing
-      // from a bridge to answer "does this placement declare dialogue").
-      // No bare tracking entity beyond the NPC marker itself: the
-      // dialogue module's own guest code adds its DialogueState component
-      // lazily, the first time a dialogue actually starts for this entity
-      // (its own `showNode` function's `ctx.world.has(...)` branch) —
-      // mirrors `PreviewApp.tsx`'s `rebuildDialogueRuntime` exactly, just
-      // against the one real shared World instead of a disposable one.
+      if (placement.prefabId === "enemy") {
+        enemyEntityByPlacementId.set(placement.id, spawnEnemy(world, x, y));
+        continue;
+      }
+      if (placement.prefabId === "mount") {
+        mountEntityByPlacementId.set(placement.id, spawnMount(world, x, y));
+        continue;
+      }
+
+      // Every other prefabId (today: "npc", but per docs/adr/0015-entity-prefab-component-model.md
+      // this is deliberately an open string, not a closed union) falls back
+      // to a plain NPC marker — the same "unrecognized content degrades to
+      // an inert, harmless placeholder rather than a crash" contract
+      // `resolveAsset`'s own placeholder tier already establishes for art.
+      //
+      // Dialogue-tracking is folded into the same pass, not a separate one
+      // over `scene.entities` afterward (an earlier version of this
+      // function did it that way only because bridges hadn't booted yet at
+      // the point it ran for the very first scene — a constraint that
+      // doesn't apply to `scene.entities` itself, which needs nothing from
+      // a bridge to answer "does this placement declare dialogue"). No bare
+      // tracking entity beyond the NPC marker itself: the dialogue
+      // module's own guest code adds its DialogueState component lazily,
+      // the first time a dialogue actually starts for this entity (its own
+      // `showNode` function's `ctx.world.has(...)` branch) — mirrors
+      // `PreviewApp.tsx`'s `rebuildDialogueRuntime` exactly, just against
+      // the one real shared World instead of a disposable one.
       const npcEntity = spawnNpcMarker(world, x, y);
       npcEntityByPlacementId.set(placement.id, npcEntity);
       if (placement.dialogue) dialogueCapableNpcIds.add(placement.id);
     }
   }
 
-  // The inverse of applySceneEntities for the NPC half only: every NPC
-  // entity is scene-scoped, so leaving a scene destroys them rather than
-  // letting them silently pile up off in some other scene's coordinate
-  // space. The player is left alone here — see applySceneEntities above.
+  // The inverse of applySceneEntities: every NPC/enemy/mount entity is
+  // scene-scoped, so leaving a scene destroys them rather than letting
+  // them silently pile up off in some other scene's coordinate space. The
+  // player is left alone here — see applySceneEntities above. Enemies/
+  // mounts are checked with `isAlive` first (an enemy the player already
+  // killed in this scene is already gone; `world.destroy` on a dead id is
+  // not a safe no-op to assume) — NPCs need no such check today since
+  // nothing in this file ever destroys one outside this function.
   function despawnSceneNpcs(): void {
     for (const npcEntity of npcEntityByPlacementId.values()) {
       world.destroy(npcEntity);
     }
     npcEntityByPlacementId.clear();
     dialogueCapableNpcIds.clear();
+    for (const enemyEntity of enemyEntityByPlacementId.values()) {
+      if (world.isAlive(enemyEntity)) world.destroy(enemyEntity);
+    }
+    enemyEntityByPlacementId.clear();
+    for (const mountEntity of mountEntityByPlacementId.values()) {
+      if (world.isAlive(mountEntity)) world.destroy(mountEntity);
+    }
+    mountEntityByPlacementId.clear();
   }
 
   applySceneEntities(currentScene);
@@ -256,11 +484,13 @@ export async function bootGameLogic(options: GameLogicOptions): Promise<GameLogi
     },
     npcEntityByPlacementId,
     dialogueCapableNpcIds,
+    enemyEntityByPlacementId,
+    mountEntityByPlacementId,
     tick(dtMs: number): void {
       scheduler.tick(dtMs);
     },
     interact(): void {
-      if (playerEntity === undefined || dialogueCapableNpcIds.size === 0) return;
+      if (playerEntity === undefined) return;
       const playerTransform = world.get<{ x: "f64"; y: "f64" }>(playerEntity, "Transform") as { x: number; y: number } | undefined;
       if (!playerTransform) return;
 
@@ -281,9 +511,24 @@ export async function bootGameLogic(options: GameLogicOptions): Promise<GameLogi
           nearestId = placementId;
         }
       }
-      if (nearestId === undefined) return;
-      const dialogueEntity = npcEntityByPlacementId.get(nearestId)!;
-      events.emit("dialogue:start", { entity: dialogueEntity, treeId: nearestId });
+
+      if (nearestId !== undefined) {
+        const dialogueEntity = npcEntityByPlacementId.get(nearestId)!;
+        events.emit("dialogue:start", { entity: dialogueEntity, treeId: nearestId });
+        return;
+      }
+
+      // No NPC dialogue target in range — I1b's mount/dismount instead,
+      // same fall-through PreviewApp.tsx's own keydown handler uses.
+      // `createMountSystem` itself decides whether this actually mounts,
+      // dismounts, or does nothing.
+      mountRequested = true;
+    },
+    attack(): void {
+      attackRequested = true;
+    },
+    toggleEquip(): void {
+      equipRequested = true;
     },
     dispose(): void {
       for (const bridge of bridges) bridge.dispose();

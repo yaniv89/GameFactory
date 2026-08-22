@@ -1,4 +1,7 @@
 import {
+  COIN_PICKUP_PREFAB,
+  ENEMY_PREFAB,
+  MOUNT_PREFAB,
   NPC_PREFAB,
   PLAYER_START_PREFAB,
   TransformSchema,
@@ -16,14 +19,26 @@ import {
  * pipeline this eventually resolves through instead). Keyed by
  * `Prefab.spriteAssetKey`, not the old numeric-constant-per-kind scheme —
  * this is the resolution table `spawnFromPrefab`'s `resolveSpriteAssetId`
- * callback reads.
+ * callback reads. Matches `packages/editor/src/preview/gameWorld.ts`'s own
+ * numbering exactly, though nothing requires that beyond readability —
+ * this package resolves its own ids independently.
  */
 export const PLAYER_ASSET_ID = 1;
 export const NPC_ASSET_ID = 2;
+export const ENEMY_ASSET_ID = 3;
+export const COIN_ASSET_ID = 4;
+export const MOUNT_ASSET_ID = 5;
+/** I1c's wielded-weapon visual — not resolved through `SPRITE_ASSET_IDS`/`spawnFromPrefab`: the weapon entity isn't a prefab (`createEquipmentSystem` creates/destroys it directly), so this is just the plain numeric `Sprite.assetId` handed to that system's own `weaponAssetId` option. */
+export const WEAPON_ASSET_ID = 6;
+/** I1d's VFX particle visual — same "not a prefab, plain pre-resolved constant" reasoning as `WEAPON_ASSET_ID`. */
+export const VFX_PARTICLE_ASSET_ID = 7;
 
 const SPRITE_ASSET_IDS: Readonly<Record<string, number>> = {
   player: PLAYER_ASSET_ID,
   npc: NPC_ASSET_ID,
+  enemy: ENEMY_ASSET_ID,
+  coin: COIN_ASSET_ID,
+  mount: MOUNT_ASSET_ID,
 };
 
 function resolveSpriteAssetId(spriteAssetKey: string): number {
@@ -39,6 +54,19 @@ export function spawnPlayer(world: World, worldX: number, worldY: number): Entit
 
 export function spawnNpcMarker(world: World, worldX: number, worldY: number): EntityId {
   return spawnFromPrefab(world, NPC_PREFAB, worldX, worldY, resolveSpriteAssetId);
+}
+
+export function spawnEnemy(world: World, worldX: number, worldY: number): EntityId {
+  return spawnFromPrefab(world, ENEMY_PREFAB, worldX, worldY, resolveSpriteAssetId);
+}
+
+/** Spawned at a killed enemy's own last position (`combat:death`'s payload, in `gameLogic.ts`), not scene-authored — same shape `spawnEnemy`/`spawnMount` already are for content that isn't a scene placement. */
+export function spawnCoinPickup(world: World, worldX: number, worldY: number): EntityId {
+  return spawnFromPrefab(world, COIN_PICKUP_PREFAB, worldX, worldY, resolveSpriteAssetId);
+}
+
+export function spawnMount(world: World, worldX: number, worldY: number): EntityId {
+  return spawnFromPrefab(world, MOUNT_PREFAB, worldX, worldY, resolveSpriteAssetId);
 }
 
 /** Currently-held movement keys, WASD and arrows both accepted. */

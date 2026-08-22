@@ -1,17 +1,26 @@
 import { createCharacterAnimationSystem, type SceneChangedEvent } from "@forge/core";
-import { Camera, RenderHost, TilemapLayer, createSpriteSyncSystem, createTransformSnapshotSystem, TransformSnapshotStore } from "@forge/render-2d";
-import { Sprite } from "pixi.js";
+import {
+  Camera,
+  RenderHost,
+  TilemapLayer,
+  createSpriteSyncSystem,
+  createTextSyncSystem,
+  createTransformSnapshotSystem,
+  TransformSnapshotStore,
+} from "@forge/render-2d";
+import { Sprite, Text } from "pixi.js";
 import { buildEntityTextures } from "./entityMarkers.js";
 import type { GameLogic } from "./gameLogic.js";
-import { NPC_ASSET_ID, PLAYER_ASSET_ID } from "./gameWorld.js";
+import { ENEMY_ASSET_ID, NPC_ASSET_ID, PLAYER_ASSET_ID } from "./gameWorld.js";
 import { GRID_HEIGHT, GRID_WIDTH, TILE_SIZE } from "./gridConstants.js";
 import { buildPlayerCharacterTextures, buildPlayerPaletteTextures, type PlayerCharacterFrameSet } from "./packArt.js";
 import type { PlayerProjectData } from "./playerProjectData.js";
 
-/** `Sprite.assetId` -> the active pack's own `characters.sheets` role id — matches `packages/editor/src/preview/PreviewApp.tsx`'s own `ASSET_ID_TO_CHARACTER_ROLE` exactly for the two entity kinds this standalone player currently spawns (enemy/mount art is #182's scope, once this player recognizes those prefabs as anything other than a plain NPC marker). */
+/** `Sprite.assetId` -> the active pack's own `characters.sheets` role id — matches `packages/editor/src/preview/PreviewApp.tsx`'s own `ASSET_ID_TO_CHARACTER_ROLE` exactly. `entityTextures`'s own flat marker (a triangle/circle/rounded-square, per role) stays the fallback for any role the active pack doesn't declare a sheet for. */
 const ASSET_ID_TO_CHARACTER_ROLE: Readonly<Record<number, string>> = {
   [PLAYER_ASSET_ID]: "hero",
   [NPC_ASSET_ID]: "villager",
+  [ENEMY_ASSET_ID]: "goblin",
 };
 
 /** Matches PreviewApp.tsx's own WALK_FRAME_COUNT/WALK_FPS exactly — every character sheet this repo's own generated art and `createCharacterAnimationSystem` agree on. */
@@ -41,8 +50,12 @@ function fitZoom(viewportWidth: number, viewportHeight: number): number {
  * except this one drives the player's own `RenderHost` via the app's
  * own ticker instead of React effects.
  *
- * No Art Pack asset resolution yet (`tilePalette.ts`'s own doc comment) —
- * a stated gap, tracked for a later phase.
+ * K1 Phase 2b wires real Art Pack asset resolution here (`packArt.ts`) —
+ * ground tiles and hero/villager/goblin character sheets, embedded at
+ * export time (`resolvePackData`, packages/cli/src/commands/export.ts).
+ * `tilePalette.ts`'s own flat colors and `entityMarkers.ts`'s own flat
+ * shapes are what actually render when there's no active pack, or the
+ * active pack doesn't declare a given role — never a missing/broken sprite.
  *
  * Takes the whole `PlayerProjectData`, not just the start scene, so a
  * later `"scene:changed"` can look up whichever scene comes next — see
@@ -115,6 +128,18 @@ export async function bootRenderer(canvas: HTMLCanvasElement, projectData: Playe
         const role = ASSET_ID_TO_CHARACTER_ROLE[assetId];
         const frameSet: PlayerCharacterFrameSet | undefined = role ? characterTextures.get(role) : undefined;
         return frameSet?.frames[frame] ?? entityTextures.get(assetId);
+      },
+    }),
+  );
+  // H1d's floating damage numbers — matches PreviewApp.tsx's own text style exactly.
+  game.scheduler.addSystem(
+    createTextSyncSystem<Text>({
+      world: game.world,
+      container: host.worldContainer,
+      createText: () => {
+        const text = new Text({ text: "", style: { fill: 0xff5050, fontSize: 14, fontWeight: "bold" } });
+        text.anchor.set(0.5, 1);
+        return text;
       },
     }),
   );
